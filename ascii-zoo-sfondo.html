@@ -187,32 +187,6 @@ h1 {
 [data-sfondo] .ui { display: none; }
 [data-sfondo] #zoo { cursor: default; }
 
-/* orologio al centro: solo nella versione sfondo; i clic passano al canvas */
-.wclock { display: none; }
-[data-sfondo] .wclock {
-  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  display: grid; justify-items: center; gap: 1.4vmin;
-  text-align: center; pointer-events: none;
-}
-/* alone scuro: gli animali sfumano passando dietro l'orologio */
-[data-sfondo] .wclock::before {
-  content: ""; position: absolute; z-index: -1; inset: -7vmin -10vmin;
-  background: radial-gradient(closest-side, rgba(9, 10, 15, 0.82), rgba(9, 10, 15, 0.5) 55%, transparent);
-}
-.wclock-time {
-  margin: 0; font-size: clamp(56px, 11vmin, 170px); font-weight: 400; line-height: 1;
-  letter-spacing: -0.03em; font-variant-numeric: tabular-nums; white-space: nowrap;
-  color: var(--ink);
-  text-shadow: 0 0 1vmin var(--bg), 0 0 2.6vmin var(--bg), 0 0 5vmin var(--bg);
-}
-.wclock-time .sep { color: var(--accent); text-shadow: 0 0 2vmin var(--accent); }
-.wclock-date {
-  margin: 0; font-size: clamp(11px, 1.45vmin, 22px); font-weight: 500;
-  letter-spacing: 0.26em; text-transform: uppercase; white-space: nowrap;
-  color: var(--ink-dim);
-  text-shadow: 0 0 10px var(--bg), 0 0 4px var(--bg);
-}
-
 @media (max-width: 760px) {
   .modes button { padding: 7px 9px; }
   .modes button:not([aria-pressed="true"]) span { display: none; }
@@ -227,11 +201,6 @@ h1 {
 <body>
 <canvas id="glow" aria-hidden="true"></canvas>
 <canvas id="zoo" aria-hidden="true"></canvas>
-
-<div class="wclock" aria-hidden="true">
-  <p class="wclock-time"><span id="wh">00</span><span class="sep">:</span><span id="wm">00</span></p>
-  <p class="wclock-date" id="wdate"></p>
-</div>
 
 <div class="ui" id="ui">
   <nav class="modes" id="modes" aria-label="Scegli l'animale"></nav>
@@ -275,8 +244,22 @@ h1 {
   var RAMP_B = "`'.:_!|/<>aeO08$";
   var LEVELS = 16;
 
-  // Colori comuni a tutte le modalità: 0 = onda del clic, 1 = cibo
-  var PALETTE = ['#aab3c5', '#f0d9a0'];
+  // Colori comuni a tutte le modalità: 0 = onda del clic, 1 = cibo,
+  // 2 = cifre dell'orologio, 3 = segmenti spenti
+  var PALETTE = ['#aab3c5', '#f0d9a0', '#e6e9f2', '#4a5064'];
+
+  // Orologio a sette segmenti (a..g): quali segmenti accende ogni cifra
+  var DIGITS = ['abcdef', 'bc', 'abdeg', 'abcdg', 'bcfg', 'acdfg', 'acdefg', 'abc', 'abcdefg', 'abcdfg'];
+  var SEGS = 'abcdefg';
+  // segmenti di una cifra larga W e alta H celle, tratto di raggio r
+  function segments(ox, oy, W, H, r) {
+    var x0 = ox + r, x1 = ox + W - r, y0 = oy + r, y1 = oy + H - r, ym = oy + H / 2, g = r * 0.6;
+    return [
+      [x0 + g, y0, x1 - g, y0], [x1, y0 + g, x1, ym - g], [x1, ym + g, x1, y1 - g],
+      [x0 + g, y1, x1 - g, y1], [x0, ym + g, x0, y1 - g], [x0, y0 + g, x0, ym - g],
+      [x0 + g, ym, x1 - g, ym]
+    ];
+  }
 
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
   function lerp(a, b, t) { return a + (b - a) * t; }
@@ -303,6 +286,14 @@ h1 {
     c.x += Math.cos(c.th) * c.sp * dt;
     c.y += Math.sin(c.th) * c.sp * dt;
   }
+  // volo verso un punto (l'orologio), rallentando all'arrivo
+  function goTo(c, turn, vmax, k, acc, dt) {
+    var dx = c.goal.x - c.x, dy = c.goal.y - c.y, d = Math.sqrt(dx * dx + dy * dy);
+    steer(c, Math.atan2(dy, dx), turn, dt);
+    var v = Math.min(vmax, 0.5 + d * k);
+    c.sp += (v - c.sp) * Math.min(1, acc * dt);
+    advance(c, dt);
+  }
   function defaultPoke(c, x, y, w) {
     var dx = c.x - x, dy = c.y - y, d = Math.sqrt(dx * dx + dy * dy);
     if (d > w.pokeR) return false;
@@ -322,12 +313,15 @@ h1 {
     id: 'farfalle', label: 'Farfalle', dot: '#5aa7ff',
     pal: ['#eaf4ff', '#a9d6ff', '#58a4ff', '#2f66d0'],
     dens: 560, min: 7, max: 26, smin: 3.6, smax: 11, off: 0, rad: 0.78,
+    perch: 0.5, // si posano sull'orologio se la taglia è sotto 0.5 × altezza cifre
     spawn: function (c, w) {
       c.th = w.rnd() * TAU; c.rate = 8 + w.rnd() * 5; c.dth = 0;
     },
     update: function (c, dt, t, w) {
+      if (c.perched) { c.ph += c.rate * 0.12 * dt; c.sp = 0; return; } // ali che si aprono piano
       var fl = c.flee > 0;
       c.ph += c.rate * (fl ? 1.9 : 1) * dt;
+      if (c.goal && !fl) { goTo(c, 6, 2.2 + 3.8 * c.z, 1.2, 5, dt); return; }
       c.dth += (w.rnd() - 0.5) * 10 * dt;
       c.dth *= Math.pow(0.2, dt);
       if (fl) steer(c, c.fleeTh, 7, dt);
@@ -397,12 +391,15 @@ h1 {
     id: 'libellule', label: 'Libellule', dot: '#3fe0b0',
     pal: ['#f2fff9', '#62f0b4', '#27b99a', '#8fe6cf', '#3d8f86'],
     dens: 600, min: 7, max: 22, smin: 4.2, smax: 10, off: -0.85, rad: 1.9,
+    perch: 0.65,
     spawn: function (c, w) {
       c.home = FLOW + (w.rnd() - 0.5) * 0.9; c.th = c.home;
       c.state = w.rnd() < 0.7 ? 1 : 0; c.timer = w.rnd() * 1.5; c.next = c.th;
     },
     update: function (c, dt, t, w) {
+      if (c.perched) { c.ph += 5 * dt; c.sp = 0; return; } // posata: le ali vibrano appena
       c.ph += 38 * dt;
+      if (c.goal && !(c.flee > 0)) { c.state = 1; goTo(c, 9, 9 + 13 * c.z, 2.5, 7, dt); c.next = c.th; return; }
       c.timer -= dt;
       if (c.flee > 0) { c.state = 1; c.next = c.fleeTh; if (c.timer < c.flee) c.timer = c.flee; }
       if (c.timer <= 0) {
@@ -460,7 +457,11 @@ h1 {
         var d2 = (f.x - c.x) * (f.x - c.x) + (f.y - c.y) * (f.y - c.y);
         if (d2 < best) { best = d2; food = f; }
       }
-      if (food && best < w.pokeR * w.pokeR * 1.4) {
+      if (c.flee > 0) {
+        // spavento (scatta il minuto): colpo di coda lontano dall'orologio
+        steer(c, c.fleeTh, 3, dt);
+        target = base * 2.6;
+      } else if (food && best < w.pokeR * w.pokeR * 1.4) {
         steer(c, Math.atan2(food.y - c.y, food.x - c.x), 2.8, dt);
         target = base * 2.3;
         var mx = c.x + Math.cos(c.th) * 0.45 * c.S, my = c.y + Math.sin(c.th) * 0.45 * c.S;
@@ -516,19 +517,30 @@ h1 {
     id: 'rane', label: 'Rane', dot: '#6fdc44',
     pal: ['#f6ffe9', '#a2ec6c', '#62cf3c', '#3c9a2c'],
     dens: 620, min: 6, max: 22, smin: 5, smax: 15, off: -0.3, rad: 1.08,
+    perch: 0.5,
     spawn: function (c, w) {
       c.th = w.rnd() * TAU; c.state = 0; c.timer = w.rnd() * 4; c.air = 0; c.pend = 0; c.u = 0;
     },
     update: function (c, dt, t, w) {
       c.ph += 2.4 * dt;
+      if (c.perched) return; // seduta sull'orologio
       if (c.state === 0) {
         c.timer -= dt;
         if (c.timer <= 0) {
           var hop;
           if (c.pend > 0) {
             c.th = c.fleeTh + (w.rnd() - 0.5) * 0.9; hop = c.S * (3.6 + w.rnd() * 2); c.pend--;
+          } else if (c.goal) {
+            // salto mirato su un segmento acceso
+            var gx = c.goal.x - c.x, gy = c.goal.y - c.y;
+            c.th = Math.atan2(gy, gx); hop = Math.max(0.2, Math.min(Math.sqrt(gx * gx + gy * gy), c.S * 3.6));
           } else {
             c.th += (w.rnd() - 0.5) * 2.6; hop = c.S * (1.6 + w.rnd() * 2.2);
+          }
+          // se non vuole posarsi, non atterra sull'orologio
+          if (w.clock && !c.goal &&
+              w.boxDist(c.x + Math.cos(c.th) * hop, c.y + Math.sin(c.th) * hop).d < c.S * 0.45) {
+            c.th = Math.atan2(c.y - w.clock.cy, c.x - w.clock.cx) + (w.rnd() - 0.5) * 1.2;
           }
           c.state = 1; c.u = 0; c.hop = hop; c.dur = 0.36 + hop * 0.006;
           c.x0 = c.x; c.y0 = c.y;
@@ -542,7 +554,7 @@ h1 {
         c.air = Math.sin(Math.PI * u);
         if (c.u >= 1) {
           c.state = 0; c.air = 0;
-          c.timer = c.pend > 0 ? 0.05 + w.rnd() * 0.12 : 0.7 + w.rnd() * 4.2;
+          c.timer = c.pend > 0 ? 0.05 + w.rnd() * 0.12 : c.goal ? 0.25 + w.rnd() * 0.5 : 0.7 + w.rnd() * 4.2;
         }
       }
     },
@@ -683,6 +695,8 @@ h1 {
   SPECIES.forEach(function (sp) {
     sp.c0 = PALETTE.length;
     Array.prototype.push.apply(PALETTE, sp.pal);
+    sp.cd = PALETTE.length; // il colore del pallino: i due punti dell'orologio
+    PALETTE.push(sp.dot);
   });
 
   /* ------------------------------------------------------------------ */
@@ -713,6 +727,13 @@ h1 {
     this._seed = (Date.now() ^ 0x9e3779b9) >>> 0;
     this.running = false;
     this._tick = this._tick.bind(this);
+    this.clockOn = !!opts.clock;
+    this.clock = null;
+    this.clockStr = '';
+    this.clockPrev = '';
+    this.dateStr = '';
+    this.clockT0 = -1;
+    this.clockMs = 0;
     this.resize();
   }
 
@@ -750,6 +771,7 @@ h1 {
     this.touched = new Int32Array(n);
     this.nt = 0;
     this.pokeR = Math.max(this.cols, this.rows) * 0.45;
+    this.layoutClock();
     if (this.glow) {
       this.glow.width = this.cols;
       this.glow.height = this.rows;
@@ -760,7 +782,8 @@ h1 {
     this.buildAtlas();
     if (oldCols && this.creatures.length) {
       var sx = this.cols / oldCols, sy = this.rows / oldRows;
-      this.creatures.forEach(function (c) { c.x *= sx; c.y *= sy; });
+      // l'orologio si è spostato: chi era posato o in arrivo riparte
+      this.creatures.forEach(function (c) { c.x *= sx; c.y *= sy; c.goal = null; c.perched = false; });
       this.food.length = 0;
       this.ripples.length = 0;
       this.populate(true);
@@ -806,8 +829,13 @@ h1 {
       kind: sp, seed: this.rnd(), z: 0.3 + 0.7 * u, S: lerp(sp.smin, sp.smax, u),
       x: this.rnd() * this.cols, y: this.rnd() * this.rows,
       th: 0, sp: 0, ph: this.rnd() * TAU, a: -delay, dying: false,
-      flee: 0, fleeTh: 0, mt: 0
+      flee: 0, fleeTh: 0, mt: 0,
+      goal: null, perched: false, cool: this.rnd() * 8, gtime: 0, ptime: 0
     };
+    // non nasce sopra l'orologio
+    for (var n = 0; this.clock && n < 12 && this.boxDist(c.x, c.y).d < c.S * 0.6; n++) {
+      c.x = this.rnd() * this.cols; c.y = this.rnd() * this.rows;
+    }
     c.bright = 0.42 + 0.58 * c.z;
     sp.spawn(c, this);
     return c;
@@ -863,22 +891,25 @@ h1 {
     });
   };
 
-  Zoo.prototype.put = function (i, j, v, col, a) {
+  Zoo.prototype.put = function (i, j, v, col, a, force) {
     if (i < 0 || j < 0 || i >= this.cols || j >= this.rows) return;
     var k = j * this.cols + i, w = v * a;
     if (this.stamp[k] !== this.frameNo) { this.stamp[k] = this.frameNo; this.touched[this.nt++] = k; }
-    else if (w < this.bw[k] * 0.85) return;
+    else if (!force && w < this.bw[k] * 0.85) return;
     this.bv[k] = v; this.bc[k] = col; this.ba[k] = a; this.bw[k] = w;
   };
 
   Zoo.prototype.step = function (dt) {
     var t = (this.t += dt), cs = this.creatures, i, c, sp, m;
+    if (this.clock) this.updateClock();
     for (i = cs.length - 1; i >= 0; i--) {
       c = cs[i]; sp = c.kind;
       if (c.dying) { c.a -= 2.6 * dt; if (c.a <= 0) { cs.splice(i, 1); continue; } }
       else if (c.a < 1) c.a = Math.min(1, c.a + 1.8 * dt);
       if (c.flee > 0) c.flee -= dt;
+      if (this.clock) this.perch(c, dt);
       sp.update(c, dt, t, this);
+      if (this.clock) this.avoid(c, dt);
       m = (sp.rad + Math.abs(sp.off)) * c.S + 1;
       if (c.x < -m) c.x = this.cols + m; else if (c.x > this.cols + m) c.x = -m;
       if (c.y < -m) c.y = this.rows + m; else if (c.y > this.rows + m) c.y = -m;
@@ -903,6 +934,9 @@ h1 {
     var i0 = Math.max(0, Math.floor(bx - R)), i1 = Math.min(this.cols - 1, Math.ceil(bx + R));
     var j0 = Math.max(0, Math.floor(by - R)), j1 = Math.min(this.rows - 1, Math.ceil(by + R));
     var a = c.a * c.bright, o = this.out, c0 = sp.c0, inv = 1 / S;
+    // posata, in arrivo o a mezz'aria: si disegna sopra le cifre, ben illuminata
+    var force = !!(c.goal || c.air > 0);
+    if (c.goal) a = c.a * Math.max(c.bright, 0.9);
     c.mt = 0.52 * inv;
     for (var j = j0; j <= j1; j++) {
       var dy = j + 0.5 - c.y;
@@ -910,7 +944,7 @@ h1 {
         var dx = i + 0.5 - c.x;
         o.v = 0;
         sp.shape((dx * cs + dy * sn) * inv, (dy * cs - dx * sn) * inv, c, o, hash2(i, j));
-        if (o.v > 0) this.put(i, j, o.v, c0 + o.c, a);
+        if (o.v > 0) this.put(i, j, o.v, c0 + o.c, a, force);
       }
     }
   };
@@ -929,6 +963,7 @@ h1 {
         if (hash2(ci, cj) > 0.3) this.put(ci, cj, 0.14, r.c, (1 - u) * 0.9);
       }
     }
+    if (this.clock) this.drawClock();
     for (i = 0; i < this.creatures.length; i++) this.drawCreature(this.creatures[i]);
     for (i = 0; i < this.food.length; i++) {
       var f = this.food[i];
@@ -957,7 +992,237 @@ h1 {
       }
     }
     ctx.globalAlpha = 1;
+    if (this.clock) this.drawDate();
     if (gd) this.gctx.putImageData(this.gimg, 0, 0);
+  };
+
+  /* ------------------------------------------------------------------ */
+  /* Orologio (solo nella versione sfondo): sette segmenti fatti con gli  */
+  /* stessi caratteri degli animali, data sotto, una lettera per casella. */
+  /* ------------------------------------------------------------------ */
+
+  Zoo.prototype.layoutClock = function () {
+    if (!this.clockOn) return;
+    var cols = this.cols, rows = this.rows;
+    var H = clamp(Math.round(0.13 * Math.min(cols, rows)), 11, 24);
+    var W = Math.round(H * 0.56), r = Math.max(0.9, H * 0.08);
+    var gap = Math.max(2, Math.round(H * 0.2)), cb = Math.max(5, Math.round(H * 0.55)) | 1;
+    var dm = Math.max(1, Math.ceil(20 / this.cell)), dg = Math.max(2, Math.round(H * 0.22));
+    var total = W * 4 + gap * 2 + cb;
+    var x0 = Math.round((cols - total) / 2), y0 = Math.round((rows - H - dg - dm) / 2);
+    var xs = [x0, x0 + W + gap, x0 + 2 * W + gap + cb, x0 + 3 * W + 2 * gap + cb];
+    this.clock = {
+      H: H, W: W, r: r, xs: xs, y0: y0, dm: dm, dateY: y0 + H + dg,
+      colonX: x0 + 2 * W + gap + cb / 2, cx: x0 + total / 2, cy: 0, dateX: 0, box: null,
+      seg: xs.map(function (ox) { return segments(ox, y0, W, H, r); })
+    };
+    if (!this.clockStr) this.readClock();
+    this.clockBox();
+  };
+
+  // ingombro di orologio + data, in celle
+  Zoo.prototype.clockBox = function () {
+    var C = this.clock, n = this.dateStr.length * C.dm;
+    C.dateX = Math.round(C.cx - n / 2);
+    var b = C.box = {
+      x0: Math.min(C.xs[0], C.dateX) - 1, y0: C.y0 - 1,
+      x1: Math.max(C.xs[3] + C.W, C.dateX + n) + 1, y1: C.dateY + C.dm + 1
+    };
+    C.cy = (b.y0 + b.y1) / 2;
+  };
+
+  // legge l'ora; true se il minuto è cambiato
+  Zoo.prototype.readClock = function () {
+    var d = new Date(), s = ('0' + d.getHours()).slice(-2) + ('0' + d.getMinutes()).slice(-2);
+    this.clockMs = d.getMilliseconds();
+    if (s === this.clockStr) return false;
+    this.clockPrev = this.clockStr || s;
+    this.clockStr = s;
+    this.dateStr = d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase();
+    return true;
+  };
+
+  Zoo.prototype.updateClock = function () {
+    if (!this.readClock()) return;
+    this.clockT0 = this.t; // le cifre cambiate si ricompongono
+    this.clockBox();
+    this.clockStartle();
+  };
+
+  // intensità di una cella per la cifra ch in posizione k: >0 acceso, -1 segmento spento
+  Zoo.prototype.digitV = function (k, ch, px, py) {
+    var C = this.clock, sg = C.seg[k], lit = DIGITS[ch] || '', r = C.r, dl = 1e9, dg = 1e9;
+    for (var s = 0; s < 7; s++) {
+      var q = sg[s], d = segD(px, py, q[0], q[1], q[2], q[3]);
+      if (lit.indexOf(SEGS.charAt(s)) >= 0) { if (d < dl) dl = d; } else if (d < dg) dg = d;
+    }
+    if (dl < r) return 0.98 - 0.4 * (dl / r) * (dl / r);
+    return dg < r * 0.75 ? -1 : 0;
+  };
+
+  Zoo.prototype.drawClock = function () {
+    var C = this.clock, H = C.H, W = C.W, i, j, k;
+    var p = this.clockT0 < 0 ? 1 : clamp((this.t - this.clockT0) / 0.9, 0, 1);
+    for (k = 0; k < 4; k++) {
+      var nd = +this.clockStr.charAt(k), od = +this.clockPrev.charAt(k), mix = od !== nd && p < 1;
+      for (j = C.y0 - 1; j <= C.y0 + H; j++) {
+        for (i = C.xs[k] - 1; i <= C.xs[k] + W; i++) {
+          var h = mix ? hash2(i * 7 + 3, j * 13 + 5) : 0;
+          var v = this.digitV(k, mix && h > p ? od : nd, i + 0.5, j + 0.5);
+          if (mix && v > 0 && Math.abs(h - p) < 0.14) v = 0.35 + 0.65 * this.rnd(); // bordo che scintilla
+          if (v > 0) this.put(i, j, v, 2, 1);
+          else if (v < 0) this.put(i, j, 0.1, 3, 0.4);
+        }
+      }
+    }
+    // i due punti: un battito a ogni secondo, nel colore dell'animale
+    var beat = 1 - this.clockMs / 1000, pulse = 0.35 + 0.65 * beat * beat;
+    var col = this.species ? this.species.cd : 2, rr = C.r * 1.3, cx = C.colonX;
+    for (var n = 0; n < 2; n++) {
+      var cy = C.y0 + H * (n ? 0.7 : 0.3);
+      for (j = Math.floor(cy - rr); j <= Math.floor(cy + rr); j++) {
+        for (i = Math.floor(cx - rr); i <= Math.floor(cx + rr); i++) {
+          var dx = i + 0.5 - cx, dy = j + 0.5 - cy, q = (dx * dx + dy * dy) / (rr * rr);
+          if (q < 1) this.put(i, j, 0.95 - 0.35 * q, col, pulse);
+        }
+      }
+    }
+  };
+
+  Zoo.prototype.drawDate = function () {
+    var C = this.clock, s = this.dateStr, ctx = this.ctx, size = this.tile * C.dm;
+    if (!s) return;
+    var y = C.dateY * this.tile, g = Math.max(1, Math.round(size * 0.07));
+    ctx.font = '500 ' + Math.round(size * 0.66) + 'px ' + this.font;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (var n = 0; n < s.length; n++) {
+      var ch = s.charAt(n);
+      if (ch === ' ') continue;
+      var x = (C.dateX + n * C.dm) * this.tile;
+      ctx.fillStyle = 'rgba(170, 179, 197, 0.07)';
+      ctx.fillRect(x + g, y + g, size - g * 2, size - g * 2);
+      ctx.fillStyle = 'rgba(200, 205, 218, 0.82)';
+      ctx.fillText(ch, x + size / 2, y + size / 2 + size * 0.03);
+    }
+  };
+
+  /* ---- gli animali e l'orologio ---- */
+
+  // distanza (in celle) dal riquadro dell'orologio e normale verso l'esterno
+  var _bd = { d: 0, nx: 0, ny: -1 };
+  Zoo.prototype.boxDist = function (x, y) {
+    var b = this.clock.box, px = clamp(x, b.x0, b.x1), py = clamp(y, b.y0, b.y1);
+    var dx = x - px, dy = y - py, d = Math.sqrt(dx * dx + dy * dy);
+    if (d > 1e-6) { _bd.d = d; _bd.nx = dx / d; _bd.ny = dy / d; return _bd; }
+    // dentro: si esce dal lato più vicino
+    var l = x - b.x0, r = b.x1 - x, t = y - b.y0, u = b.y1 - y, m = Math.min(l, r, t, u);
+    _bd.d = -m;
+    _bd.nx = m === l ? -1 : m === r ? 1 : 0;
+    _bd.ny = _bd.nx ? 0 : m === t ? -1 : 1;
+    return _bd;
+  };
+
+  // Cambia il minuto: un'onda parte dall'orologio, chi è posato riparte,
+  // chi è vicino si spaventa (le koi scattano, le rane saltano via).
+  Zoo.prototype.clockStartle = function () {
+    var C = this.clock, b = C.box, self = this, reach = C.H * 1.5;
+    this.ripple(C.cx, C.cy, (b.x1 - b.x0) * 0.62, 1.6, this.species ? this.species.cd : 0);
+    this.creatures.forEach(function (c) {
+      if (c.dying) return;
+      if (c.goal) { self.unperch(c); return; }
+      var bd = self.boxDist(c.x, c.y);
+      if (bd.d > reach) return;
+      c.fleeTh = Math.atan2(bd.ny, bd.nx) + (self.rnd() - 0.5) * 0.6;
+      c.flee = 0.5 + 0.6 * (1 - Math.max(0, bd.d) / reach);
+      self.scare(c);
+    });
+  };
+
+  // traduce fleeTh nel modo di scappare di ogni specie
+  Zoo.prototype.scare = function (c) {
+    var id = c.kind.id, a = c.fleeTh;
+    if (id === 'rane') { c.pend = 1; if (c.state === 0) c.timer = Math.min(c.timer, this.rnd() * 0.25); }
+    else if (id === 'granchi') {
+      c.dir = (-Math.sin(c.th) * Math.cos(a) + Math.cos(c.th) * Math.sin(a)) >= 0 ? 1 : -1;
+      c.thT = a - c.dir * Math.PI / 2;
+    }
+  };
+
+  // un punto a caso su un segmento acceso
+  Zoo.prototype.perchSpot = function () {
+    var C = this.clock, k = Math.floor(this.rnd() * 4), lit = DIGITS[+this.clockStr.charAt(k)];
+    var q = C.seg[k][SEGS.indexOf(lit.charAt(Math.floor(this.rnd() * lit.length)))];
+    var u = 0.2 + 0.6 * this.rnd();
+    return { x: lerp(q[0], q[2], u), y: lerp(q[1], q[3], u) };
+  };
+
+  Zoo.prototype.unperch = function (c) {
+    var C = this.clock;
+    c.perched = false; c.goal = null; c.cool = 8 + this.rnd() * 14;
+    if (!C) return;
+    c.fleeTh = Math.atan2(c.y - C.cy, c.x - C.cx) + (this.rnd() - 0.5) * 0.8;
+    c.flee = 0.7;
+    this.scare(c);
+  };
+
+  // Farfalle, libellule e rane (le più piccole, due alla volta) ogni tanto
+  // si posano su un segmento acceso, restano qualche secondo e ripartono.
+  Zoo.prototype.perch = function (c, dt) {
+    var sp = c.kind, C = this.clock;
+    if (!sp.perch) return;
+    if (c.dying) { c.goal = null; c.perched = false; return; }
+    if (c.goal && (c.flee > 0.3 || c.pend > 0)) { // disturbata da un clic: lascia perdere
+      if (c.perched) this.unperch(c); else { c.goal = null; c.cool = 6; }
+      return;
+    }
+    if (c.perched) {
+      if ((c.ptime -= dt) <= 0) this.unperch(c);
+      return;
+    }
+    if (c.goal) {
+      var dx = c.goal.x - c.x, dy = c.goal.y - c.y;
+      if (dx * dx + dy * dy < 0.4 && !(c.air > 0)) {
+        c.perched = true; c.x = c.goal.x; c.y = c.goal.y; c.sp = 0;
+        c.ptime = 4 + this.rnd() * 9;
+      } else if ((c.gtime += dt) > 15) { c.goal = null; c.cool = 8; }
+      return;
+    }
+    if (c.cool > 0) { c.cool -= dt; return; }
+    if (c.a < 1 || c.S > C.H * sp.perch || this.rnd() > dt * 0.035) return;
+    var ex = c.x - C.cx, ey = c.y - C.cy, far = Math.max(this.cols, this.rows) * 0.35;
+    if (ex * ex + ey * ey > far * far) return;
+    for (var n = 0, busy = 0; n < this.creatures.length; n++) if (this.creatures[n].goal) busy++;
+    if (busy >= 2) return;
+    c.goal = this.perchSpot(); c.gtime = 0;
+    if (sp.id === 'rane' && c.state === 0) c.timer = Math.min(c.timer, 0.3);
+  };
+
+  // Tutti gli altri girano intorno all'orologio invece di passarci sopra.
+  Zoo.prototype.avoid = function (c, dt) {
+    if (c.goal || c.dying) return;
+    var sp = c.kind, R = sp.rad * c.S * 0.5, bd = this.boxDist(c.x, c.y), zone = R + 3;
+    if (bd.d >= zone) return;
+    var s = 1 - bd.d / zone, nx = bd.nx, ny = bd.ny, over = R * 0.6 - bd.d;
+    if (sp.id === 'rane') {
+      if (c.air > 0) return; // in volo: lo scavalca (l'atterraggio è già fuori)
+    } else if (sp.id === 'granchi') {
+      // il granchio inverte il passo laterale
+      var mx = -Math.sin(c.th) * c.dir, my = Math.cos(c.th) * c.dir;
+      if (mx * nx + my * ny < -0.2 && c.sp > 0.1) c.dir = -c.dir;
+    } else {
+      // scivola lungo il bordo: tolgo la parte di rotta che entra nel riquadro
+      var hx = Math.cos(c.th), hy = Math.sin(c.th), dot = hx * nx + hy * ny;
+      if (dot < 0.3) {
+        var a = Math.atan2(hy - ny * dot + ny * 1.1 * s, hx - nx * dot + nx * 1.1 * s);
+        if (sp.id === 'libellule') c.next = a;
+        steer(c, a, 2 + 6 * s, dt);
+      }
+    }
+    if (over > 0) {
+      var k = over * Math.min(1, 5 * dt);
+      c.x += nx * k; c.y += ny * k;
+    }
   };
 
   Zoo.prototype._tick = function (now) {
@@ -1009,7 +1274,7 @@ h1 {
 
   var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var canvas = $('zoo');
-  var zoo = new Zoo(canvas, $('glow'), { fps: wallpaper ? 30 : 0, speed: reduced ? 0.4 : 1 });
+  var zoo = new Zoo(canvas, $('glow'), { fps: wallpaper ? 30 : 0, speed: reduced ? 0.4 : 1, clock: wallpaper });
 
   function fit() {
     var cell = zoo.resize(root.clientWidth, root.clientHeight);
@@ -1082,28 +1347,6 @@ h1 {
     var on = wallpaper ? !fixed : state.auto;
     if (on && !document.hidden) nextMode();
   }, wallpaper ? 120000 : 60000);
-
-  /* ---- orologio dello sfondo ----
-   * Controllo ogni secondo e scrivo solo quando cambia: se Lively mette in
-   * pausa la pagina, alla ripresa l'ora si corregge subito. */
-  if (wallpaper) {
-    var wh = $('wh'), wm = $('wm'), wdate = $('wdate'), lastClock = '';
-    var pad = function (n) { return ('0' + n).slice(-2); };
-    var clockTick = function () {
-      var d = new Date();
-      var hh = pad(d.getHours()), mm = pad(d.getMinutes());
-      var day = d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
-      var key = hh + mm + day;
-      if (key === lastClock) return;
-      lastClock = key;
-      wh.textContent = hh;
-      wm.textContent = mm;
-      wdate.textContent = day;
-    };
-    clockTick();
-    setInterval(clockTick, 1000);
-    document.addEventListener('visibilitychange', clockTick);
-  }
 
   zoo.start();
   window.asciiZoo = zoo;
