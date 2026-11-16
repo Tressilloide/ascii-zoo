@@ -2,7 +2,7 @@
 
 <p align="center">
   Animali fatti di caratteri da tastiera che volano, nuotano e saltano intorno a un orologio ASCII.<br>
-  Uno sfondo animato per Windows (con <a href="https://github.com/rocksdanister/lively">Lively Wallpaper</a>) e una nuova scheda per Firefox.
+  Uno sfondo animato per Windows (un piccolo programma in Rust, oppure <a href="https://github.com/rocksdanister/lively">Lively Wallpaper</a>) e una nuova scheda per Firefox.
 </p>
 
 <p align="center">
@@ -13,7 +13,7 @@
 
 ## Gli animali
 
-Sette specie, una alla volta. Lo sfondo passa alla successiva ogni 2 minuti.
+Sette specie, una alla volta. Lo sfondo passa alla successiva ogni 2 minuti; quando il PC è in carica restano le koi nel loro stagno (si può disattivare dal programma per Windows).
 
 <p align="center">
   <img src="docs/animali.png" alt="Le sette specie: farfalle, meduse, libellule, koi, rane, aironi, granchi, più l'orologio" width="100%">
@@ -24,7 +24,7 @@ Sette specie, una alla volta. Lo sfondo passa alla successiva ogni 2 minuti.
 | **Farfalle** | svolazzano a zig-zag battendo le ali | si posano sulle cifre e aprono le ali piano |
 | **Meduse** | pulsano e si lasciano portare dalla corrente | ci girano intorno |
 | **Libellule** | scatti rapidi e pause a mezz'aria | si posano sulle cifre |
-| **Koi** | nuotano ondeggiando la coda | ci girano intorno; allo scatto del minuto fuggono con un colpo di coda |
+| **Koi** | nuotano ondeggiando la coda in uno stagno con acqua che scorre, ninfee alla deriva e gocce; la più grande è **KARPISA**, la carpa che viene da Pisa, col suo nome sopra | ci girano intorno; allo scatto del minuto fuggono con un colpo di coda |
 | **Rane** | saltano, si fermano, risaltano | ci saltano sopra per sedersi, oppure lo scavalcano |
 | **Aironi** | volano tutti nella stessa direzione, con battiti lenti | ci girano intorno |
 | **Granchi** | camminano di lato | invertono il passo quando ci arrivano contro |
@@ -53,10 +53,13 @@ Le dimensioni si adattano allo schermo: funziona anche in verticale e su schermi
 
 ```
 ascii-zoo/
-├── sfondo/                  sfondo animato, pronto per Lively Wallpaper
+├── sfondo/                  sfondo animato (anche pronto per Lively Wallpaper)
 │   ├── index.html           tutto in un file: motore, orologio, carattere incorporato
 │   ├── LivelyInfo.json      descrizione del pacchetto per Lively
 │   └── thumbnail.jpg        miniatura nella libreria di Lively
+├── app/                     programma per Windows in Rust: lo sfondo senza Lively
+│   ├── src/                 finestre dietro le icone, menu, pause
+│   └── assets/              copia di sfondo/index.html incorporata nell'eseguibile
 ├── firefox/                 estensione "nuova scheda" per Firefox
 │   ├── manifest.json
 │   ├── index.html, app.js, zoo.js, style.css, icon.svg
@@ -66,6 +69,12 @@ ascii-zoo/
 ```
 
 ## Sfondo animato per Windows
+
+### Con il programma in Rust (consigliato)
+
+La cartella `app/` contiene un programma che mette lo sfondo dietro le icone su tutti i monitor, senza bisogno di Lively. Ha un'icona a forma di koi nell'area di notifica per scegliere l'animale, le pause (a batteria, con app a schermo intero) e l'avvio con Windows. Istruzioni per compilarlo in [`app/README.md`](app/README.md).
+
+### Con Lively Wallpaper
 
 Serve [Lively Wallpaper](https://www.rocksdanister.com/lively/) (gratuito, anche dal Microsoft Store).
 
@@ -95,9 +104,9 @@ Nel browser un clic sullo sfondo fa disperdere gli animali; con le koi invece fa
 
 ### Note
 
-- **Prestazioni.** Lo sfondo è limitato a 30 fotogrammi al secondo e Lively lo mette in pausa quando una finestra copre il desktop. Con `prefers-reduced-motion` gli animali vanno più piano.
+- **Prestazioni.** Lo sfondo è limitato a 30 fotogrammi al secondo. Il programma in Rust lo mette in pausa a batteria e sullo schermo di un'app a schermo intero; Lively quando una finestra copre il desktop. Con `prefers-reduced-motion` gli animali vanno più piano.
 - **La schermata di blocco** di Windows accetta solo immagini fisse: lì si può mettere uno screenshot dello sfondo.
-- **Il desktop non risponde ai clic?** Con Lively su Windows 11 può succedere dopo che uno schermo si scollega e si ricollega. Basta riavviare Lively: icona nell'area di notifica → Esci, poi riaprilo dal menu Start.
+- **Il desktop non risponde ai clic con Lively?** Su Windows 11 può succedere dopo che uno schermo si scollega e si ricollega. Basta riavviare Lively: icona nell'area di notifica → Esci, poi riaprilo dal menu Start.
 
 ## Nuova scheda per Firefox
 

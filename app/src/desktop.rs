@@ -46,7 +46,9 @@ pub unsafe fn attach(hwnd: HWND) -> Option<Embed> {
         SetParent(hwnd, Some(progman)).ok()?;
         let flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE;
         let _ = SetWindowPos(hwnd, Some(shell), 0, 0, 0, 0, flags);
-        let _ = SetWindowPos(worker, Some(hwnd), 0, 0, 0, 0, flags);
+        // la WorkerW (sfondo fisso) va in fondo, non subito sotto questa finestra:
+        // con più schermi le finestre agganciate prima finirebbero dietro di lei
+        let _ = SetWindowPos(worker, Some(HWND_BOTTOM), 0, 0, 0, 0, flags);
         return Some(Embed { parent: progman });
     }
 
