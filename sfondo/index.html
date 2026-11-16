@@ -441,9 +441,75 @@ h1 {
 
   SPECIES.push({
     id: 'koi', label: 'Koi', dot: '#ffb347',
-    pal: ['#f6f2e9', '#e8402f', '#ff8f2e', '#dc5a16', '#ffd447', '#6d7282', '#c9ced8'],
+    // 7-8 = acqua, 9-10 = ninfee, 11 = fiore di loto
+    pal: ['#f6f2e9', '#e8402f', '#ff8f2e', '#dc5a16', '#ffd447', '#6d7282', '#c9ced8',
+          '#3c7fa6', '#7cc4e0', '#4fae57', '#2f7a3a', '#f4a6c8'],
     dens: 520, min: 7, max: 26, smin: 4.6, smax: 12.5, off: -0.12, rad: 0.78,
     feeds: true,
+    // stagno: increspature che scorrono sotto i pesci
+    under: function (w, t, A) {
+      var c0 = this.c0;
+      for (var j = 0; j < w.rows; j++) {
+        for (var i = 0; i < w.cols; i++) {
+          var s = Math.sin(i * 0.16 + t * 0.8 + Math.sin(j * 0.11 + t * 0.35) * 2.2) +
+                  Math.sin(j * 0.23 - t * 0.6 + Math.sin(i * 0.07 - t * 0.25) * 1.8);
+          if (s > 1.45) {
+            var h = hash2(i, j);
+            if (h < 0.55) w.put(i, j, 0.08 + (s - 1.45) * 0.3, c0 + (s > 1.75 ? 8 : 7), A * (0.35 + 0.3 * h));
+          }
+        }
+      }
+    },
+    // ninfee che vanno alla deriva; i pesci profondi passano sotto
+    tick: function (w, dt) {
+      if (!w.pads || w.padsCols !== w.cols || w.padsRows !== w.rows) {
+        w.pads = []; w.padsCols = w.cols; w.padsRows = w.rows;
+        var n = clamp(Math.round(w.cols * w.rows / 1400), 4, 9);
+        for (var k = 0; k < n; k++) {
+          var p = { r: 3.5 + w.rnd() * 4.5, rot: w.rnd() * TAU, spin: (w.rnd() - 0.5) * 0.06,
+                    flower: w.rnd() < 0.35, v: 0.06 + w.rnd() * 0.1, x: 0, y: 0 };
+          for (var tries = 0; tries < 15; tries++) {
+            p.x = w.rnd() * w.cols; p.y = w.rnd() * w.rows;
+            if (!w.clock || w.boxDist(p.x, p.y).d > p.r + 3) break;
+          }
+          w.pads.push(p);
+        }
+      }
+      for (var q = 0; q < w.pads.length; q++) {
+        var pd = w.pads[q], m = pd.r + 2;
+        pd.x += Math.cos(FLOW) * pd.v * dt; pd.y += Math.sin(FLOW) * pd.v * dt;
+        pd.rot += pd.spin * dt;
+        if (pd.x > w.cols + m) pd.x = -m; else if (pd.x < -m) pd.x = w.cols + m;
+        if (pd.y < -m) pd.y = w.rows + m; else if (pd.y > w.rows + m) pd.y = -m;
+      }
+      // ogni tanto una goccia sull'acqua
+      if (w.rnd() < dt * 0.3) w.ripple(w.rnd() * w.cols, w.rnd() * w.rows, 3 + w.rnd() * 3, 1.6, this.c0 + 8);
+    },
+    over: function (w, t, A) {
+      if (!w.pads) return;
+      var c0 = this.c0;
+      for (var q = 0; q < w.pads.length; q++) {
+        var p = w.pads[q], R = p.r;
+        var fx = p.x - Math.cos(p.rot) * R * 0.3, fy = p.y - Math.sin(p.rot) * R * 0.3;
+        var i0 = Math.max(0, Math.floor(p.x - R)), i1 = Math.min(w.cols - 1, Math.ceil(p.x + R));
+        var j0 = Math.max(0, Math.floor(p.y - R)), j1 = Math.min(w.rows - 1, Math.ceil(p.y + R));
+        for (var j = j0; j <= j1; j++) {
+          for (var i = i0; i <= i1; i++) {
+            var dx = i + 0.5 - p.x, dy = j + 0.5 - p.y, d = Math.sqrt(dx * dx + dy * dy) / R;
+            if (d > 1) continue;
+            var da = angDiff(Math.atan2(dy, dx), p.rot);
+            if (d > 0.08 && Math.abs(da) < 0.3) continue; // la tacca della foglia
+            var col = d > 0.84 || (d > 0.25 && Math.abs(Math.sin(da * 3.5)) < 0.16) ? 10 : 9;
+            var v = 0.5 + 0.2 * (1 - d);
+            if (p.flower) {
+              var fd = Math.sqrt((i + 0.5 - fx) * (i + 0.5 - fx) + (j + 0.5 - fy) * (j + 0.5 - fy));
+              if (fd < 1.7) { col = fd < 0.7 ? 4 : 11; v = 0.85; }
+            }
+            w.put(i, j, v, c0 + col, A * 0.9);
+          }
+        }
+      }
+    },
     spawn: function (c, w) {
       c.home = FLOW + (w.rnd() - 0.5) * 1.1; c.th = c.home; c.dth = 0;
       var r = w.rnd();
@@ -925,6 +991,11 @@ h1 {
       this.ripples[i].age += dt;
       if (this.ripples[i].age > this.ripples[i].life) this.ripples.splice(i, 1);
     }
+    // scenografia della specie (stagno delle koi), con dissolvenza al cambio
+    var ss = this.species && this.species.under ? this.species : null;
+    if (ss) { this.sceneSp = ss; this.sceneA = Math.min(1, (this.sceneA || 0) + dt * 0.8); }
+    else this.sceneA = Math.max(0, (this.sceneA || 0) - dt * 1.5);
+    if (this.sceneSp && this.sceneA > 0 && this.sceneSp.tick) this.sceneSp.tick(this, dt, t);
   };
 
   Zoo.prototype.drawCreature = function (c) {
@@ -949,10 +1020,39 @@ h1 {
     }
   };
 
+  // KARPISA: la carpa che viene da Pisa. È la koi più grande, nuota in
+  // superficie e si porta dietro il suo nome, una lettera per cella.
+  Zoo.prototype.drawName = function () {
+    var k = this.karpisa, sp = this.species, i;
+    if (!k || k.dying || k.kind !== sp || this.creatures.indexOf(k) < 0) {
+      k = null;
+      for (i = 0; i < this.creatures.length; i++) {
+        var c = this.creatures[i];
+        if (c.kind === sp && !c.dying && (!k || c.S > k.S)) k = c;
+      }
+      this.karpisa = k;
+      if (!k) return;
+      k.bright = 1; k.kind2 = 0; // ben visibile: bianca e rossa, sopra le ninfee
+    }
+    var txt = 'KARPISA', tile = this.tile, ctx = this.ctx;
+    var row = Math.round(k.y - k.S * 0.45 - 1.5), col0 = Math.round(k.x - txt.length / 2);
+    ctx.font = '500 ' + Math.round(tile * 0.95) + 'px ' + this.font;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffd447';
+    ctx.globalAlpha = clamp(k.a, 0, 1) * 0.95;
+    for (i = 0; i < txt.length; i++) {
+      ctx.fillText(txt.charAt(i), (col0 + i + 0.5) * tile, (row + 0.5) * tile + tile * 0.03);
+    }
+    ctx.globalAlpha = 1;
+  };
+
   Zoo.prototype.render = function () {
     var ctx = this.ctx, tile = this.tile, cols = this.cols, i, k;
     this.frameNo++;
     this.nt = 0;
+    var scn = this.sceneA > 0 ? this.sceneSp : null;
+    if (scn) scn.under(this, this.t, this.sceneA);
 
     for (i = 0; i < this.ripples.length; i++) {
       var r = this.ripples[i], u = r.age / r.life;
@@ -970,6 +1070,7 @@ h1 {
       var fa = Math.min(1, f.age * 5) * clamp((f.life - f.age) / 1.5, 0, 1);
       this.put(Math.floor(f.x), Math.floor(f.y), 0.6, 1, fa);
     }
+    if (scn && scn.over) scn.over(this, this.t, this.sceneA);
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -992,6 +1093,7 @@ h1 {
       }
     }
     ctx.globalAlpha = 1;
+    if (this.species && this.species.id === 'koi') this.drawName();
     if (this.clock) this.drawDate();
     if (gd) this.gctx.putImageData(this.gimg, 0, 0);
   };
@@ -1347,6 +1449,31 @@ h1 {
     var on = wallpaper ? !fixed : state.auto;
     if (on && !document.hidden) nextMode();
   }, wallpaper ? 120000 : 60000);
+
+  /* Impostazioni dello sfondo, inviate dal programma: zooSetting(nome, valore).
+     0 = a rotazione, 1..7 = un solo animale fisso. */
+  /* Con il caricatore collegato: koi nello stagno (se l'opzione è attiva). */
+  var pref = 0, koiAC = true, charging = false, hashFixed = fixed;
+  function applyChoice() {
+    // la scelta esplicita nel menu vince; le koi in carica valgono solo "a rotazione"
+    if (pref > 0 && pref <= SPECIES.length) { fixed = true; setMode(SPECIES[pref - 1].id, true); }
+    else if (koiAC && charging) { fixed = true; setMode('koi', true); }
+    else fixed = hashFixed;
+  }
+  window.zooSetting = function (name, val) {
+    if (name === 'animale') pref = parseInt(val, 10) || 0;
+    else if (name === 'koiInCarica') koiAC = val === true || val === 'true';
+    else if (name === 'inCarica') charging = val === true || val === 'true'; // dal programma Rust
+    else return;
+    applyChoice();
+  };
+  if (navigator.getBattery) {
+    navigator.getBattery().then(function (b) {
+      charging = b.charging;
+      applyChoice();
+      b.addEventListener('chargingchange', function () { charging = b.charging; applyChoice(); });
+    }).catch(function () { /* nessuna info batteria: si va avanti normalmente */ });
+  }
 
   zoo.start();
   window.asciiZoo = zoo;
