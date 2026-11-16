@@ -1,0 +1,23 @@
+{
+  "manifest_version": 2,
+  "name": "ASCII Zoo",
+  "version": "1.0.0",
+  "description": "Nuova scheda con animali fatti di caratteri da tastiera: farfalle, meduse, libellule, koi, rane, aironi e granchi.",
+  "icons": {
+    "48": "icon.svg",
+    "96": "icon.svg"
+  },
+  "chrome_url_overrides": {
+    "newtab": "index.html"
+  },
+  "permissions": ["search"],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "ascii-zoo@nuova-scheda.local",
+      "strict_min_version": "115.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    }
+  }
+}

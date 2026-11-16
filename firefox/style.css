@@ -1,0 +1,191 @@
+/* Carattere: IBM Plex Mono, (c) IBM Corp., licenza SIL Open Font License 1.1 */
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2");
+}
+
+/* Un solo tema, scuro per scelta: gli animali sono luce su fondo nero.
+   Layout: canvas a tutto schermo; sopra, selettore in alto, saluto e ricerca al centro. */
+:root {
+  --bg: #090a0f;
+  --ink: #eceef5;
+  --ink-dim: #9196a8;
+  --ink-faint: #5d6274;
+  --panel: rgba(19, 21, 29, 0.74);
+  --line: rgba(255, 255, 255, 0.09);
+  --accent: #5aa7ff;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --cell: 11px;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; margin: 0; }
+
+body {
+  overflow: hidden;
+  background-color: var(--bg);
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.06) 0 0.6px, transparent 1.1px);
+  background-size: var(--cell) var(--cell);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.4;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+canvas { position: fixed; top: 0; left: 0; display: block; }
+#glow { opacity: 0.55; filter: blur(7px) saturate(1.2); pointer-events: none; }
+#zoo { cursor: crosshair; touch-action: manipulation; }
+
+.ui { position: fixed; inset: 0; pointer-events: none; transition: opacity 0.25s; }
+.ui > * { pointer-events: auto; }
+
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.sr {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+/* selettore degli animali */
+.modes {
+  position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 2px; padding: 4px;
+  max-width: calc(100% - 32px);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+}
+.modes button {
+  display: flex; align-items: center; gap: 7px;
+  padding: 6px 12px; border: 0; border-radius: 999px;
+  background: transparent; color: var(--ink-dim);
+  font-size: 12px; white-space: nowrap;
+  transition: background-color 0.15s, color 0.15s;
+}
+.modes button::before {
+  content: ""; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--dot); box-shadow: 0 0 8px var(--dot);
+}
+.modes button:hover { color: var(--ink); }
+.modes button[aria-pressed="true"] { background: rgba(255, 255, 255, 0.11); color: var(--ink); }
+
+/* saluto e ricerca */
+.center {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -56%);
+  width: min(540px, calc(100% - 32px));
+  display: grid; gap: 14px; justify-items: center; text-align: center;
+  pointer-events: none;
+}
+.center > form, .center > a { pointer-events: auto; }
+.clock {
+  margin: 0; color: var(--ink-dim); font-size: 11px;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 10px var(--bg), 0 0 4px var(--bg);
+}
+h1 {
+  margin: 0 0 6px; font-size: clamp(21px, 2.5vw, 29px); font-weight: 500;
+  letter-spacing: -0.02em; text-wrap: balance;
+  text-shadow: 0 0 14px var(--bg), 0 0 5px var(--bg);
+}
+.search {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 6px 6px 6px 16px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  transition: border-color 0.15s;
+}
+.search:focus-within { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.search::before { content: ">"; color: var(--accent); font-weight: 500; }
+.search input {
+  flex: 1; min-width: 0; padding: 9px 0; border: 0; background: transparent;
+  font-size: 14px; outline: none;
+  -webkit-user-select: text; user-select: text;
+}
+.search input::placeholder { color: var(--ink-faint); }
+.search button {
+  flex: none; width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 9px;
+  background: rgba(255, 255, 255, 0.05); color: var(--ink-dim);
+}
+.search button:hover { color: var(--ink); background: rgba(255, 255, 255, 0.1); }
+.search-link {
+  max-width: 100%; padding: 7px 12px; border-radius: 9px;
+  background: var(--panel); border: 1px solid var(--line);
+  color: var(--accent); font-size: 12px; text-decoration: none; overflow-wrap: anywhere;
+}
+.search-link:hover { text-decoration: underline; }
+[hidden] { display: none !important; }
+
+/* riga in basso */
+.hint {
+  position: absolute; left: 18px; bottom: 16px; margin: 0;
+  max-width: calc(100% - 84px);
+  color: var(--ink-faint); font-size: 11px; pointer-events: none;
+  text-shadow: 0 0 8px var(--bg);
+}
+.gear {
+  position: absolute; right: 16px; bottom: 12px;
+  width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--panel); color: var(--ink-dim); font-size: 14px; line-height: 1;
+}
+.gear:hover, .gear[aria-expanded="true"] { color: var(--ink); }
+
+.panel {
+  position: absolute; right: 16px; bottom: 56px; width: min(280px, calc(100% - 32px));
+  display: grid; gap: 14px; padding: 16px;
+  background: rgba(19, 21, 29, 0.94); border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  font-size: 12px;
+}
+.panel label { display: grid; gap: 6px; color: var(--ink-dim); }
+.panel label.check { display: flex; align-items: center; gap: 9px; color: var(--ink); }
+.panel input[type="text"] {
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04); color: var(--ink);
+  -webkit-user-select: text; user-select: text;
+}
+.panel input[type="checkbox"] { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); }
+.panel button {
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05); text-align: left;
+}
+.panel button:hover { background: rgba(255, 255, 255, 0.1); }
+.panel kbd {
+  float: right; padding: 0 5px; border: 1px solid var(--line); border-radius: 4px;
+  color: var(--ink-dim); font: inherit;
+}
+
+/* interfaccia nascosta: resta solo il pulsante, quasi invisibile */
+.bare .modes, .bare .center, .bare .hint, .bare .panel { display: none; }
+.bare .gear { opacity: 0.28; }
+.bare .gear:hover, .bare .gear:focus-visible { opacity: 1; }
+
+/* versione sfondo: nessuna interfaccia */
+[data-sfondo] .ui { display: none; }
+[data-sfondo] #zoo { cursor: default; }
+
+@media (max-width: 760px) {
+  .modes button { padding: 7px 9px; }
+  .modes button:not([aria-pressed="true"]) span { display: none; }
+  .hint { font-size: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}

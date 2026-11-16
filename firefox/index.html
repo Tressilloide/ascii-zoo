@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASCII Zoo</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="glow" aria-hidden="true"></canvas>
+<canvas id="zoo" aria-hidden="true"></canvas>
+
+<div class="ui" id="ui">
+  <nav class="modes" id="modes" aria-label="Scegli l'animale"></nav>
+
+  <main class="center">
+    <p class="clock" id="clock"></p>
+    <h1 id="greeting">Ciao</h1>
+    <form class="search" id="search" role="search" autocomplete="off">
+      <label class="sr" for="q">Cerca sul web o scrivi un indirizzo</label>
+      <input id="q" name="q" type="text" placeholder="Cerca o scrivi un indirizzo" spellcheck="false" autocapitalize="off">
+      <button type="submit" id="go" aria-label="Cerca">&#8629;</button>
+    </form>
+    <a class="search-link" id="search-link" target="_blank" rel="noopener" hidden></a>
+  </main>
+
+  <p class="hint" id="hint"></p>
+
+  <div class="panel" id="panel" hidden>
+    <label for="name">Il tuo nome, per il saluto
+      <input id="name" type="text" maxlength="24" placeholder="facoltativo" autocomplete="off">
+    </label>
+    <label class="check" for="auto">
+      <input id="auto" type="checkbox">
+      Cambia animale ogni minuto
+    </label>
+    <button type="button" id="hide">Nascondi l'interfaccia <kbd>H</kbd></button>
+  </div>
+  <button class="gear" id="gear" type="button" aria-label="Impostazioni" aria-expanded="false" aria-controls="panel">&#9881;&#xFE0E;</button>
+</div>
+
+<script src="zoo.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

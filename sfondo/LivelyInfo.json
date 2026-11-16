@@ -1,0 +1,14 @@
+{
+  "AppVersion": "2.5.6.0",
+  "Title": "ASCII Zoo",
+  "Thumbnail": "thumbnail.jpg",
+  "Preview": null,
+  "Desc": "Animali fatti di caratteri da tastiera (farfalle, meduse, libellule, koi, rane, aironi, granchi) intorno a un orologio ASCII a sette segmenti. Cambia animale ogni 2 minuti.",
+  "Author": "",
+  "License": null,
+  "Contact": null,
+  "Type": 1,
+  "FileName": "index.html",
+  "Arguments": null,
+  "IsAbsolutePath": false
+}
