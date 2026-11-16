@@ -11,6 +11,7 @@
 
 mod config;
 mod desktop;
+mod dialog;
 mod power;
 
 use std::borrow::Cow;
@@ -34,11 +35,30 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 use wry::http::Response;
 use wry::{PageLoadEvent, WebView, WebViewBuilder};
 
-use config::{autostart, Config};
+use config::{autostart, pulisci_nome, Config, NOME_MAX};
 
 static HTML: &str = include_str!("../assets/ascii-zoo-sfondo.html");
 const URL: &str = "http://zoo.localhost/";
-const ANIMALI: [&str; 8] = ["A rotazione (ogni 2 minuti)", "Farfalle", "Meduse", "Libellule", "Koi", "Rane", "Aironi", "Granchi"];
+/// le specie, nello stesso ordine della pagina: (id, nome nel menu)
+const SPECIE: [(&str, &str); 7] = [
+    ("farfalle", "Farfalle"),
+    ("meduse", "Meduse"),
+    ("libellule", "Libellule"),
+    ("koi", "Koi"),
+    ("rane", "Rane"),
+    ("aironi", "Aironi"),
+    ("granchi", "Granchi"),
+];
+/// ogni quanto cambia animale "a rotazione"
+const INTERVALLI: [(u32, &str); 7] = [
+    (30, "Ogni 30 secondi"),
+    (60, "Ogni minuto"),
+    (120, "Ogni 2 minuti"),
+    (300, "Ogni 5 minuti"),
+    (600, "Ogni 10 minuti"),
+    (1800, "Ogni 30 minuti"),
+    (3600, "Ogni ora"),
+];
 const TIMER: usize = 1;
 /// tick (da 250 ms) da aspettare dopo un cambio di schermo prima di rifare gli sfondi
 const REBUILD_DELAY: u32 = 4;
@@ -60,6 +80,9 @@ impl HasWindowHandle for Host {
 
 struct Menus {
     animali: Vec<CheckMenuItem>,
+    rot_tempi: Vec<CheckMenuItem>,
+    rot_specie: Vec<CheckMenuItem>,
+    nomi: Vec<MenuItem>,
     koi: CheckMenuItem,
     batteria: CheckMenuItem,
     schermo: CheckMenuItem,
@@ -106,10 +129,29 @@ impl App {
         }
     }
 
+    /// i nomi come oggetto JSON: serde_json mette gli escape, quindi apostrofi e
+    /// virgolette nei nomi non rompono lo script
+    fn js_nomi(&self) -> String {
+        let nomi = serde_json::to_string(&self.cfg.nomi).unwrap_or_else(|_| "{}".into());
+        format!("window.zooSetting && zooSetting('nomi', {nomi})")
+    }
+
+    fn js_rotazione(&self) -> String {
+        let specie: Vec<&str> = SPECIE
+            .iter()
+            .map(|s| s.0)
+            .filter(|id| !self.cfg.rotazione_escluse.iter().any(|e| e == id))
+            .collect();
+        let rot = serde_json::json!({ "secondi": self.cfg.rotazione_secondi, "specie": specie });
+        format!("window.zooSetting && zooSetting('rotazione', {rot})")
+    }
+
     /// manda allo sfondo tutte le impostazioni (funzione zooSetting della pagina)
     fn push_settings(&mut self) {
         let ac = power::on_ac();
         self.last_ac = Some(ac);
+        self.js(&self.js_nomi());
+        self.js(&self.js_rotazione());
         self.js(&format!(
             "if (window.zooSetting) {{ zooSetting('inCarica', {ac}); \
              zooSetting('koiInCarica', {}); zooSetting('animale', {}); }}",
@@ -163,6 +205,37 @@ impl App {
                 item.set_checked(k == i);
             }
             self.js(&format!("window.zooSetting && zooSetting('animale', {i})"));
+        } else if let Some(i) = m.rot_tempi.iter().position(|x| x.id().0 == id) {
+            self.cfg.rotazione_secondi = INTERVALLI[i].0;
+            for (k, item) in self.menus.rot_tempi.iter().enumerate() {
+                item.set_checked(k == i);
+            }
+            self.js(&self.js_rotazione());
+        } else if let Some(i) = m.rot_specie.iter().position(|x| x.id().0 == id) {
+            // almeno un animale deve restare in rotazione
+            if !m.rot_specie.iter().any(|x| x.is_checked()) {
+                m.rot_specie[i].set_checked(true);
+            }
+            self.cfg.rotazione_escluse = SPECIE
+                .iter()
+                .zip(&self.menus.rot_specie)
+                .filter(|(_, item)| !item.is_checked())
+                .map(|(s, _)| s.0.to_string())
+                .collect();
+            self.js(&self.js_rotazione());
+        } else if let Some(i) = m.nomi.iter().position(|x| x.id().0 == id) {
+            let (sid, label) = SPECIE[i];
+            let attuale = self.cfg.nomi.get(sid).cloned().unwrap_or_default();
+            let domanda = format!("Nome per {} (vuoto = nessun nome):", label.to_lowercase());
+            match dialog::chiedi_nome("ASCII Zoo", &domanda, &attuale, NOME_MAX) {
+                Some(nuovo) => {
+                    let nuovo = pulisci_nome(&nuovo);
+                    self.menus.nomi[i].set_text(etichetta_nome(label, &nuovo));
+                    self.cfg.nomi.insert(sid.to_string(), nuovo);
+                    self.js(&self.js_nomi());
+                }
+                None => return, // annullato: non cambia niente
+            }
         } else if id == m.koi.id().0 {
             self.cfg.koi_in_carica = m.koi.is_checked();
             self.js(&format!("window.zooSetting && zooSetting('koiInCarica', {})", self.cfg.koi_in_carica));
@@ -359,19 +432,58 @@ fn tray_icon_image() -> Icon {
     Icon::from_rgba(px, N, N).expect("icona")
 }
 
+/// voce del menu dei nomi: "Koi: KARPISA…" oppure "Farfalle: (nessuno)…"
+fn etichetta_nome(label: &str, nome: &str) -> String {
+    // nei menu di Windows "&" sottolinea la lettera dopo: va raddoppiata
+    let nome = if nome.is_empty() { "(nessuno)".to_string() } else { nome.replace('&', "&&") };
+    format!("{label}: {nome}…")
+}
+
 fn build_menu(cfg: &Config) -> (Menu, Menus) {
     let menu = Menu::new();
+
     let sub = Submenu::new("Animale", true);
-    let animali: Vec<CheckMenuItem> = ANIMALI
-        .iter()
+    let animali: Vec<CheckMenuItem> = std::iter::once("A rotazione")
+        .chain(SPECIE.iter().map(|s| s.1))
         .enumerate()
-        .map(|(i, name)| CheckMenuItem::new(*name, true, i as u32 == cfg.animale, None))
+        .map(|(i, name)| CheckMenuItem::new(name, true, i as u32 == cfg.animale, None))
         .collect();
     for item in &animali {
         let _ = sub.append(item);
     }
+
+    let rot = Submenu::new("Rotazione", true);
+    let rot_tempi: Vec<CheckMenuItem> = INTERVALLI
+        .iter()
+        .map(|(s, name)| CheckMenuItem::new(*name, true, *s == cfg.rotazione_secondi, None))
+        .collect();
+    for item in &rot_tempi {
+        let _ = rot.append(item);
+    }
+    let _ = rot.append(&PredefinedMenuItem::separator());
+    let _ = rot.append(&MenuItem::new("Animali in rotazione:", false, None));
+    let rot_specie: Vec<CheckMenuItem> = SPECIE
+        .iter()
+        .map(|(id, name)| CheckMenuItem::new(*name, true, !cfg.rotazione_escluse.iter().any(|e| e == id), None))
+        .collect();
+    for item in &rot_specie {
+        let _ = rot.append(item);
+    }
+
+    let nomi_sub = Submenu::new("Nomi degli animali", true);
+    let nomi: Vec<MenuItem> = SPECIE
+        .iter()
+        .map(|(id, name)| MenuItem::new(etichetta_nome(name, cfg.nomi.get(*id).map(String::as_str).unwrap_or("")), true, None))
+        .collect();
+    for item in &nomi {
+        let _ = nomi_sub.append(item);
+    }
+
     let m = Menus {
         animali,
+        rot_tempi,
+        rot_specie,
+        nomi,
         koi: CheckMenuItem::new("Koi nello stagno in carica (con \"A rotazione\")", true, cfg.koi_in_carica, None),
         batteria: CheckMenuItem::new("Pausa a batteria", true, cfg.pausa_batteria, None),
         schermo: CheckMenuItem::new("Pausa con app a schermo intero", true, cfg.pausa_schermo_intero, None),
@@ -380,6 +492,8 @@ fn build_menu(cfg: &Config) -> (Menu, Menus) {
         esci: MenuItem::new("Esci", true, None),
     };
     let _ = menu.append(&sub);
+    let _ = menu.append(&rot);
+    let _ = menu.append(&nomi_sub);
     let _ = menu.append(&m.koi);
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(&m.batteria);

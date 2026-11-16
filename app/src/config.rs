@@ -1,7 +1,11 @@
 //! Impostazioni salvate in %APPDATA%\AsciiZoo\config.json
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
+
+/// lunghezza massima del nome di un animale (lettere)
+pub const NOME_MAX: usize = 16;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(default)]
@@ -14,12 +18,31 @@ pub struct Config {
     pub pausa_batteria: bool,
     /// ferma l'animazione quando un'app (gioco, video) è a schermo intero
     pub pausa_schermo_intero: bool,
+    /// nome dell'animale più grande, per specie (id della specie → nome; "" = nessuno)
+    pub nomi: BTreeMap<String, String>,
+    /// ogni quanti secondi cambia animale "a rotazione"
+    pub rotazione_secondi: u32,
+    /// specie tolte dalla rotazione
+    pub rotazione_escluse: Vec<String>,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self { animale: 0, koi_in_carica: true, pausa_batteria: true, pausa_schermo_intero: true }
+        Self {
+            animale: 0,
+            koi_in_carica: true,
+            pausa_batteria: true,
+            pausa_schermo_intero: true,
+            nomi: BTreeMap::from([("koi".to_string(), "KARPISA".to_string())]),
+            rotazione_secondi: 120,
+            rotazione_escluse: Vec::new(),
+        }
     }
+}
+
+/// pulisce un nome scritto dall'utente: niente caratteri di controllo, spazi ai lati tolti, al massimo NOME_MAX lettere
+pub fn pulisci_nome(s: &str) -> String {
+    s.chars().filter(|c| !c.is_control()).collect::<String>().trim().chars().take(NOME_MAX).collect()
 }
 
 fn path() -> PathBuf {
@@ -31,7 +54,8 @@ impl Config {
     pub fn load() -> Self {
         std::fs::read_to_string(path())
             .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
+            // un file salvato con il BOM (es. da Blocco note) non deve azzerare tutto
+            .and_then(|s| serde_json::from_str(s.trim_start_matches('\u{feff}')).ok())
             .unwrap_or_default()
     }
 

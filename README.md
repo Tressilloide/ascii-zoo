@@ -6,47 +6,49 @@
 </p>
 
 <p align="center">
-  <img src="docs/anteprima.gif" alt="Farfalle ASCII che volano intorno all'orologio: due sono posate sulle cifre" width="800">
+  <img src="docs/anteprima.gif" alt="Farfalle ASCII che volano sul prato fiorito intorno all'orologio: due sono posate sulle cifre" width="800">
 </p>
 
 ---
 
 ## Gli animali
 
-Sette specie, una alla volta. Lo sfondo passa alla successiva ogni 2 minuti; quando il PC è in carica restano le koi nel loro stagno (si può disattivare dal programma per Windows).
+Sette specie, una alla volta, ognuna con il suo ambiente. Di serie lo sfondo passa alla successiva ogni 2 minuti; dal programma per Windows si sceglie ogni quanto (da 30 secondi a un'ora) e quali animali far girare. Quando il PC è in carica restano le koi nel loro stagno (si può disattivare).
 
 <p align="center">
-  <img src="docs/animali.png" alt="Le sette specie: farfalle, meduse, libellule, koi, rane, aironi, granchi, più l'orologio" width="100%">
+  <img src="docs/animali.png" alt="Le sette specie, ognuna nel suo ambiente: farfalle sul prato fiorito, meduse tra le bolle, libellule sulle canne, koi nello stagno, rane nel prato con sassi e lucciole, aironi con i nidi, granchi sulla sabbia; più l'orologio" width="100%">
 </p>
 
-| Specie | Come si muove | Con l'orologio |
-|---|---|---|
-| **Farfalle** | svolazzano a zig-zag battendo le ali | si posano sulle cifre e aprono le ali piano |
-| **Meduse** | pulsano e si lasciano portare dalla corrente | ci girano intorno |
-| **Libellule** | scatti rapidi e pause a mezz'aria | si posano sulle cifre |
-| **Koi** | nuotano ondeggiando la coda in uno stagno con acqua che scorre, ninfee alla deriva e gocce; la più grande è **KARPISA**, la carpa che viene da Pisa, col suo nome sopra | ci girano intorno; allo scatto del minuto fuggono con un colpo di coda |
-| **Rane** | saltano, si fermano, risaltano | ci saltano sopra per sedersi, oppure lo scavalcano |
-| **Aironi** | volano tutti nella stessa direzione, con battiti lenti | ci girano intorno |
-| **Granchi** | camminano di lato | invertono il passo quando ci arrivano contro |
+| Specie | Come si muove | L'ambiente | Con l'orologio |
+|---|---|---|---|
+| **Farfalle** | svolazzano a zig-zag battendo le ali | prato visto dall'alto con fiori a cinque petali che ondeggiano, si scostano e si aprono quando una farfalla ci passa vicino; ci si posano sopra | si posano sulle cifre e aprono le ali piano |
+| **Meduse** | pulsano e si lasciano portare dalla corrente | fondale con raggi di luce e bolle che salgono: le meduse le spostano, contro l'orologio scoppiano | ci girano intorno |
+| **Libellule** | scatti rapidi e pause a mezz'aria | canne con le spighe che salgono da una striscia d'acqua e ondeggiano; le libellule si posano sulle punte, che si piegano | si posano sulle cifre |
+| **Koi** | nuotano ondeggiando la coda | stagno con acqua che scorre, ninfee alla deriva e gocce | ci girano intorno; allo scatto del minuto fuggono con un colpo di coda |
+| **Rane** | saltano, si fermano, risaltano | prato con ciuffi d'erba, sassi dove si siedono, pozzanghere che schizzano quando ci atterrano, lucciole che scappano (o finiscono mangiate) | ci saltano sopra per sedersi, oppure lo scavalcano |
+| **Aironi** | volano tutti nella stessa direzione, con battiti lenti | nidi di rametti con le uova: tornano, chiudono le ali e covano, e dopo un po' le uova si schiudono | ci girano intorno |
+| **Granchi** | camminano di lato | sabbia con le increspature e le conchiglie, sassi da aggirare, impronte che il tempo cancella | invertono il passo quando ci arrivano contro |
 
 Ogni animale è una forma calcolata cella per cella: ogni cella accesa diventa un carattere (`. : - = + * o x X % # & @`), più denso dove il corpo è più pieno, con un leggero bagliore.
+
+**Nomi.** L'animale più grande di ogni specie può avere un nome, scritto sopra la testa una lettera per casella. Di serie ce l'ha solo una koi: **KARPISA**, la carpa che viene da Pisa. Gli altri nomi si danno dal menu del programma per Windows.
 
 ## L'orologio
 
 <p align="center">
-  <img src="docs/sfondo-koi.png" alt="Lo sfondo intero su uno schermo ultrawide: koi intorno all'orologio 08:17" width="100%">
+  <img src="docs/sfondo-koi.png" alt="Lo sfondo intero su uno schermo ultrawide: koi nello stagno con le ninfee intorno all'orologio 08:17, con KARPISA" width="100%">
 </p>
 
 - **Sette segmenti** disegnati con gli stessi caratteri degli animali; i segmenti spenti restano appena visibili, come su un display LCD.
 - **I due punti** pulsano a ogni secondo nel colore della specie del momento.
 - **La data** sta sotto, una lettera per casella.
-- **Allo scatto del minuto** le cifre cambiate si ricompongono con un bordo che scintilla, parte un'onda dall'orologio, chi era posato vola via e chi è vicino si spaventa.
-- **Chi si posa:** farfalle, libellule e rane, solo le più piccole e al massimo due alla volta, per 4–13 secondi. Gli altri animali girano intorno all'orologio, così l'ora resta sempre leggibile.
+- **Allo scatto del minuto** le cifre cambiate si ricompongono con un bordo che scintilla, parte un'onda dall'orologio, chi era posato sulle cifre vola via e chi è vicino si spaventa.
+- **Chi si posa:** farfalle, libellule e rane, solo le più piccole e al massimo due alla volta, per 4–13 secondi. Gli altri animali girano intorno all'orologio, così l'ora resta sempre leggibile; anche fiori, canne, sassi e nidi stanno lontani dalle cifre.
 
 Le dimensioni si adattano allo schermo: funziona anche in verticale e su schermi piccoli.
 
 <p align="center">
-  <img src="docs/schermo-verticale.png" alt="Lo sfondo su uno schermo verticale 1080×1920 con le meduse" width="300">
+  <img src="docs/schermo-verticale.png" alt="Lo sfondo su uno schermo verticale 1080×1920 con le meduse e le bolle" width="300">
 </p>
 
 ## Struttura
@@ -58,8 +60,9 @@ ascii-zoo/
 │   ├── LivelyInfo.json      descrizione del pacchetto per Lively
 │   └── thumbnail.jpg        miniatura nella libreria di Lively
 ├── app/                     programma per Windows in Rust: lo sfondo senza Lively
-│   ├── src/                 finestre dietro le icone, menu, pause
-│   └── assets/              copia di sfondo/index.html incorporata nell'eseguibile
+│   ├── src/                 finestre dietro le icone, menu, nomi, rotazione, pause
+│   ├── assets/              copia di sfondo/index.html incorporata nell'eseguibile
+│   └── build.rs, app.manifest   aspetto moderno della finestrella dei nomi
 ├── firefox/                 estensione "nuova scheda" per Firefox
 │   ├── manifest.json
 │   ├── index.html, app.js, zoo.js, style.css, icon.svg
@@ -72,7 +75,14 @@ ascii-zoo/
 
 ### Con il programma in Rust (consigliato)
 
-La cartella `app/` contiene un programma che mette lo sfondo dietro le icone su tutti i monitor, senza bisogno di Lively. Ha un'icona a forma di koi nell'area di notifica per scegliere l'animale, le pause (a batteria, con app a schermo intero) e l'avvio con Windows. Istruzioni per compilarlo in [`app/README.md`](app/README.md).
+La cartella `app/` contiene un programma che mette lo sfondo dietro le icone su tutti i monitor, senza bisogno di Lively. Si configura tutto dall'icona a forma di koi nell'area di notifica (vicino all'orologio di Windows), con un clic destro:
+
+- **Animale**: a rotazione oppure uno fisso;
+- **Rotazione**: ogni quanto cambia animale e quali animali far girare;
+- **Nomi degli animali**: il nome dell'animale più grande di ogni specie;
+- le pause (a batteria, con app a schermo intero), l'avvio con Windows.
+
+Istruzioni per compilarlo in [`app/README.md`](app/README.md).
 
 ### Con Lively Wallpaper
 
