@@ -111,7 +111,7 @@ La cartella `app/` contiene un programma che mette lo sfondo dietro le icone su 
 - **Nomi degli animali**: il nome dell'animale più grande di ogni specie;
 - **Widget**: nota, conto alla rovescia, CPU/RAM/batteria (vedi [I widget](#i-widget));
 - **Clic sul desktop agli animali**: un clic in una zona vuota del desktop dà da mangiare alle koi o fa scappare gli altri animali, come nel browser;
-- le pause (a batteria, con app a schermo intero), l'avvio con Windows.
+- le pause (a batteria, con app a schermo intero, quando le finestre coprono il desktop), l'avvio con Windows.
 
 #### Scaricarlo
 
@@ -158,7 +158,7 @@ Nel browser un clic sullo sfondo fa disperdere gli animali; con le koi invece fa
 
 ### Note
 
-- **Prestazioni.** Lo sfondo è limitato a 30 fotogrammi al secondo. Il programma in Rust lo mette in pausa a batteria e sullo schermo di un'app a schermo intero; Lively quando una finestra copre il desktop. Con `prefers-reduced-motion` gli animali vanno più piano.
+- **Prestazioni.** Lo sfondo è limitato a 30 fotogrammi al secondo, scanditi da un timer (non da `requestAnimationFrame`, che sveglierebbe la pagina a ogni aggiornamento dello schermo), e a ogni fotogramma ridisegna solo le celle cambiate: di solito una su dieci. Data e nomi stanno su un canvas a parte, ridisegnato solo quando cambiano. Il programma in Rust ferma uno schermo a batteria, con un'app a schermo intero e quando le finestre ne coprono tutto il desktop; Lively quando una finestra copre il desktop. Con `prefers-reduced-motion` gli animali vanno più piano.
 - **La schermata di blocco** di Windows accetta solo immagini fisse: lì si può mettere uno screenshot dello sfondo.
 - **Il desktop non risponde ai clic con Lively?** Su Windows 11 può succedere dopo che uno schermo si scollega e si ricollega. Basta riavviare Lively: icona nell'area di notifica → Esci, poi riaprilo dal menu Start.
 

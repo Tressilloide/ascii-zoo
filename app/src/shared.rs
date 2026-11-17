@@ -105,6 +105,7 @@ pub struct Menus {
     pub koi: CheckMenuItem,
     pub batteria: CheckMenuItem,
     pub schermo: CheckMenuItem,
+    pub coperto: CheckMenuItem,
     pub avvio: CheckMenuItem,
     pub ricarica: MenuItem,
     pub esci: MenuItem,
@@ -383,6 +384,9 @@ impl Core {
         } else if id == m.schermo.id().0 {
             self.cfg.pausa_schermo_intero = m.schermo.is_checked();
             None
+        } else if id == m.coperto.id().0 {
+            self.cfg.pausa_coperto = m.coperto.is_checked();
+            None
         } else if id == m.avvio.id().0 {
             autostart::set(m.avvio.is_checked());
             m.avvio.set_checked(autostart::enabled());
@@ -578,6 +582,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         koi: CheckMenuItem::new("Koi nello stagno in carica (con \"A rotazione\")", true, cfg.koi_in_carica, None),
         batteria: CheckMenuItem::new("Pausa a batteria", true, cfg.pausa_batteria, None),
         schermo: CheckMenuItem::new("Pausa con app a schermo intero", true, cfg.pausa_schermo_intero, None),
+        coperto: CheckMenuItem::new("Pausa quando le finestre coprono il desktop", true, cfg.pausa_coperto, None),
         avvio: CheckMenuItem::new(avvio_label, true, autostart::enabled(), None),
         ricarica: MenuItem::new("Ricarica sfondo", true, None),
         esci: MenuItem::new("Esci", true, None),
@@ -595,6 +600,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     let _ = menu.append(&m.batteria);
     if solo_windows {
         let _ = menu.append(&m.schermo);
+        let _ = menu.append(&m.coperto);
     }
     let _ = menu.append(&m.avvio);
     let _ = menu.append(&PredefinedMenuItem::separator());

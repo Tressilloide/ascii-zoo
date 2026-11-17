@@ -467,16 +467,30 @@ h1 {
     feeds: true,
     // stagno: increspature che scorrono sotto i pesci
     under: function (w, t, A) {
-      var c0 = this.c0;
-      for (var j = 0; j < w.rows; j++) {
-        for (var i = 0; i < w.cols; i++) {
-          var s = Math.sin(i * 0.16 + t * 0.8 + Math.sin(j * 0.11 + t * 0.35) * 2.2) +
-                  Math.sin(j * 0.23 - t * 0.6 + Math.sin(i * 0.07 - t * 0.25) * 1.8);
-          if (s > 1.45) {
+      var c0 = this.c0, cols = w.cols, rows = w.rows, wc = w._water, i, j, n;
+      if (!wc || wc.cols !== cols || wc.rows !== rows) {
+        // le celle dove l'acqua può comparire sono sempre le stesse (poco più di metà)
+        var ii = [], jj = [], aa = [];
+        for (j = 0; j < rows; j++) {
+          for (i = 0; i < cols; i++) {
             var h = hash2(i, j);
-            if (h < 0.55) w.put(i, j, 0.08 + (s - 1.45) * 0.3, c0 + (s > 1.75 ? 8 : 7), A * (0.35 + 0.3 * h));
+            if (h < 0.55) { ii.push(i); jj.push(j); aa.push(0.35 + 0.3 * h); }
           }
         }
+        wc = w._water = { cols: cols, rows: rows, i: Int16Array.from(ii), j: Int16Array.from(jj), a: Float32Array.from(aa),
+                          row: new Float32Array(rows), col: new Float32Array(cols) };
+      }
+      // s = sin(i*0.16 + t*0.8 + sin(j*0.11 + t*0.35)*2.2) + sin(j*0.23 - t*0.6 + sin(i*0.07 - t*0.25)*1.8):
+      // i seni interni dipendono solo dalla riga o solo dalla colonna
+      var R = wc.row, K = wc.col, I = wc.i, J = wc.j, AL = wc.a;
+      for (j = 0; j < rows; j++) R[j] = t * 0.8 + Math.sin(j * 0.11 + t * 0.35) * 2.2;
+      for (i = 0; i < cols; i++) K[i] = Math.sin(i * 0.07 - t * 0.25) * 1.8 - t * 0.6;
+      for (n = 0; n < I.length; n++) {
+        i = I[n]; j = J[n];
+        var s1 = Math.sin(i * 0.16 + R[j]);
+        if (s1 <= 0.45) continue; // il secondo seno arriva al massimo a 1: non si supera 1.45
+        var s = s1 + Math.sin(j * 0.23 + K[i]);
+        if (s > 1.45) w.put(i, j, 0.08 + (s - 1.45) * 0.3, c0 + (s > 1.75 ? 8 : 7), A * AL[n]);
       }
     },
     // ninfee che vanno alla deriva; i pesci profondi passano sotto
@@ -1280,6 +1294,17 @@ h1 {
     this._seed = (Date.now() ^ 0x9e3779b9) >>> 0;
     this.running = false;
     this._tick = this._tick.bind(this);
+    this._loop = this._loop.bind(this);
+    this._timer = 0;
+    // terzo strato sopra la griglia: data e nomi, ridisegnati solo quando cambiano
+    var ov = document.createElement('canvas');
+    ov.setAttribute('aria-hidden', 'true');
+    ov.style.pointerEvents = 'none';
+    if (canvas.parentNode) canvas.parentNode.insertBefore(ov, canvas.nextSibling);
+    this.over = ov;
+    this.octx = ov.getContext('2d');
+    this.overKey = '';
+    this.overRects = [];
     this.names = { koi: 'KARPISA' };
     this.named = null;
     this.clockOn = !!opts.clock;
@@ -1317,6 +1342,10 @@ h1 {
     this.canvas.height = this.rows * tile;
     this.canvas.style.width = this.cols * this.cell + 'px';
     this.canvas.style.height = this.rows * this.cell + 'px';
+    this.over.width = this.canvas.width;
+    this.over.height = this.canvas.height;
+    this.over.style.width = this.canvas.style.width;
+    this.over.style.height = this.canvas.style.height;
     var n = this.cols * this.rows;
     this.bv = new Float32Array(n);
     this.ba = new Float32Array(n);
@@ -1325,6 +1354,12 @@ h1 {
     this.stamp = new Int32Array(n).fill(-1);
     this.touched = new Int32Array(n);
     this.nt = 0;
+    // cosa mostra adesso ogni cella del canvas (-1 = niente) e quali sono accese
+    this.shown = new Int32Array(n).fill(-1);
+    this.shownList = new Int32Array(n);
+    this.ns = 0;
+    this.overKey = '';
+    this.overRects = [];
     this.pokeR = Math.max(this.cols, this.rows) * 0.45;
     this.layoutClock();
     if (this.glow) {
@@ -1372,6 +1407,17 @@ h1 {
       }
     }
     this.atlas = a;
+    this.invalidate(); // caratteri nuovi (es. il font è arrivato): si ridisegna tutto
+  };
+
+  // dimentica cosa c'è sul canvas: al prossimo fotogramma si ridisegna tutto
+  Zoo.prototype.invalidate = function () {
+    if (!this.shown) return;
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.shown.fill(-1);
+    this.ns = 0;
+    this.overKey = '';
   };
 
   Zoo.prototype.target = function (sp) {
@@ -1534,13 +1580,14 @@ h1 {
     this.names = names;
   };
 
-  Zoo.prototype.drawName = function () {
+  // l'animale con il nome e dove va scritto: { txt, row, col0, a } oppure null
+  Zoo.prototype.nameLabel = function () {
     var sp = this.species, k = this.named, i;
-    if (!sp) return;
+    if (!sp) return null;
     var txt = ((this.names || {})[sp.id] || '').toUpperCase();
     if (!txt) {
       if (k) { k.bright = k._bright || k.bright; this.named = null; }
-      return;
+      return null;
     }
     if (!k || k.dying || k.kind !== sp || this.creatures.indexOf(k) < 0) {
       k = null;
@@ -1549,22 +1596,53 @@ h1 {
         if (c.kind === sp && !c.dying && (!k || c.S > k.S)) k = c;
       }
       this.named = k;
-      if (!k) return;
+      if (!k) return null;
       k._bright = k.bright;
       k.bright = 1; // ben visibile
       if (sp.id === 'koi') k.kind2 = 0; // KARPISA è bianca e rossa
     }
-    var tile = this.tile, ctx = this.ctx;
-    var row = Math.round(k.y - k.S * sp.nameUp - 1.4), col0 = Math.round(k.x - txt.length / 2);
-    ctx.font = '500 ' + Math.round(tile * 0.95) + 'px ' + this.font;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#ffd447';
-    ctx.globalAlpha = clamp(k.a, 0, 1) * 0.95;
-    for (i = 0; i < txt.length; i++) {
-      ctx.fillText(txt.charAt(i), (col0 + i + 0.5) * tile, (row + 0.5) * tile + tile * 0.03);
+    return { txt: txt, row: Math.round(k.y - k.S * sp.nameUp - 1.4), col0: Math.round(k.x - txt.length / 2), a: clamp(k.a, 0, 1) };
+  };
+
+  // Data e nome sul canvas di sopra: si ridisegnano solo se cambia qualcosa
+  // (testo, posizione in celle, trasparenza del nome mentre compare o sparisce).
+  Zoo.prototype.drawOverlay = function () {
+    var lab = this.nameLabel(), C = this.clock, tile = this.tile, o = this.octx, i;
+    var key = tile + '|' + (C && this.dateStr ? this.dateStr + ',' + C.dateX + ',' + C.dateY + ',' + C.dm : '') + '|' +
+      (lab ? lab.txt + ',' + lab.row + ',' + lab.col0 + ',' + Math.round(lab.a * 40) : '');
+    if (key === this.overKey) return;
+    this.overKey = key;
+    o.setTransform(1, 0, 0, 1, 0, 0);
+    var R = this.overRects;
+    for (i = 0; i < R.length; i += 4) o.clearRect(R[i], R[i + 1], R[i + 2], R[i + 3]);
+    R.length = 0;
+    o.textAlign = 'center';
+    o.textBaseline = 'middle';
+    if (C && this.dateStr) {
+      var s = this.dateStr, size = tile * C.dm, y = C.dateY * tile, g = Math.max(1, Math.round(size * 0.07));
+      o.font = '500 ' + Math.round(size * 0.66) + 'px ' + this.font;
+      for (i = 0; i < s.length; i++) {
+        var ch = s.charAt(i);
+        if (ch === ' ') continue;
+        var x = (C.dateX + i * C.dm) * tile;
+        o.fillStyle = 'rgba(170, 179, 197, 0.07)';
+        o.fillRect(x + g, y + g, size - g * 2, size - g * 2);
+        o.fillStyle = 'rgba(200, 205, 218, 0.82)';
+        o.fillText(ch, x + size / 2, y + size / 2 + size * 0.03);
+      }
+      R.push(C.dateX * tile, y, s.length * size, size);
     }
-    ctx.globalAlpha = 1;
+    if (lab) {
+      o.font = '500 ' + Math.round(tile * 0.95) + 'px ' + this.font;
+      o.fillStyle = '#ffd447';
+      o.globalAlpha = lab.a * 0.95;
+      for (i = 0; i < lab.txt.length; i++) {
+        o.fillText(lab.txt.charAt(i), (lab.col0 + i + 0.5) * tile, (lab.row + 0.5) * tile + tile * 0.03);
+      }
+      o.globalAlpha = 1;
+      // un po' di margine: alcune lettere escono di poco dalla loro cella
+      R.push((lab.col0 - 1) * tile, (lab.row - 1) * tile, (lab.txt.length + 2) * tile, 3 * tile);
+    }
   };
 
   Zoo.prototype.render = function () {
@@ -1592,11 +1670,15 @@ h1 {
     }
     if (scn && scn.over) scn.over(this, this.t, this.sceneA, sd);
 
+    // Sul canvas si ridisegnano solo le celle cambiate dal fotogramma prima
+    // (chiave = colore, carattere, trasparenza) e si cancellano quelle che si sono
+    // spente: di solito ne cambia una piccola parte.
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    var gd = this.gimg ? this.gimg.data : null;
+    var shown = this.shown, stamp = this.stamp, fn = this.frameNo, atlas = this.atlas;
+    // il bagliore è sfocato: basta aggiornarlo un fotogramma sì e uno no
+    var gd = this.gimg && (fn & 1) === 0 ? this.gimg.data : null;
     if (gd) gd.fill(0);
-    var tw = Math.floor(this.t * 1.3);
+    var tw = Math.floor(this.t * 1.3), lastA = -1;
     for (var q = 0; q < this.nt; q++) {
       k = this.touched[q];
       var ci2 = k % cols, cj2 = (k / cols) | 0;
@@ -1606,17 +1688,35 @@ h1 {
       var gl = GLYPH[col];
       if (gl === 1 || (gl === 2 && v <= 0.5)) { lvl = 9; alt = 0; } // 'o': il cibo, le bolle piccole
       else if (gl === 2) { lvl = 12; alt = 1; }                      // 'O': le bolle grandi
-      ctx.globalAlpha = al > 1 ? 1 : al;
-      ctx.drawImage(this.atlas, (alt * LEVELS + lvl) * tile, col * tile, tile, tile, ci2 * tile, cj2 * tile, tile, tile);
+      var aq = Math.round((al > 1 ? 1 : al < 0 ? 0 : al) * 255);
+      var key = ((col * 2 + alt) * LEVELS + lvl) * 256 + aq;
+      if (key !== shown[k]) {
+        if (shown[k] !== -1) ctx.clearRect(ci2 * tile, cj2 * tile, tile, tile);
+        if (aq > 0) {
+          if (aq !== lastA) { ctx.globalAlpha = aq / 255; lastA = aq; }
+          ctx.drawImage(atlas, (alt * LEVELS + lvl) * tile, col * tile, tile, tile, ci2 * tile, cj2 * tile, tile, tile);
+        }
+        shown[k] = key;
+      }
       if (gd) {
         var rgb = this.rgb[col], p = k * 4;
         gd[p] = rgb[0]; gd[p + 1] = rgb[1]; gd[p + 2] = rgb[2];
         gd[p + 3] = Math.round(255 * clamp(al * v * v, 0, 1));
       }
     }
+    // spente: accese nel fotogramma prima, non in questo
+    var list = this.shownList;
+    for (q = 0; q < this.ns; q++) {
+      k = list[q];
+      if (stamp[k] !== fn && shown[k] !== -1) {
+        ctx.clearRect((k % cols) * tile, ((k / cols) | 0) * tile, tile, tile);
+        shown[k] = -1;
+      }
+    }
+    list.set(this.touched.subarray(0, this.nt));
+    this.ns = this.nt;
     ctx.globalAlpha = 1;
-    this.drawName();
-    if (this.clock) this.drawDate();
+    this.drawOverlay();
     if (gd) this.gctx.putImageData(this.gimg, 0, 0);
   };
 
@@ -1710,24 +1810,6 @@ h1 {
           if (q < 1) this.put(i, j, 0.95 - 0.35 * q, col, pulse);
         }
       }
-    }
-  };
-
-  Zoo.prototype.drawDate = function () {
-    var C = this.clock, s = this.dateStr, ctx = this.ctx, size = this.tile * C.dm;
-    if (!s) return;
-    var y = C.dateY * this.tile, g = Math.max(1, Math.round(size * 0.07));
-    ctx.font = '500 ' + Math.round(size * 0.66) + 'px ' + this.font;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    for (var n = 0; n < s.length; n++) {
-      var ch = s.charAt(n);
-      if (ch === ' ') continue;
-      var x = (C.dateX + n * C.dm) * this.tile;
-      ctx.fillStyle = 'rgba(170, 179, 197, 0.07)';
-      ctx.fillRect(x + g, y + g, size - g * 2, size - g * 2);
-      ctx.fillStyle = 'rgba(200, 205, 218, 0.82)';
-      ctx.fillText(ch, x + size / 2, y + size / 2 + size * 0.03);
     }
   };
 
@@ -1899,24 +1981,42 @@ h1 {
     }
   };
 
+  // senza limite di fotogrammi (la pagina nel browser): requestAnimationFrame
   Zoo.prototype._tick = function (now) {
     if (!this.running) return;
     global.requestAnimationFrame(this._tick);
-    if (this.fps && now - this.last < 1000 / this.fps - 3) return;
     var dt = this.last ? (now - this.last) / 1000 : 0.016;
     this.last = now;
     this.step(Math.min(dt, 0.05) * this.speed);
     this.render();
   };
 
+  // con un limite (lo sfondo, 30 al secondo): un timer. requestAnimationFrame
+  // sveglierebbe la pagina a ogni aggiornamento dello schermo, anche per non fare niente.
+  Zoo.prototype._loop = function () {
+    this._timer = 0;
+    if (!this.running) return;
+    var now = global.performance.now();
+    var dt = this.last ? (now - this.last) / 1000 : 1 / this.fps;
+    this.last = now;
+    this.step(Math.min(dt, 0.05) * this.speed);
+    this.render();
+    var wait = 1000 / this.fps - (global.performance.now() - now);
+    this._timer = global.setTimeout(this._loop, wait > 1 ? wait : 1);
+  };
+
   Zoo.prototype.start = function () {
     if (this.running) return;
     this.running = true;
     this.last = 0;
-    global.requestAnimationFrame(this._tick);
+    if (this.fps) this._timer = global.setTimeout(this._loop, 0);
+    else global.requestAnimationFrame(this._tick);
   };
 
-  Zoo.prototype.stop = function () { this.running = false; };
+  Zoo.prototype.stop = function () {
+    this.running = false;
+    if (this._timer) { global.clearTimeout(this._timer); this._timer = 0; }
+  };
 
   global.AsciiZoo = Zoo;
 })(typeof window !== 'undefined' ? window : this);

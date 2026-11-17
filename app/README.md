@@ -21,7 +21,10 @@ Mette lo sfondo animato (`sfondo/index.html`) dietro le icone del desktop, su tu
     di serie le koi hanno KARPISA
   - **Koi nello stagno in carica** (vale con "A rotazione")
   - **Pausa a batteria**; solo su Windows anche **Pausa con app a schermo intero** (solo
-    sullo schermo dell'app; su macOS le app a schermo intero stanno in uno Spazio a parte)
+    sullo schermo dell'app; su macOS le app a schermo intero stanno in uno Spazio a parte) e
+    **Pausa quando le finestre coprono il desktop** (schermo per schermo: ogni mezzo secondo
+    si prova una griglia di punti, uno ogni 160 pixel circa; se nessuno cade sul desktop,
+    quello schermo si ferma e riparte appena il desktop torna a vedersi)
   - **Avvia con Windows** / **Apri al login**, **Ricarica sfondo**, **Esci**
 - Impostazioni salvate in `%APPDATA%\AsciiZoo\config.json` (Windows) o
   `~/Library/Application Support/AsciiZoo/config.json` (macOS).

@@ -124,22 +124,30 @@ impl App {
         }
     }
 
+    /// Pausa schermo per schermo: a batteria, con un'app a schermo intero, oppure
+    /// quando le finestre coprono tutto il desktop di quello schermo (animare
+    /// qualcosa che nessuno vede costa CPU e GPU per niente).
+    fn check_pause(&mut self) {
+        let cfg = &self.core.cfg;
+        let battery = cfg.pausa_batteria && self.last_ac == Some(false);
+        let full = if cfg.pausa_schermo_intero { power::fullscreen_monitor() } else { None };
+        let coperto = cfg.pausa_coperto;
+        for s in &mut self.screens {
+            let pause = battery || full == Some(s.rect) || (coperto && unsafe { desktop_coperto(s.rect) });
+            if pause != s.paused {
+                s.paused = pause;
+                s.js(if pause { JS_STOP } else { JS_START });
+            }
+        }
+    }
+
     fn check_power(&mut self) {
         let ac = power::on_ac();
         if self.last_ac != Some(ac) {
             self.last_ac = Some(ac);
             self.js(&shared::js_in_carica(ac));
         }
-        let cfg = &self.core.cfg;
-        let battery = cfg.pausa_batteria && !ac;
-        let full = if cfg.pausa_schermo_intero { power::fullscreen_monitor() } else { None };
-        for s in &mut self.screens {
-            let pause = battery || full == Some(s.rect);
-            if pause != s.paused {
-                s.paused = pause;
-                s.js(if pause { JS_STOP } else { JS_START });
-            }
-        }
+        self.check_pause();
         // widget "pc": nuovi valori ogni 2 secondi, solo se si vede
         if self.core.cfg.widget_statistiche && self.screens.iter().any(|s| !s.paused) {
             let v = self.stats.leggi();
@@ -282,8 +290,11 @@ impl App {
             self.check_margini();
         }
         if self.ticks % 8 == 0 {
-            self.check_power();
+            self.check_power(); // ricontrolla anche le pause
             self.check_margini();
+        } else if self.ticks % 2 == 0 {
+            // le pause ogni mezzo secondo: quando si scopre il desktop l'animazione riparte subito
+            self.check_pause();
         }
     }
 }
@@ -400,6 +411,30 @@ unsafe fn sul_desktop(pt: POINT) -> bool {
         "SysListView32" => GetParent(h).is_ok_and(|p| classe(p) == "SHELLDLL_DefView"),
         _ => false,
     }
+}
+
+/// true se le finestre coprono tutto il desktop dello schermo `r`: si prova una griglia
+/// di punti dell'area di lavoro (uno ogni 160 pixel circa, barra delle applicazioni
+/// esclusa) e nessuno cade sul desktop. WindowFromPoint salta le finestre trasparenti
+/// ai clic e quelle nascoste, e non manda messaggi ad altri programmi.
+unsafe fn desktop_coperto(r: RECT) -> bool {
+    let mon = MonitorFromRect(&r, MONITOR_DEFAULTTONEAREST);
+    let mut mi = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
+    let w = if GetMonitorInfoW(mon, &mut mi).as_bool() { mi.rcWork } else { r };
+    let (lw, lh) = (w.right - w.left, w.bottom - w.top);
+    if lw <= 0 || lh <= 0 {
+        return false;
+    }
+    let (nx, ny) = ((lw / 160).clamp(4, 40), (lh / 160).clamp(3, 40));
+    for j in 0..ny {
+        for i in 0..nx {
+            let pt = POINT { x: w.left + (2 * i + 1) * lw / (2 * nx), y: w.top + (2 * j + 1) * lh / (2 * ny) };
+            if sul_desktop(pt) {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 /// Hook del mouse: legge solo dove si preme il tasto sinistro e lascia passare
