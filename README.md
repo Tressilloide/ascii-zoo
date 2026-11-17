@@ -59,9 +59,10 @@ ascii-zoo/
 │   ├── index.html           tutto in un file: motore, orologio, carattere incorporato
 │   ├── LivelyInfo.json      descrizione del pacchetto per Lively
 │   └── thumbnail.jpg        miniatura nella libreria di Lively
-├── app/                     programma per Windows in Rust: lo sfondo senza Lively
+├── app/                     programma in Rust per Windows e macOS
 │   ├── src/                 finestre dietro le icone, menu, nomi, rotazione, pause
 │   ├── assets/              copia di sfondo/index.html incorporata nell'eseguibile
+│   ├── macos/               Info.plist dell'app per macOS
 │   └── build.rs, app.manifest   aspetto moderno della finestrella dei nomi
 ├── firefox/                 estensione "nuova scheda" per Firefox
 │   ├── manifest.json
@@ -86,7 +87,7 @@ La cartella `app/` contiene un programma che mette lo sfondo dietro le icone su 
 
 Dalla pagina [**Releases**](https://github.com/Tressilloide/ascii-zoo/releases/latest) scarica `ascii-zoo.exe` (Windows 10/11, 64 bit). Non si installa: copialo in una cartella fissa, per esempio `%LOCALAPPDATA%\AsciiZoo`, e avvialo da lì, perché **Avvia con Windows** ricorda il percorso. Serve WebView2, già presente su Windows 11 e su Windows 10 aggiornato.
 
-- **Da dove viene l'exe.** Non è mai nella repo: lo compila GitHub Actions dal sorgente del tag della versione ([`.github/workflows/windows.yml`](.github/workflows/windows.yml)), e il log della build è pubblico. Ogni Release riporta l'SHA256 dell'exe e ha l'attestazione di provenienza di GitHub. Per controllarli:
+- **Da dove viene l'exe.** Non è mai nella repo: lo compila GitHub Actions dal sorgente del tag della versione ([`.github/workflows/build.yml`](.github/workflows/build.yml)), e il log della build è pubblico. Ogni Release riporta l'SHA256 dell'exe e ha l'attestazione di provenienza di GitHub. Per controllarli:
   ```powershell
   Get-FileHash .\ascii-zoo.exe -Algorithm SHA256
   gh attestation verify .\ascii-zoo.exe --repo Tressilloide/ascii-zoo
@@ -130,6 +131,14 @@ Nel browser un clic sullo sfondo fa disperdere gli animali; con le koi invece fa
 - **Prestazioni.** Lo sfondo è limitato a 30 fotogrammi al secondo. Il programma in Rust lo mette in pausa a batteria e sullo schermo di un'app a schermo intero; Lively quando una finestra copre il desktop. Con `prefers-reduced-motion` gli animali vanno più piano.
 - **La schermata di blocco** di Windows accetta solo immagini fisse: lì si può mettere uno screenshot dello sfondo.
 - **Il desktop non risponde ai clic con Lively?** Su Windows 11 può succedere dopo che uno schermo si scollega e si ricollega. Basta riavviare Lively: icona nell'area di notifica → Esci, poi riaprilo dal menu Start.
+
+## Sfondo animato per macOS
+
+Lo stesso programma esiste per macOS 11 o successivo, su Mac con Apple Silicon e Intel. Dalla pagina [**Releases**](https://github.com/Tressilloide/ascii-zoo/releases/latest) scarica `ascii-zoo-macos.dmg`, aprilo e trascina **ASCII Zoo** in **Applicazioni**.
+
+- Lo sfondo copre ogni schermo sopra l'immagine del desktop e sotto le icone del Finder, in tutti gli Spazi. Il menu è l'icona a forma di koi nella **barra dei menu**, con le stesse voci della versione Windows (al posto di "Avvia con Windows" c'è **Apri al login**).
+- **"Impossibile aprire l'app".** L'app non è firmata con un certificato Apple, quindi al primo avvio macOS la blocca: apri **Impostazioni di Sistema → Privacy e sicurezza** e premi **Apri comunque**, poi conferma.
+- **Da dove viene il DMG e cosa tocca**: come per Windows, lo compila GitHub Actions, ha SHA256 e attestazione (`gh attestation verify ascii-zoo-macos.dmg --repo Tressilloide/ascii-zoo`), scrive solo `~/Library/Application Support/AsciiZoo/config.json` e, se attivi **Apri al login**, `~/Library/LaunchAgents/io.github.tressilloide.asciizoo.plist`. Non si collega a internet.
 
 ## Nuova scheda per Firefox
 

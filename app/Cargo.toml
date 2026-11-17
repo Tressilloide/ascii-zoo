@@ -2,18 +2,20 @@
 name = "ascii-zoo"
 version = "0.1.0"
 edition = "2021"
-description = "Sfondo animato ASCII Zoo per Windows (KARPISA inclusa)"
+description = "Sfondo animato ASCII Zoo per Windows e macOS (KARPISA inclusa)"
 license = "MIT"
 
 [dependencies]
 wry = "0.53"
 tray-icon = "0.21"
-raw-window-handle = "0.6"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+raw-window-handle = "0.6"
 winreg = "0.55"
 
-[dependencies.windows]
+[target.'cfg(windows)'.dependencies.windows]
 version = "0.61"
 features = [
   "Win32_Foundation",
@@ -27,6 +29,10 @@ features = [
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_WindowsAndMessaging",
 ]
+
+[target.'cfg(target_os = "macos")'.dependencies]
+tao = "0.34"
+objc2-app-kit = "0.3"
 
 [profile.release]
 opt-level = "s"

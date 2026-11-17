@@ -45,9 +45,18 @@ pub fn pulisci_nome(s: &str) -> String {
     s.chars().filter(|c| !c.is_control()).collect::<String>().trim().chars().take(NOME_MAX).collect()
 }
 
+/// Windows: %APPDATA%\AsciiZoo\config.json
+#[cfg(windows)]
 fn path() -> PathBuf {
     let base = std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
     base.join("AsciiZoo").join("config.json")
+}
+
+/// macOS: ~/Library/Application Support/AsciiZoo/config.json
+#[cfg(not(windows))]
+fn path() -> PathBuf {
+    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
+    home.join("Library").join("Application Support").join("AsciiZoo").join("config.json")
 }
 
 impl Config {
@@ -71,6 +80,7 @@ impl Config {
 }
 
 /// Avvio con Windows: chiave Run dell'utente corrente.
+#[cfg(windows)]
 pub mod autostart {
     use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
     use winreg::RegKey;
@@ -94,5 +104,61 @@ pub mod autostart {
         } else {
             let _ = key.delete_value(NAME);
         }
+    }
+}
+
+/// Apri al login su macOS: un LaunchAgent dell'utente,
+/// ~/Library/LaunchAgents/io.github.tressilloide.asciizoo.plist
+#[cfg(target_os = "macos")]
+pub mod autostart {
+    use std::path::PathBuf;
+
+    const LABEL: &str = "io.github.tressilloide.asciizoo";
+
+    fn plist() -> Option<PathBuf> {
+        let home = std::env::var_os("HOME")?;
+        Some(PathBuf::from(home).join("Library").join("LaunchAgents").join(format!("{LABEL}.plist")))
+    }
+
+    /// i caratteri speciali dell'XML nel percorso dell'app
+    fn xml(s: &str) -> String {
+        s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    }
+
+    pub fn enabled() -> bool {
+        plist().is_some_and(|p| p.exists())
+    }
+
+    pub fn set(on: bool) {
+        let Some(p) = plist() else { return };
+        if !on {
+            let _ = std::fs::remove_file(p);
+            return;
+        }
+        let Ok(exe) = std::env::current_exe() else { return };
+        let body = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>{LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{}</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Interactive</string>
+</dict>
+</plist>
+"#,
+            xml(&exe.to_string_lossy())
+        );
+        if let Some(dir) = p.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(p, body);
     }
 }
