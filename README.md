@@ -82,7 +82,20 @@ La cartella `app/` contiene un programma che mette lo sfondo dietro le icone su 
 - **Nomi degli animali**: il nome dell'animale più grande di ogni specie;
 - le pause (a batteria, con app a schermo intero), l'avvio con Windows.
 
-Istruzioni per compilarlo in [`app/README.md`](app/README.md).
+#### Scaricarlo
+
+Dalla pagina [**Releases**](https://github.com/Tressilloide/ascii-zoo/releases/latest) scarica `ascii-zoo.exe` (Windows 10/11, 64 bit). Non si installa: copialo in una cartella fissa, per esempio `%LOCALAPPDATA%\AsciiZoo`, e avvialo da lì, perché **Avvia con Windows** ricorda il percorso. Serve WebView2, già presente su Windows 11 e su Windows 10 aggiornato.
+
+- **Da dove viene l'exe.** Non è mai nella repo: lo compila GitHub Actions dal sorgente del tag della versione ([`.github/workflows/windows.yml`](.github/workflows/windows.yml)), e il log della build è pubblico. Ogni Release riporta l'SHA256 dell'exe e ha l'attestazione di provenienza di GitHub. Per controllarli:
+  ```powershell
+  Get-FileHash .\ascii-zoo.exe -Algorithm SHA256
+  gh attestation verify .\ascii-zoo.exe --repo Tressilloide/ascii-zoo
+  ```
+- **"Windows ha protetto il PC".** L'exe non è firmato, quindi al primo avvio SmartScreen lo blocca: **Ulteriori informazioni → Esegui comunque**.
+- **Cosa tocca sul PC.** Scrive solo `%APPDATA%\AsciiZoo\config.json` (le impostazioni) e, se attivi **Avvia con Windows**, il valore `AsciiZoo` nella chiave `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. Non si collega a internet: lo sfondo è dentro l'exe. Un programma non firmato che si aggancia al desktop e si mette in avvio automatico può far scattare qualche antivirus.
+- **Senza eseguire niente.** Lo sfondo è solo HTML: `sfondo/index.html` si apre in qualsiasi browser (vedi sotto).
+
+Per compilarlo da sé: [`app/README.md`](app/README.md).
 
 ### Con Lively Wallpaper
 
