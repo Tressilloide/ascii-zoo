@@ -169,8 +169,7 @@ impl App {
             let _ = GetDpiForMonitor(mon, MDT_EFFECTIVE_DPI, &mut dx, &mut dy);
         }
         let scala = dx.max(48) as f64 / 96.0;
-        let (px, py) = ((x - s.rect.left) as f64 / scala, (y - s.rect.top) as f64 / scala);
-        s.js(&format!("window.zooPoke && zooPoke({px:.1}, {py:.1})"));
+        let (px, py) = ((x - s.rect.left) as f64 / scala, (y - s.rect.top) as f64 / scala);        s.js(&format!("window.zooPoke && zooPoke({px:.1}, {py:.1})"));
     }
 
     /// rifà gli sfondi se i monitor sono cambiati (o se Explorer ha distrutto le finestre)
@@ -185,8 +184,7 @@ impl App {
             return;
         }
         drop_screens(&mut self.screens);
-        self.screens = make_screens(self.hinst, &rects);
-        // le impostazioni arrivano quando le pagine hanno finito di caricare (PAGE_READY)
+        self.screens = make_screens(self.hinst, &rects);        // le impostazioni arrivano quando le pagine hanno finito di caricare (PAGE_READY)
     }
 
     fn on_menu(&mut self, id: &str) {
@@ -334,7 +332,9 @@ unsafe fn sul_desktop(pt: POINT) -> bool {
     }
     match classe(h).as_str() {
         "Progman" | "WorkerW" | "AsciiZooWallpaper" => true,
-        // l'elenco delle icone del desktop: dentro SHELLDLL_DefView
+        // la finestra delle icone: su Windows 11 24H2 risponde lei stessa,
+        // prima rispondeva l'elenco (SysListView32) che contiene
+        "SHELLDLL_DefView" => GetParent(h).is_ok_and(|p| matches!(classe(p).as_str(), "Progman" | "WorkerW")),
         "SysListView32" => GetParent(h).is_ok_and(|p| classe(p) == "SHELLDLL_DefView"),
         _ => false,
     }
@@ -456,8 +456,7 @@ pub fn run() {
         TASKBAR_CREATED.store(RegisterWindowMessageW(w!("TaskbarCreated")), Ordering::SeqCst);
         CTL.store(ctl.0 as isize, Ordering::SeqCst);
 
-        let screens = make_screens(hinst, &monitors());
-        if screens.is_empty() {
+        let screens = make_screens(hinst, &monitors());        if screens.is_empty() {
             MessageBoxW(None, w!("Non riesco a trovare il desktop di Windows."), w!("ASCII Zoo"), MB_ICONERROR);
             return;
         }
