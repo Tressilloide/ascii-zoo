@@ -91,6 +91,6 @@ See [`app/README.md`](app/README.md) for platform notes. Issues and pull request
 
 ## Credits & license
 
-Code: [MIT](LICENSE). Font: [IBM Plex Mono](https://github.com/IBM/plex) © IBM Corp., SIL Open Font License 1.1.
+Code: [MIT](LICENSE). Font: [IBM Plex Mono](https://github.com/IBM/plex) © IBM Corp., SIL Open Font License 1.1 (see [NOTICE](NOTICE)).
 
 If ASCII Zoo made your desktop a bit nicer, a ⭐ helps others find it.
