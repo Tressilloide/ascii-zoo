@@ -1,4 +1,4 @@
-//! Tutto quello che è uguale su Windows e su macOS: lo sfondo incorporato, le
+//! Tutto quello che è uguale su Windows, macOS e Linux: lo sfondo incorporato, le
 //! specie, il menu dell'icona e cosa fare quando si sceglie una voce.
 
 use tray_icon::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
@@ -562,7 +562,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     let animali_un_solo = MenuItem::new("(c'è un solo schermo)", false, None);
     let _ = animali_sub.append(&animali_un_solo);
 
-    let avvio_label = if cfg!(target_os = "macos") { "Apri al login" } else { "Avvia con Windows" };
+    let avvio_label = if cfg!(windows) { "Avvia con Windows" } else { "Apri al login" };
     let m = Menus {
         animali,
         rot_tempi,

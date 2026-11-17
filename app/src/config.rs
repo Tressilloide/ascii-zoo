@@ -108,10 +108,34 @@ fn path() -> PathBuf {
 }
 
 /// macOS: ~/Library/Application Support/AsciiZoo/config.json
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 fn path() -> PathBuf {
     let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
     home.join("Library").join("Application Support").join("AsciiZoo").join("config.json")
+}
+
+/// Linux: $XDG_CONFIG_HOME/AsciiZoo/config.json (di solito ~/.config/AsciiZoo/config.json)
+#[cfg(target_os = "linux")]
+fn path() -> PathBuf {
+    linux_dir::config().join("AsciiZoo").join("config.json")
+}
+
+/// cartelle dell'utente su Linux, secondo XDG
+#[cfg(target_os = "linux")]
+pub mod linux_dir {
+    use std::path::PathBuf;
+
+    fn home() -> PathBuf {
+        std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."))
+    }
+
+    /// $XDG_CONFIG_HOME, se no ~/.config
+    pub fn config() -> PathBuf {
+        std::env::var_os("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+            .unwrap_or_else(|| home().join(".config"))
+    }
 }
 
 impl Config {
@@ -210,6 +234,58 @@ pub mod autostart {
 </plist>
 "#,
             xml(&exe.to_string_lossy())
+        );
+        if let Some(dir) = p.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(p, body);
+    }
+}
+
+/// Apri al login su Linux: ~/.config/autostart/ascii-zoo.desktop (standard XDG,
+/// vale per GNOME, KDE, XFCE…). Lo stesso file lo scrive anche linux/install.sh.
+#[cfg(target_os = "linux")]
+pub mod autostart {
+    use std::path::PathBuf;
+
+    fn file() -> PathBuf {
+        super::linux_dir::config().join("autostart").join("ascii-zoo.desktop")
+    }
+
+    /// argomento di Exec= secondo la specifica Desktop Entry: tra virgolette, con
+    /// \ " ` $ preceduti da \ (e il \ va raddoppiato perché il file è un "string")
+    fn exec(p: &str) -> String {
+        let mut s = String::from("\"");
+        for c in p.chars() {
+            match c {
+                '"' | '`' | '$' => {
+                    s.push_str("\\\\");
+                    s.push(c);
+                }
+                '\\' => s.push_str("\\\\\\\\"),
+                '%' => s.push_str("%%"), // in Exec= "%" introduce i codici di campo
+                '\n' | '\r' => {}
+                _ => s.push(c),
+            }
+        }
+        s.push('"');
+        s
+    }
+
+    pub fn enabled() -> bool {
+        file().exists()
+    }
+
+    pub fn set(on: bool) {
+        let p = file();
+        if !on {
+            let _ = std::fs::remove_file(p);
+            return;
+        }
+        let Ok(exe) = std::env::current_exe() else { return };
+        let body = format!(
+            "[Desktop Entry]\nType=Application\nName=ASCII Zoo\nComment=Sfondo animato con animali ASCII\nExec={}\nIcon=ascii-zoo\nTerminal=false\nX-GNOME-Autostart-enabled=true\n",
+            exec(&exe.to_string_lossy())
         );
         if let Some(dir) = p.parent() {
             let _ = std::fs::create_dir_all(dir);

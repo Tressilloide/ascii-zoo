@@ -1,5 +1,5 @@
 # Compila il programma per Windows e per macOS a ogni push e pull request
-# (exe e DMG si scaricano dagli artifact della run).
+# (exe e DMG si scaricano dagli artifact della run) e prova l'installazione su Linux.
 # Con un tag "v*" (es. v0.2.0) pubblica nelle Releases quello che è stato compilato
 # qui, con gli SHA256 e l'attestazione di provenienza di GitHub.
 name: Build
@@ -106,6 +106,77 @@ jobs:
         with:
           name: prova-macos
           path: prova-macos.png
+          if-no-files-found: warn
+
+  # Su Linux si installa compilando dal sorgente con linux/install.sh: qui lo si
+  # esegue per intero (pacchetti, compilazione, file nella cartella dell'utente) e
+  # poi si avvia il programma su uno schermo virtuale, come prova.
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lo sfondo incorporato è uguale a sfondo/index.html
+        run: cmp sfondo/index.html app/assets/ascii-zoo-sfondo.html
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app
+
+      - name: Installa con linux/install.sh
+        env:
+          ASCII_ZOO_NON_AVVIARE: "1"
+        run: bash linux/install.sh
+
+      - name: File installati
+        run: |
+          sudo apt-get install -y -qq desktop-file-utils
+          test -x ~/.local/bin/ascii-zoo
+          test -f ~/.local/share/icons/hicolor/scalable/apps/ascii-zoo.svg
+          desktop-file-validate ~/.local/share/applications/ascii-zoo.desktop
+          desktop-file-validate ~/.config/autostart/ascii-zoo.desktop
+          cat ~/.config/autostart/ascii-zoo.desktop
+
+      - name: Prova - avvia l'app sotto Xvfb, con una finestra sopra, e fotografa lo schermo
+        run: |
+          sudo apt-get install -y -qq xvfb openbox xterm imagemagick dbus-x11 libglib2.0-bin
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1920x1080x24 &
+          sleep 2
+          openbox &
+          sleep 1
+          cat > prova.sh <<'FINE'
+          ~/.local/bin/ascii-zoo > app.log 2>&1 &
+          pid=$!
+          sleep 20
+          # una finestra normale: deve restare sopra lo sfondo
+          xterm -geometry 70x12+80+80 -e "echo finestra normale sopra lo sfondo; sleep 60" &
+          sleep 4
+          import -window root prova-linux.png || echo "::warning::screenshot non riuscito"
+          # l'icona nella barra: il programma deve esporre uno StatusNotifierItem su D-Bus
+          trovata=no
+          nomi=$(gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
+                   --method org.freedesktop.DBus.ListNames | grep -oE ':[0-9]+\.[0-9]+')
+          for n in $nomi; do
+            if gdbus introspect --session --dest "$n" --object-path / --recurse 2>/dev/null | grep -q org.kde.StatusNotifierItem; then
+              trovata=si
+            fi
+          done
+          echo "icona nella barra registrata su D-Bus: $trovata"
+          [ "$trovata" = si ] || echo "::warning::nessuno StatusNotifierItem trovato"
+          echo "--- log dell'app ---"; cat app.log
+          if ! kill -0 "$pid" 2>/dev/null; then
+            echo "::error::l'app si è chiusa da sola"
+            exit 1
+          fi
+          kill "$pid"
+          FINE
+          dbus-run-session -- bash prova.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prova-linux
+          path: prova-linux.png
           if-no-files-found: warn
 
   release:
