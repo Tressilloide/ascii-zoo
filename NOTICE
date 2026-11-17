@@ -1,0 +1,8 @@
+ASCII Zoo
+Code licensed under the MIT License (see LICENSE).
+
+Third-party material
+
+The IBM Plex Mono font embedded in sfondo/index.html and app/assets/ and
+included in firefox/fonts/ is (c) IBM Corp. and is licensed separately under
+the SIL Open Font License 1.1 (see firefox/fonts/OFL.txt).

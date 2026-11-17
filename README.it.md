@@ -228,4 +228,4 @@ Carattere [IBM Plex Mono](https://github.com/IBM/plex), © IBM Corp., licenza SI
 
 ## Licenza
 
-Il codice è sotto licenza [MIT](LICENSE). Il carattere IBM Plex Mono resta sotto la sua licenza SIL Open Font License 1.1.
+Il codice è sotto licenza [MIT](LICENSE). Il carattere IBM Plex Mono resta sotto la sua licenza SIL Open Font License 1.1 (vedi [NOTICE](NOTICE)).
