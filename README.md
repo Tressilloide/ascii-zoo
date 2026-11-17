@@ -151,3 +151,7 @@ La cartella `firefox/` è un'estensione che mostra gli animali in ogni nuova sch
 ## Crediti
 
 Carattere [IBM Plex Mono](https://github.com/IBM/plex), © IBM Corp., licenza SIL Open Font License 1.1 (`firefox/fonts/OFL.txt`). Nello sfondo è incorporato direttamente in `index.html`.
+
+## Licenza
+
+Il codice è sotto licenza [MIT](LICENSE). Il carattere IBM Plex Mono resta sotto la sua licenza SIL Open Font License 1.1.
