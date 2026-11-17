@@ -16,6 +16,8 @@ mod shared;
 mod dialog;
 #[cfg_attr(target_os = "macos", path = "power_mac.rs")]
 mod power;
+#[cfg_attr(target_os = "macos", path = "stats_mac.rs")]
+mod stats;
 
 #[cfg(windows)]
 mod desktop;

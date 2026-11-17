@@ -19,6 +19,7 @@ use tray_icon::{TrayIcon, TrayIconBuilder};
 use wry::{PageLoadEvent, WebView, WebViewBuilder};
 
 use crate::power;
+use crate::stats::Stats;
 use crate::shared::{self, Core, Esito, JS_START, JS_STOP, URL};
 
 /// ogni quanto si controllano batteria e schermi
@@ -51,6 +52,7 @@ struct App {
     screens: Vec<Screen>,
     tray: Option<TrayIcon>,
     last_ac: Option<bool>,
+    stats: Stats,
 }
 
 impl App {
@@ -85,6 +87,11 @@ impl App {
                 s.paused = pause;
                 let _ = s.webview.evaluate_script(if pause { JS_STOP } else { JS_START });
             }
+        }
+        // widget "pc": nuovi valori ogni 2 secondi, solo se si vede
+        if self.core.cfg.widget_statistiche && self.screens.iter().any(|s| !s.paused) {
+            let v = self.stats.leggi();
+            self.js(&shared::js_statistiche(&v));
         }
     }
 
@@ -172,7 +179,7 @@ pub fn run() {
 
     let (core, menu) = Core::new(false);
     let mut menu = Some(menu);
-    let mut app = App { core, screens: Vec::new(), tray: None, last_ac: None };
+    let mut app = App { core, screens: Vec::new(), tray: None, last_ac: None, stats: Stats::default() };
 
     event_loop.run(move |event, target, control_flow| match event {
         Event::NewEvents(StartCause::Init) => {
