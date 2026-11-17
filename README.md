@@ -31,7 +31,34 @@ Sette specie, una alla volta, ognuna con il suo ambiente. Di serie lo sfondo pas
 
 Ogni animale è una forma calcolata cella per cella: ogni cella accesa diventa un carattere (`. : - = + * o x X % # & @`), più denso dove il corpo è più pieno, con un leggero bagliore.
 
-**Nomi.** L'animale più grande di ogni specie può avere un nome, scritto sopra la testa una lettera per casella. Di serie ce l'ha solo una koi: **KARPISA**, la carpa che viene da Pisa. Gli altri nomi si danno dal menu del programma per Windows.
+**Nomi.** L'animale più grande di ogni specie può avere un nome, scritto sopra la testa una lettera per casella. Di serie ce l'ha solo una koi: **KARPISA**, la carpa che viene da Pisa. Gli altri nomi si danno dal menu del programma.
+
+## I widget
+
+Riquadri di solo testo, nello stesso stile degli animali, in un angolo dello schermo (sopra la barra delle applicazioni). Si accendono dal menu del programma, **Widget**:
+
+```
++- nota -----------------------+
+| comprare il mangime per      |
+| KARPISA                      |
++------------------------------+
++- conto alla rovescia --------+
+| esame di analisi             |
+| mancano 12 giorni            |
++------------------------------+
++- pc -------------------------+
+| cpu  [##........]  18%       |
+| ram  [######....]  57%       |
+| bat+ [########..]  83%       |
++------------------------------+
+```
+
+- **Nota**: una frase che resta sul desktop.
+- **Conto alla rovescia**: per cosa e che giorno (`25/12/2026`); il giorno prima dice "domani!", il giorno stesso "è oggi!".
+- **CPU, RAM e batteria**, aggiornati ogni 2 secondi (`bat+` = in carica). Su macOS CPU e RAM.
+- **Posizione**: uno dei quattro angoli; **Schermo**: il principale, uno a scelta o tutti.
+
+Nel browser si vedono con dati di prova aprendo `sfondo/index.html?widget=demo`.
 
 ## L'orologio
 
@@ -80,7 +107,10 @@ La cartella `app/` contiene un programma che mette lo sfondo dietro le icone su 
 
 - **Animale**: a rotazione oppure uno fisso;
 - **Rotazione**: ogni quanto cambia animale e quali animali far girare;
+- **Animale per schermo**: con più monitor, un animale diverso su ognuno (koi sul portatile, meduse sull'altro…);
 - **Nomi degli animali**: il nome dell'animale più grande di ogni specie;
+- **Widget**: nota, conto alla rovescia, CPU/RAM/batteria (vedi [I widget](#i-widget));
+- **Clic sul desktop agli animali**: un clic in una zona vuota del desktop dà da mangiare alle koi o fa scappare gli altri animali, come nel browser;
 - le pause (a batteria, con app a schermo intero), l'avvio con Windows.
 
 #### Scaricarlo
@@ -93,7 +123,7 @@ Dalla pagina [**Releases**](https://github.com/Tressilloide/ascii-zoo/releases/l
   gh attestation verify .\ascii-zoo.exe --repo Tressilloide/ascii-zoo
   ```
 - **"Windows ha protetto il PC".** L'exe non è firmato, quindi al primo avvio SmartScreen lo blocca: **Ulteriori informazioni → Esegui comunque**.
-- **Cosa tocca sul PC.** Scrive solo `%APPDATA%\AsciiZoo\config.json` (le impostazioni) e, se attivi **Avvia con Windows**, il valore `AsciiZoo` nella chiave `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. Non si collega a internet: lo sfondo è dentro l'exe. Un programma non firmato che si aggancia al desktop e si mette in avvio automatico può far scattare qualche antivirus.
+- **Cosa tocca sul PC.** Scrive solo `%APPDATA%\AsciiZoo\config.json` (le impostazioni) e, se attivi **Avvia con Windows**, il valore `AsciiZoo` nella chiave `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. Non si collega a internet: lo sfondo è dentro l'exe. Per **Clic sul desktop agli animali** usa un hook del mouse di Windows (`WH_MOUSE_LL`): legge solo dove si preme il tasto sinistro, lascia sempre passare il clic e non registra niente; si spegne togliendo la spunta dal menu. Un programma non firmato che si aggancia al desktop e si mette in avvio automatico può far scattare qualche antivirus.
 - **Senza eseguire niente.** Lo sfondo è solo HTML: `sfondo/index.html` si apre in qualsiasi browser (vedi sotto).
 
 Per compilarlo da sé: [`app/README.md`](app/README.md).

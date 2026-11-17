@@ -2,13 +2,16 @@
 //!
 //! - per ogni monitor una finestra con dentro WebView2 viene messa dietro le icone del desktop
 //! - una finestra nascosta di controllo tiene il timer e si accorge dei cambi di schermo
-//!   (monitor collegati/scollegati, risoluzione, riavvio di Explorer) e rifà gli sfondi
+//!   (monitor collegati/scollegati, risoluzione, riavvio di Explorer) e rifÃ  gli sfondi
 //! - un'icona nell'area di notifica ha tutte le opzioni
 //! - pausa automatica a batteria e, schermo per schermo, con app a schermo intero
+//! - un clic su una zona vuota del desktop arriva agli animali: un hook del mouse
+//!   guarda solo dove si clicca (non blocca e non cambia niente) e, se sotto c'Ã¨ il
+//!   desktop, lo passa allo sfondo
 
 use std::cell::RefCell;
 use std::num::NonZeroIsize;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, Ordering};
 
 use raw_window_handle::{HandleError, HasWindowHandle, RawWindowHandle, Win32WindowHandle, WindowHandle};
 use tray_icon::menu::MenuEvent;
@@ -16,16 +19,20 @@ use tray_icon::{TrayIcon, TrayIconBuilder};
 use windows::core::{w, BOOL};
 use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    EnumDisplayMonitors, GetMonitorInfoW, MonitorFromPoint, HDC, HMONITOR, MONITORINFO, MONITOR_DEFAULTTOPRIMARY,
+    EnumDisplayMonitors, GetMonitorInfoW, MonitorFromPoint, MonitorFromRect, HDC, HMONITOR, MONITORINFO, MONITORINFOEXW, MONITOR_DEFAULTTONEAREST,
+    MONITOR_DEFAULTTOPRIMARY,
 };
 use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::CreateMutexW;
-use windows::Win32::UI::HiDpi::{SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
+use windows::Win32::UI::HiDpi::{
+    GetDpiForMonitor, SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, MDT_EFFECTIVE_DPI,
+};
 use windows::Win32::UI::WindowsAndMessaging::*;
 use wry::{PageLoadEvent, WebView, WebViewBuilder};
 
-use crate::shared::{self, Core, Esito, JS_START, JS_STOP, URL};
+use crate::shared::{self, Core, Esito, Schermo, JS_START, JS_STOP, URL};
+use crate::stats::Stats;
 use crate::{desktop, power};
 
 const TIMER: usize = 1;
@@ -33,12 +40,16 @@ const TIMER: usize = 1;
 const REBUILD_DELAY: u32 = 4;
 
 static PAGE_READY: AtomicBool = AtomicBool::new(false);
-/// un monitor è cambiato o Explorer è ripartito: gli sfondi vanno rifatti
+/// un monitor Ã¨ cambiato o Explorer Ã¨ ripartito: gli sfondi vanno rifatti
 static REBUILD: AtomicBool = AtomicBool::new(false);
 /// messaggio "TaskbarCreated", mandato da Explorer quando riparte
 static TASKBAR_CREATED: AtomicU32 = AtomicU32::new(0);
+/// la finestra di controllo, per l'hook del mouse
+static CTL: AtomicIsize = AtomicIsize::new(0);
+/// clic sul desktop: x e y (pixel fisici dello schermo) in wParam e lParam
+const WM_CLIC: u32 = WM_APP + 1;
 
-/// HWND che wry può usare come finestra ospite
+/// HWND che wry puÃ² usare come finestra ospite
 struct Host(HWND);
 impl HasWindowHandle for Host {
     fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
@@ -53,7 +64,11 @@ struct Screen {
     hwnd: HWND,
     parent: HWND,
     rect: RECT,
+    /// nome del monitor ("\\.\DISPLAY1"): le impostazioni per schermo si legano a questo
+    id: String,
     paused: bool,
+    /// ultimi margini mandati alla pagina (pixel fisici coperti dalla barra delle applicazioni)
+    margini: Option<[i32; 4]>,
 }
 
 impl Screen {
@@ -71,6 +86,8 @@ struct App {
     last_ac: Option<bool>,
     ticks: u32,
     rebuild_at: Option<u32>,
+    stats: Stats,
+    hook: Option<HHOOK>,
 }
 
 thread_local! {
@@ -88,12 +105,21 @@ impl App {
     fn push_settings(&mut self) {
         let ac = power::on_ac();
         self.last_ac = Some(ac);
-        for code in self.core.js_tutto(ac) {
-            self.js(&code);
-        }
         for s in &self.screens {
+            for code in self.core.js_tutto(ac, &s.id) {
+                s.js(&code);
+            }
             if s.paused {
                 s.js(JS_STOP);
+            }
+        }
+    }
+
+    /// manda a ogni schermo le impostazioni che dipendono dallo schermo
+    fn push_schermi(&self) {
+        for s in &self.screens {
+            for code in self.core.js_schermo(&s.id) {
+                s.js(&code);
             }
         }
     }
@@ -114,21 +140,100 @@ impl App {
                 s.js(if pause { JS_STOP } else { JS_START });
             }
         }
+        // widget "pc": nuovi valori ogni 2 secondi, solo se si vede
+        if self.core.cfg.widget_statistiche && self.screens.iter().any(|s| !s.paused) {
+            let v = self.stats.leggi();
+            self.js(&shared::js_statistiche(&v));
+        }
     }
 
-    /// rifà gli sfondi se i monitor sono cambiati (o se Explorer ha distrutto le finestre)
+    /// Quanto della parte di schermo coperta dallo sfondo è occupato dalla barra delle
+    /// applicazioni (area di lavoro più piccola del monitor): lo si dice alla pagina,
+    /// così i widget non ci finiscono sotto. Si manda solo quando cambia.
+    fn check_margini(&mut self) {
+        for s in &mut self.screens {
+            let r = s.rect;
+            let (m, scala) = unsafe {
+                let mon = MonitorFromRect(&r, MONITOR_DEFAULTTONEAREST);
+                let mut mi = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
+                if !GetMonitorInfoW(mon, &mut mi).as_bool() {
+                    continue;
+                }
+                let w = mi.rcWork;
+                let (mut dx, mut dy) = (96u32, 96u32);
+                let _ = GetDpiForMonitor(mon, MDT_EFFECTIVE_DPI, &mut dx, &mut dy);
+                let m = [w.top - r.top, r.right - w.right, r.bottom - w.bottom, w.left - r.left].map(|v| v.max(0));
+                (m, dx.max(48) as f64 / 96.0)
+            };
+            if s.margini == Some(m) {
+                continue;
+            }
+            s.margini = Some(m);
+            let c = m.map(|v| (v as f64 / scala).round());
+            s.js(&format!(
+                "window.zooSetting && zooSetting('margini', {{alto: {}, destra: {}, basso: {}, sinistra: {}}})",
+                c[0], c[1], c[2], c[3]
+            ));
+        }
+    }
+
+    /// accende o spegne l'hook del mouse secondo l'impostazione "Clic sul desktop"
+    fn sync_hook(&mut self) {
+        let voglio = self.core.cfg.clic_desktop;
+        unsafe {
+            match (voglio, self.hook) {
+                (true, None) => {
+                    self.hook = SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_hook), Some(self.hinst), 0).ok();
+                }
+                (false, Some(h)) => {
+                    let _ = UnhookWindowsHookEx(h);
+                    self.hook = None;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// clic sul desktop nel punto (x, y) dello schermo: lo riceve lo sfondo di quel monitor
+    fn clic(&self, x: i32, y: i32) {
+        let Some(s) = self.screens.iter().find(|s| {
+            let r = s.rect;
+            x >= r.left && x < r.right && y >= r.top && y < r.bottom
+        }) else {
+            return;
+        };
+        if s.paused {
+            return;
+        }
+        // la pagina ragiona in pixel CSS: si divide per la scala del monitor
+        let (mut dx, mut dy) = (96u32, 96u32);
+        unsafe {
+            let mon = MonitorFromPoint(POINT { x, y }, MONITOR_DEFAULTTONEAREST);
+            let _ = GetDpiForMonitor(mon, MDT_EFFECTIVE_DPI, &mut dx, &mut dy);
+        }
+        let scala = dx.max(48) as f64 / 96.0;
+        let (px, py) = ((x - s.rect.left) as f64 / scala, (y - s.rect.top) as f64 / scala);
+        s.js(&format!("window.zooPoke && zooPoke({px:.1}, {py:.1})"));
+    }
+
+    /// rifÃ  gli sfondi se i monitor sono cambiati (o se Explorer ha distrutto le finestre)
     fn rebuild(&mut self) {
-        let rects = monitors();
-        let same = rects.len() == self.screens.len()
-            && self.screens.iter().all(|s| unsafe { IsWindow(Some(s.hwnd)).as_bool() } && rects.contains(&s.rect));
+        let mons = monitors();
+        self.core.set_schermi(mons.iter().map(|m| m.1.clone()).collect());
+        let same = mons.len() == self.screens.len()
+            && self.screens.iter().all(|s| {
+                (unsafe { IsWindow(Some(s.hwnd)).as_bool() }) && mons.iter().any(|m| m.0 == s.rect && m.1.id == s.id)
+            });
         if same {
             for s in &self.screens {
                 unsafe { desktop::fit(s.hwnd, s.parent, s.rect) };
             }
+            // l'ordine o lo schermo principale possono essere cambiati
+            self.push_schermi();
             return;
         }
         drop_screens(&mut self.screens);
-        self.screens = make_screens(self.hinst, &rects);
+        self.screens = make_screens(self.hinst, &mons);
         // le impostazioni arrivano quando le pagine hanno finito di caricare (PAGE_READY)
     }
 
@@ -139,7 +244,9 @@ impl App {
                     self.js(&code);
                 }
                 self.check_power();
+                self.sync_hook();
             }
+            Esito::Schermi => self.push_schermi(),
             Esito::Ricarica => {
                 for s in &mut self.screens {
                     s.paused = false;
@@ -159,7 +266,7 @@ impl App {
         }
         self.ticks = self.ticks.wrapping_add(1);
         if REBUILD.swap(false, Ordering::SeqCst) {
-            // altri cambi in arrivo spostano l'attesa: si rifà tutto una volta sola
+            // altri cambi in arrivo spostano l'attesa: si rifÃ  tutto una volta sola
             self.rebuild_at = Some(self.ticks.wrapping_add(REBUILD_DELAY));
         }
         if self.rebuild_at == Some(self.ticks) {
@@ -167,45 +274,56 @@ impl App {
             self.rebuild();
         }
         if PAGE_READY.swap(false, Ordering::SeqCst) {
+            // una pagina (ri)caricata non sa niente: si rimanda tutto, margini compresi
+            for s in &mut self.screens {
+                s.margini = None;
+            }
             self.push_settings();
+            self.check_margini();
         }
         if self.ticks % 8 == 0 {
             self.check_power();
+            self.check_margini();
         }
     }
 }
 
-fn primary_monitor() -> RECT {
-    unsafe {
-        let mon = MonitorFromPoint(POINT { x: 0, y: 0 }, MONITOR_DEFAULTTOPRIMARY);
-        let mut mi = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
-        let _ = GetMonitorInfoW(mon, &mut mi);
-        mi.rcMonitor
+/// un monitor: rettangolo (pixel fisici), nome del dispositivo ("\\.\DISPLAY1"), principale?
+unsafe fn info_monitor(mon: HMONITOR) -> Option<(RECT, Schermo, bool)> {
+    let mut mi = MONITORINFOEXW::default();
+    mi.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
+    if !GetMonitorInfoW(mon, &mut mi as *mut MONITORINFOEXW as *mut MONITORINFO).as_bool() {
+        return None;
     }
+    let r = mi.monitorInfo.rcMonitor;
+    let n = mi.szDevice.iter().position(|&c| c == 0).unwrap_or(mi.szDevice.len());
+    let id = String::from_utf16_lossy(&mi.szDevice[..n]);
+    let s = Schermo { id, larghezza: (r.right - r.left) as u32, altezza: (r.bottom - r.top) as u32 };
+    Some((r, s, mi.monitorInfo.dwFlags & MONITORINFOF_PRIMARY != 0))
 }
 
-/// rettangoli di tutti i monitor collegati (pixel fisici)
-fn monitors() -> Vec<RECT> {
+/// tutti i monitor collegati: il principale per primo, poi da sinistra a destra
+fn monitors() -> Vec<(RECT, Schermo)> {
     unsafe extern "system" fn add(mon: HMONITOR, _: HDC, _: *mut RECT, out: LPARAM) -> BOOL {
-        let list = &mut *(out.0 as *mut Vec<RECT>);
-        let mut mi = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
-        if GetMonitorInfoW(mon, &mut mi).as_bool() {
-            list.push(mi.rcMonitor);
+        let list = &mut *(out.0 as *mut Vec<(RECT, Schermo, bool)>);
+        if let Some(m) = info_monitor(mon) {
+            list.push(m);
         }
         BOOL(1)
     }
-    let mut list: Vec<RECT> = Vec::new();
+    let mut list: Vec<(RECT, Schermo, bool)> = Vec::new();
     unsafe {
-        let _ = EnumDisplayMonitors(None, None, Some(add), LPARAM(&mut list as *mut Vec<RECT> as isize));
+        let _ = EnumDisplayMonitors(None, None, Some(add), LPARAM(&mut list as *mut _ as isize));
+        if list.is_empty() {
+            list.extend(info_monitor(MonitorFromPoint(POINT { x: 0, y: 0 }, MONITOR_DEFAULTTOPRIMARY)));
+        }
     }
-    if list.is_empty() {
-        list.push(primary_monitor());
-    }
-    list
+    list.sort_by_key(|(r, _, principale)| (!principale, r.left, r.top));
+    list.into_iter().map(|(r, s, _)| (r, s)).collect()
 }
 
 /// finestra + WebView dietro le icone, sopra il monitor `rect`
-unsafe fn make_screen(hinst: HINSTANCE, rect: RECT) -> Option<Screen> {
+unsafe fn make_screen(hinst: HINSTANCE, rect: RECT, id: String) -> Option<Screen> {
     let hwnd = CreateWindowExW(
         WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
         w!("AsciiZooWallpaper"),
@@ -239,7 +357,7 @@ unsafe fn make_screen(hinst: HINSTANCE, rect: RECT) -> Option<Screen> {
         })
         .build(&Host(hwnd));
     match built {
-        Ok(webview) => Some(Screen { webview, hwnd, parent: embed.parent, rect, paused: false }),
+        Ok(webview) => Some(Screen { webview, hwnd, parent: embed.parent, rect, id, paused: false, margini: None }),
         Err(_) => {
             let _ = DestroyWindow(hwnd);
             None
@@ -247,8 +365,8 @@ unsafe fn make_screen(hinst: HINSTANCE, rect: RECT) -> Option<Screen> {
     }
 }
 
-fn make_screens(hinst: HINSTANCE, rects: &[RECT]) -> Vec<Screen> {
-    rects.iter().filter_map(|r| unsafe { make_screen(hinst, *r) }).collect()
+fn make_screens(hinst: HINSTANCE, mons: &[(RECT, Schermo)]) -> Vec<Screen> {
+    mons.iter().filter_map(|(r, s)| unsafe { make_screen(hinst, *r, s.id.clone()) }).collect()
 }
 
 fn drop_screens(screens: &mut Vec<Screen>) {
@@ -259,6 +377,43 @@ fn drop_screens(screens: &mut Vec<Screen>) {
             let _ = DestroyWindow(hwnd);
         }
     }
+}
+
+/// nome della classe di una finestra
+unsafe fn classe(h: HWND) -> String {
+    let mut buf = [0u16; 64];
+    let n = GetClassNameW(h, &mut buf) as usize;
+    String::from_utf16_lossy(&buf[..n])
+}
+
+/// true se nel punto c'Ã¨ il desktop (lo spazio tra le icone o lo sfondo stesso)
+unsafe fn sul_desktop(pt: POINT) -> bool {
+    let h = WindowFromPoint(pt);
+    if h.is_invalid() {
+        return false;
+    }
+    match classe(h).as_str() {
+        "Progman" | "WorkerW" | "AsciiZooWallpaper" => true,
+        // la finestra delle icone: su Windows 11 24H2 risponde lei stessa,
+        // prima rispondeva l'elenco (SysListView32) che contiene
+        "SHELLDLL_DefView" => GetParent(h).is_ok_and(|p| matches!(classe(p).as_str(), "Progman" | "WorkerW")),
+        "SysListView32" => GetParent(h).is_ok_and(|p| classe(p) == "SHELLDLL_DefView"),
+        _ => false,
+    }
+}
+
+/// Hook del mouse: legge solo dove si preme il tasto sinistro e lascia passare
+/// sempre il clic (CallNextHookEx), cosÃ¬ le icone funzionano come prima.
+/// Il lavoro vero si fa dopo, nella finestra di controllo.
+unsafe extern "system" fn mouse_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+    if code == HC_ACTION as i32 && wp.0 as u32 == WM_LBUTTONDOWN {
+        let info = &*(lp.0 as *const MSLLHOOKSTRUCT);
+        if sul_desktop(info.pt) {
+            let ctl = HWND(CTL.load(Ordering::SeqCst) as *mut _);
+            let _ = PostMessageW(Some(ctl), WM_CLIC, WPARAM(info.pt.x as isize as usize), LPARAM(info.pt.y as isize));
+        }
+    }
+    CallNextHookEx(None, code, wp, lp)
 }
 
 /// la finestra nascosta di controllo: timer, cambi di schermo, uscita
@@ -274,6 +429,17 @@ unsafe extern "system" fn control_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPA
             });
             LRESULT(0)
         }
+        WM_CLIC => {
+            let (x, y) = (wp.0 as isize as i32, lp.0 as i32);
+            APP.with(|a| {
+                if let Ok(a) = a.try_borrow() {
+                    if let Some(app) = a.as_ref() {
+                        app.clic(x, y);
+                    }
+                }
+            });
+            LRESULT(0)
+        }
         WM_DISPLAYCHANGE => {
             REBUILD.store(true, Ordering::SeqCst);
             LRESULT(0)
@@ -283,7 +449,7 @@ unsafe extern "system" fn control_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPA
             LRESULT(0)
         }
         m if m != 0 && m == TASKBAR_CREATED.load(Ordering::SeqCst) => {
-            // Explorer è ripartito: il desktop è nuovo, gli sfondi vanno riagganciati
+            // Explorer Ã¨ ripartito: il desktop Ã¨ nuovo, gli sfondi vanno riagganciati
             REBUILD.store(true, Ordering::SeqCst);
             LRESULT(0)
         }
@@ -350,14 +516,17 @@ pub fn run() {
         )
         .expect("finestra");
         TASKBAR_CREATED.store(RegisterWindowMessageW(w!("TaskbarCreated")), Ordering::SeqCst);
+        CTL.store(ctl.0 as isize, Ordering::SeqCst);
 
-        let screens = make_screens(hinst, &monitors());
+        let mons = monitors();
+        let screens = make_screens(hinst, &mons);
         if screens.is_empty() {
             MessageBoxW(None, w!("Non riesco a trovare il desktop di Windows."), w!("ASCII Zoo"), MB_ICONERROR);
             return;
         }
 
-        let (core, menu) = Core::new(true);
+        let (mut core, menu) = Core::new(true);
+        core.set_schermi(mons.into_iter().map(|m| m.1).collect());
         let tray = TrayIconBuilder::new()
             .with_menu(Box::new(menu))
             .with_tooltip("ASCII Zoo")
@@ -375,7 +544,14 @@ pub fn run() {
                 last_ac: None,
                 ticks: 0,
                 rebuild_at: None,
+                stats: Stats::default(),
+                hook: None,
             })
+        });
+        APP.with(|a| {
+            if let Some(app) = a.borrow_mut().as_mut() {
+                app.sync_hook();
+            }
         });
 
         SetTimer(Some(ctl), TIMER, 250, None);
@@ -387,6 +563,9 @@ pub fn run() {
         }
 
         if let Some(mut app) = APP.with(|a| a.borrow_mut().take()) {
+            if let Some(h) = app.hook.take() {
+                let _ = UnhookWindowsHookEx(h);
+            }
             drop_screens(&mut app.screens);
         }
         restore_wallpaper();

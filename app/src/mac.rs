@@ -19,7 +19,8 @@ use tray_icon::{TrayIcon, TrayIconBuilder};
 use wry::{PageLoadEvent, WebView, WebViewBuilder};
 
 use crate::power;
-use crate::shared::{self, Core, Esito, JS_START, JS_STOP, URL};
+use crate::stats::Stats;
+use crate::shared::{self, Core, Esito, Schermo, JS_START, JS_STOP, URL};
 
 /// ogni quanto si controllano batteria e schermi
 const CONTROLLO: Duration = Duration::from_secs(2);
@@ -43,6 +44,8 @@ struct Screen {
     _window: Window,
     pos: PhysicalPosition<i32>,
     size: PhysicalSize<u32>,
+    /// nome e posizione dello schermo: le impostazioni per schermo si legano a questo
+    id: String,
     paused: bool,
 }
 
@@ -51,6 +54,7 @@ struct App {
     screens: Vec<Screen>,
     tray: Option<TrayIcon>,
     last_ac: Option<bool>,
+    stats: Stats,
 }
 
 impl App {
@@ -63,12 +67,21 @@ impl App {
     fn push_settings(&mut self) {
         let ac = power::on_ac();
         self.last_ac = Some(ac);
-        for code in self.core.js_tutto(ac) {
-            self.js(&code);
-        }
         for s in &self.screens {
+            for code in self.core.js_tutto(ac, &s.id) {
+                let _ = s.webview.evaluate_script(&code);
+            }
             if s.paused {
                 let _ = s.webview.evaluate_script(JS_STOP);
+            }
+        }
+    }
+
+    /// manda a ogni schermo le impostazioni che dipendono dallo schermo
+    fn push_schermi(&self) {
+        for s in &self.screens {
+            for code in self.core.js_schermo(&s.id) {
+                let _ = s.webview.evaluate_script(&code);
             }
         }
     }
@@ -86,23 +99,41 @@ impl App {
                 let _ = s.webview.evaluate_script(if pause { JS_STOP } else { JS_START });
             }
         }
+        // widget "pc": nuovi valori ogni 2 secondi, solo se si vede
+        if self.core.cfg.widget_statistiche && self.screens.iter().any(|s| !s.paused) {
+            let v = self.stats.leggi();
+            self.js(&shared::js_statistiche(&v));
+        }
     }
 
     /// se gli schermi sono cambiati (collegati, scollegati, risoluzione) rifà gli sfondi
     fn check_screens(&mut self, target: &EventLoopWindowTarget<Evento>, proxy: &EventLoopProxy<Evento>) {
         let now = schermi(target);
+        self.core.set_schermi(now.iter().map(|m| m.2.clone()).collect());
         let same = now.len() == self.screens.len()
-            && self.screens.iter().all(|s| now.contains(&(s.pos, s.size)));
+            && self.screens.iter().all(|s| now.iter().any(|m| m.0 == s.pos && m.1 == s.size && m.2.id == s.id));
         if !same {
             self.screens.clear();
-            self.screens = now.iter().filter_map(|&(pos, size)| make_screen(target, proxy, pos, size)).collect();
+            self.screens =
+                now.into_iter().filter_map(|(pos, size, sc)| make_screen(target, proxy, pos, size, sc.id)).collect();
         }
     }
 }
 
-/// posizione e dimensione (pixel fisici) di ogni schermo collegato
-fn schermi(target: &EventLoopWindowTarget<Evento>) -> Vec<(PhysicalPosition<i32>, PhysicalSize<u32>)> {
-    target.available_monitors().map(|m| (m.position(), m.size())).collect()
+/// posizione e dimensione (pixel fisici) di ogni schermo collegato, il principale per primo
+fn schermi(target: &EventLoopWindowTarget<Evento>) -> Vec<(PhysicalPosition<i32>, PhysicalSize<u32>, Schermo)> {
+    let principale = target.primary_monitor().map(|m| m.position());
+    let mut v: Vec<_> = target
+        .available_monitors()
+        .map(|m| {
+            let (pos, size) = (m.position(), m.size());
+            let nome = m.name().unwrap_or_else(|| "schermo".into());
+            let id = format!("{nome}@{},{}", pos.x, pos.y);
+            (pos, size, Schermo { id, larghezza: size.width, altezza: size.height })
+        })
+        .collect();
+    v.sort_by_key(|(pos, _, _)| (Some(*pos) != principale, pos.x, pos.y));
+    v
 }
 
 /// porta la finestra al livello del desktop, in tutti gli Spazi, trasparente ai clic
@@ -130,6 +161,7 @@ fn make_screen(
     proxy: &EventLoopProxy<Evento>,
     pos: PhysicalPosition<i32>,
     size: PhysicalSize<u32>,
+    id: String,
 ) -> Option<Screen> {
     let window = WindowBuilder::new()
         .with_title("ASCII Zoo")
@@ -156,7 +188,7 @@ fn make_screen(
         .build(&window)
         .ok()?;
     window.set_visible(true);
-    Some(Screen { webview, _window: window, pos, size, paused: false })
+    Some(Screen { webview, _window: window, pos, size, id, paused: false })
 }
 
 pub fn run() {
@@ -172,7 +204,7 @@ pub fn run() {
 
     let (core, menu) = Core::new(false);
     let mut menu = Some(menu);
-    let mut app = App { core, screens: Vec::new(), tray: None, last_ac: None };
+    let mut app = App { core, screens: Vec::new(), tray: None, last_ac: None, stats: Stats::default() };
 
     event_loop.run(move |event, target, control_flow| match event {
         Event::NewEvents(StartCause::Init) => {
@@ -201,6 +233,7 @@ pub fn run() {
                 }
                 app.check_power();
             }
+            Esito::Schermi => app.push_schermi(),
             Esito::Ricarica => {
                 for s in &mut app.screens {
                     s.paused = false;

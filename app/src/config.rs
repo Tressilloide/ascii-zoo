@@ -24,6 +24,21 @@ pub struct Config {
     pub rotazione_secondi: u32,
     /// specie tolte dalla rotazione
     pub rotazione_escluse: Vec<String>,
+    /// widget: nota sul desktop ("" = nessuna)
+    pub nota: String,
+    /// widget: conto alla rovescia, data "aaaa-mm-gg" ("" = spento)
+    pub conto_data: String,
+    pub conto_etichetta: String,
+    /// widget: CPU, RAM e batteria
+    pub widget_statistiche: bool,
+    /// angolo dei widget: "basso-destra", "basso-sinistra", "alto-destra", "alto-sinistra"
+    pub widget_angolo: String,
+    /// su quale schermo stanno i widget: "" = il principale, "*" = tutti, se no l'id dello schermo
+    pub widget_schermo: String,
+    /// animale per schermo (id dello schermo → come "animale"); chi non c'è segue "animale"
+    pub animale_schermi: BTreeMap<String, u32>,
+    /// un clic su una zona vuota del desktop arriva agli animali (solo Windows)
+    pub clic_desktop: bool,
 }
 
 impl Default for Config {
@@ -36,13 +51,50 @@ impl Default for Config {
             nomi: BTreeMap::from([("koi".to_string(), "KARPISA".to_string())]),
             rotazione_secondi: 120,
             rotazione_escluse: Vec::new(),
+            nota: String::new(),
+            conto_data: String::new(),
+            conto_etichetta: String::new(),
+            widget_statistiche: false,
+            widget_angolo: "basso-destra".into(),
+            widget_schermo: String::new(),
+            animale_schermi: BTreeMap::new(),
+            clic_desktop: true,
         }
     }
 }
 
 /// pulisce un nome scritto dall'utente: niente caratteri di controllo, spazi ai lati tolti, al massimo NOME_MAX lettere
 pub fn pulisci_nome(s: &str) -> String {
-    s.chars().filter(|c| !c.is_control()).collect::<String>().trim().chars().take(NOME_MAX).collect()
+    pulisci_testo(s, NOME_MAX)
+}
+
+/// lunghezza massima della nota e dell'etichetta del conto alla rovescia
+pub const NOTA_MAX: usize = 200;
+pub const ETICHETTA_MAX: usize = 40;
+
+/// toglie i caratteri di controllo e taglia a `max` lettere
+pub fn pulisci_testo(s: &str, max: usize) -> String {
+    s.chars().filter(|c| !c.is_control()).collect::<String>().trim().chars().take(max).collect()
+}
+
+/// Legge una data scritta dall'utente: "25/12/2026", "25-12-2026", "25.12.2026"
+/// oppure "2026-12-25". Restituisce "aaaa-mm-gg"; None se non è una data valida.
+pub fn leggi_data(s: &str) -> Option<String> {
+    let parti: Vec<u32> = s.trim().split(['/', '-', '.']).map(|p| p.trim().parse().ok()).collect::<Option<_>>()?;
+    let [a, b, c] = parti[..] else { return None };
+    let (g, m, y) = if a > 31 { (c, b, a) } else { (a, b, c) };
+    let y = if y < 100 { 2000 + y } else { y };
+    let bisestile = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let giorni = [31, if bisestile { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    (1..=12).contains(&m).then_some(())?;
+    (1..=giorni[m as usize - 1]).contains(&g).then_some(())?;
+    (2000..=2200).contains(&y).then(|| format!("{y:04}-{m:02}-{g:02}"))
+}
+
+/// "2026-12-25" -> "25/12/2026", per mostrarla nel menu e nella finestrella
+pub fn data_italiana(iso: &str) -> String {
+    let p: Vec<&str> = iso.split('-').collect();
+    if p.len() == 3 { format!("{}/{}/{}", p[2], p[1], p[0]) } else { iso.to_string() }
 }
 
 /// Windows: %APPDATA%\AsciiZoo\config.json
