@@ -173,6 +173,28 @@ jobs:
           FINE
           dbus-run-session -- bash prova.sh
 
+      # il comando da una riga del README, così com'è (scarica lo script di questo commit,
+      # che clona main): solo sui push a main, quando main è proprio questo commit.
+      # CARGO_TARGET_DIR riusa la compilazione del passo di prima.
+      - name: Prova - il comando da una riga (curl | bash)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          ASCII_ZOO_NON_AVVIARE: "1"
+          CARGO_TARGET_DIR: ${{ github.workspace }}/app/target
+        run: |
+          rm -f ~/.local/bin/ascii-zoo
+          curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/linux/install.sh" | bash
+          test -x ~/.local/bin/ascii-zoo
+          test -d ~/.cache/ascii-zoo/sorgente/.git
+
+      - name: Prova - disinstallazione
+        run: |
+          bash linux/install.sh --disinstalla
+          for f in ~/.local/bin/ascii-zoo ~/.local/share/applications/ascii-zoo.desktop \
+                   ~/.local/share/icons/hicolor/scalable/apps/ascii-zoo.svg ~/.config/autostart/ascii-zoo.desktop; do
+            if [ -e "$f" ]; then echo "::error::$f è ancora lì"; exit 1; fi
+          done
+
       - uses: actions/upload-artifact@v4
         with:
           name: prova-linux

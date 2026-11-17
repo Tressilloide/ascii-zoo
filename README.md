@@ -173,29 +173,29 @@ Lo stesso programma esiste per macOS 11 o successivo, su Mac con Apple Silicon e
 
 ## Sfondo animato per Linux
 
-Si installa con un solo comando nel terminale. Lo script compila il programma dal sorgente e lo mette nella tua cartella utente:
-
-```
-git clone https://github.com/Tressilloide/ascii-zoo.git && bash ascii-zoo/linux/install.sh
-```
-
-Finché la repo è privata `git clone` chiede di accedere a GitHub (nome utente e un token come password). Se la repo diventa pubblica basta:
+Si installa con un solo comando nel terminale:
 
 ```
 curl -fsSL https://raw.githubusercontent.com/Tressilloide/ascii-zoo/main/linux/install.sh | bash
 ```
 
-Lo script ([`linux/install.sh`](linux/install.sh)):
+Se preferisci leggere lo script prima di eseguirlo, lo stesso da un clone della repo:
+
+```
+git clone https://github.com/Tressilloide/ascii-zoo.git && bash ascii-zoo/linux/install.sh
+```
+
+Lo script ([`linux/install.sh`](linux/install.sh)) compila il programma dal sorgente e lo mette nella tua cartella utente:
 
 1. installa le librerie per compilarlo con **apt** (Ubuntu, Debian, Mint), **dnf** (Fedora) o **pacman** (Arch); chiede la password di `sudo` solo per questo;
 2. installa Rust con rustup se manca, in `~/.cargo`, senza toccare il `PATH`;
 3. compila il programma (la prima volta qualche minuto);
 4. lo copia in `~/.local/bin/ascii-zoo`, aggiunge icona e voce **ASCII Zoo** nel menu delle applicazioni, lo fa partire all'accesso e lo avvia.
 
-L'icona a forma di koi compare **nella barra in alto**, con lo stesso menu delle altre versioni (al posto di "Avvia con Windows" c'è **Apri al login**). Per aggiornare si rilancia lo stesso comando; per togliere tutto:
+L'icona a forma di koi compare **nella barra in alto**, con lo stesso menu delle altre versioni (al posto di "Avvia con Windows" c'è **Apri al login**). Per aggiornare si rilancia lo stesso comando (il codice scaricato resta in `~/.cache/ascii-zoo`, quindi la volta dopo si compila molto più in fretta); per togliere tutto:
 
 ```
-bash ascii-zoo/linux/install.sh --disinstalla
+curl -fsSL https://raw.githubusercontent.com/Tressilloide/ascii-zoo/main/linux/install.sh | bash -s -- --disinstalla
 ```
 
 - **Ubuntu** mostra le icone nella barra in alto di serie (estensione *Ubuntu AppIndicators*). Su GNOME senza Ubuntu (Fedora, Debian…) serve l'estensione *AppIndicator and KStatusNotifierItem Support*: lo script avvisa se manca.
