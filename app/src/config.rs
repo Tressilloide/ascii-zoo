@@ -33,6 +33,10 @@ pub struct Config {
     pub widget_statistiche: bool,
     /// angolo dei widget: "basso-destra", "basso-sinistra", "alto-destra", "alto-sinistra"
     pub widget_angolo: String,
+    /// su quale schermo stanno i widget: "" = il principale, "*" = tutti, se no l'id dello schermo
+    pub widget_schermo: String,
+    /// animale per schermo (id dello schermo → come "animale"); chi non c'è segue "animale"
+    pub animale_schermi: BTreeMap<String, u32>,
     /// un clic su una zona vuota del desktop arriva agli animali (solo Windows)
     pub clic_desktop: bool,
 }
@@ -52,6 +56,8 @@ impl Default for Config {
             conto_etichetta: String::new(),
             widget_statistiche: false,
             widget_angolo: "basso-destra".into(),
+            widget_schermo: String::new(),
+            animale_schermi: BTreeMap::new(),
             clic_desktop: true,
         }
     }

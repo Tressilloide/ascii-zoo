@@ -66,6 +66,24 @@ pub fn js_statistiche(v: &serde_json::Value) -> String {
     format!("window.zooSetting && zooSetting('statistiche', {v})")
 }
 
+/// uno schermo collegato: id stabile (nome del dispositivo) e dimensioni
+#[derive(Clone, PartialEq, Debug)]
+pub struct Schermo {
+    pub id: String,
+    pub larghezza: u32,
+    pub altezza: u32,
+}
+
+/// valori speciali di "Widget > Schermo"
+pub const PRINCIPALE: &str = "";
+pub const TUTTI: &str = "*";
+
+/// "Schermo 1, principale (2560×1600)"
+fn nome_schermo(n: usize, s: &Schermo) -> String {
+    let principale = if n == 0 { ", principale" } else { "" };
+    format!("Schermo {}{principale} ({}×{})", n + 1, s.larghezza, s.altezza)
+}
+
 pub struct Menus {
     pub animali: Vec<CheckMenuItem>,
     pub rot_tempi: Vec<CheckMenuItem>,
@@ -75,6 +93,14 @@ pub struct Menus {
     pub conto: MenuItem,
     pub statistiche: CheckMenuItem,
     pub angoli: Vec<CheckMenuItem>,
+    pub widget_sub: Submenu,
+    /// "Widget > Schermo": (valore, voce); i primi due sono principale e tutti
+    pub widget_schermi: Vec<(String, CheckMenuItem)>,
+    widget_schermi_fissi: Vec<(String, CheckMenuItem)>,
+    /// "Animale per schermo": un sottomenu per schermo
+    pub animali_sub: Submenu,
+    pub animali_schermi: Vec<(String, Submenu, Vec<CheckMenuItem>)>,
+    animali_un_solo: MenuItem,
     pub clic: CheckMenuItem,
     pub koi: CheckMenuItem,
     pub batteria: CheckMenuItem,
@@ -88,6 +114,8 @@ pub struct Menus {
 pub enum Esito {
     /// impostazione cambiata (e salvata): manda lo script alle pagine, se c'è, e ricontrolla le pause
     Cambiato(Option<String>),
+    /// cambiato qualcosa che dipende dallo schermo: a ogni pagina va mandato js_schermo
+    Schermi,
     Ricarica,
     Esci,
     Niente,
@@ -97,6 +125,8 @@ pub enum Esito {
 pub struct Core {
     pub cfg: Config,
     pub menus: Menus,
+    /// gli schermi collegati, il principale per primo
+    pub schermi: Vec<Schermo>,
 }
 
 impl Core {
@@ -105,7 +135,7 @@ impl Core {
     pub fn new(solo_windows: bool) -> (Self, Menu) {
         let cfg = Config::load();
         let (menu, menus) = build_menu(&cfg, solo_windows);
-        (Self { cfg, menus }, menu)
+        (Self { cfg, menus, schermi: Vec::new() }, menu)
     }
 
     /// i nomi come oggetto JSON: serde_json mette gli escape, quindi apostrofi e
@@ -125,42 +155,155 @@ impl Core {
         format!("window.zooSetting && zooSetting('rotazione', {rot})")
     }
 
-    pub fn js_widget(&self) -> String {
+    /// i widget si vedono su questo schermo?
+    fn widget_qui(&self, schermo: &str) -> bool {
+        let scelta = self.cfg.widget_schermo.as_str();
+        if scelta == TUTTI {
+            return true;
+        }
+        // schermo scelto non collegato (o "principale"): vale il principale
+        let scelta_c = self.schermi.iter().any(|s| s.id == scelta);
+        if scelta_c {
+            scelta == schermo
+        } else {
+            self.schermi.first().is_none_or(|s| s.id == schermo)
+        }
+    }
+
+    /// i widget per uno schermo (spenti dove non devono vedersi)
+    pub fn js_widget(&self, schermo: &str) -> String {
         let c = &self.cfg;
-        let conto = (!c.conto_data.is_empty())
+        let qui = self.widget_qui(schermo);
+        let conto = (qui && !c.conto_data.is_empty())
             .then(|| serde_json::json!({ "data": c.conto_data, "etichetta": c.conto_etichetta }));
         let w = serde_json::json!({
-            "nota": c.nota,
+            "nota": if qui { c.nota.as_str() } else { "" },
             "conto": conto,
-            "statistiche": c.widget_statistiche,
+            "statistiche": qui && c.widget_statistiche,
             "angolo": c.widget_angolo,
         });
         format!("window.zooSetting && zooSetting('widget', {w})")
     }
 
-    /// tutte le impostazioni, da mandare quando una pagina ha finito di caricare
-    pub fn js_tutto(&self, ac: bool) -> [String; 4] {
+    /// l'animale di uno schermo: il suo, se scelto, se no quello di "Animale"
+    pub fn animale_di(&self, schermo: &str) -> u32 {
+        self.cfg.animale_schermi.get(schermo).copied().unwrap_or(self.cfg.animale)
+    }
+
+    /// le impostazioni che cambiano da schermo a schermo
+    pub fn js_schermo(&self, schermo: &str) -> [String; 2] {
         [
-            self.js_widget(),
+            self.js_widget(schermo),
+            format!("window.zooSetting && zooSetting('animale', {})", self.animale_di(schermo)),
+        ]
+    }
+
+    /// tutte le impostazioni di uno schermo, da mandare quando la sua pagina ha finito di caricare
+    pub fn js_tutto(&self, ac: bool, schermo: &str) -> Vec<String> {
+        let mut v = vec![
             self.js_nomi(),
             self.js_rotazione(),
             format!(
-                "if (window.zooSetting) {{ zooSetting('inCarica', {ac}); \
-                 zooSetting('koiInCarica', {}); zooSetting('animale', {}); }}",
-                self.cfg.koi_in_carica, self.cfg.animale
+                "if (window.zooSetting) {{ zooSetting('inCarica', {ac}); zooSetting('koiInCarica', {}); }}",
+                self.cfg.koi_in_carica
             ),
-        ]
+        ];
+        v.extend(self.js_schermo(schermo));
+        v
+    }
+
+    /// Gli schermi collegati, il principale per primo. Rifà le voci del menu che
+    /// dipendono dagli schermi (solo se sono cambiati).
+    pub fn set_schermi(&mut self, schermi: Vec<Schermo>) {
+        if schermi == self.schermi {
+            return;
+        }
+        let m = &mut self.menus;
+        for (id, item) in m.widget_schermi.drain(..) {
+            if id == PRINCIPALE || id == TUTTI {
+                m.widget_schermi_fissi.push((id, item));
+            } else {
+                let _ = m.widget_sub.remove(&item);
+            }
+        }
+        m.widget_schermi.append(&mut m.widget_schermi_fissi);
+        for (_, sub, _) in m.animali_schermi.drain(..) {
+            let _ = m.animali_sub.remove(&sub);
+        }
+        let _ = m.animali_sub.remove(&m.animali_un_solo);
+
+        for (n, s) in schermi.iter().enumerate() {
+            let nome = nome_schermo(n, s);
+            let item = CheckMenuItem::new(&nome, true, false, None);
+            let _ = m.widget_sub.append(&item);
+            m.widget_schermi.push((s.id.clone(), item));
+
+            let sub = Submenu::new(&nome, true);
+            let attuale = self.cfg.animale_schermi.get(&s.id).map(|a| *a as usize + 1).unwrap_or(0);
+            let voci: Vec<CheckMenuItem> = std::iter::once("Come in \"Animale\"")
+                .chain(std::iter::once("A rotazione"))
+                .chain(SPECIE.iter().map(|s| s.1))
+                .enumerate()
+                .map(|(k, name)| CheckMenuItem::new(name, true, k == attuale, None))
+                .collect();
+            for (k, v) in voci.iter().enumerate() {
+                let _ = sub.append(v);
+                if k == 0 {
+                    let _ = sub.append(&PredefinedMenuItem::separator());
+                }
+            }
+            let _ = m.animali_sub.append(&sub);
+            m.animali_schermi.push((s.id.clone(), sub, voci));
+        }
+        if schermi.len() < 2 {
+            let _ = m.animali_sub.append(&m.animali_un_solo);
+        }
+        self.schermi = schermi;
+        self.segna_widget_schermo();
+    }
+
+    /// mette la spunta sulla voce giusta di "Widget > Schermo"
+    fn segna_widget_schermo(&self) {
+        let scelta = &self.cfg.widget_schermo;
+        let esiste = self.schermi.iter().any(|s| &s.id == scelta) || scelta == TUTTI;
+        for (id, item) in &self.menus.widget_schermi {
+            item.set_checked(if esiste { id == scelta } else { id == PRINCIPALE });
+        }
     }
 
     pub fn on_menu(&mut self, id: &str) -> Esito {
         let m = &self.menus;
-        let js = if let Some(i) = m.animali.iter().position(|x| x.id().0 == id) {
+        if let Some(i) = m.animali.iter().position(|x| x.id().0 == id) {
             self.cfg.animale = i as u32;
             for (k, item) in self.menus.animali.iter().enumerate() {
                 item.set_checked(k == i);
             }
-            Some(format!("window.zooSetting && zooSetting('animale', {i})"))
-        } else if let Some(i) = m.rot_tempi.iter().position(|x| x.id().0 == id) {
+            self.cfg.save();
+            return Esito::Schermi;
+        }
+        if let Some(i) = m.widget_schermi.iter().position(|x| x.1.id().0 == id) {
+            self.cfg.widget_schermo = m.widget_schermi[i].0.clone();
+            self.segna_widget_schermo();
+            self.cfg.save();
+            return Esito::Schermi;
+        }
+        if let Some((sid, k, voci)) = m.animali_schermi.iter().find_map(|(sid, _, voci)| {
+            voci.iter().position(|x| x.id().0 == id).map(|k| (sid.clone(), k, voci))
+        }) {
+            for (j, v) in voci.iter().enumerate() {
+                v.set_checked(j == k);
+            }
+            if k == 0 {
+                self.cfg.animale_schermi.remove(&sid);
+            } else {
+                self.cfg.animale_schermi.insert(sid, k as u32 - 1);
+            }
+            self.cfg.save();
+            return Esito::Schermi;
+        }
+        // i widget cambiano da schermo a schermo: si rimandano a ognuno i suoi
+        let mut widget = false;
+        let js = if let Some(i) = m.rot_tempi.iter().position(|x| x.id().0 == id) {
             self.cfg.rotazione_secondi = INTERVALLI[i].0;
             for (k, item) in self.menus.rot_tempi.iter().enumerate() {
                 item.set_checked(k == i);
@@ -200,22 +343,34 @@ impl Core {
             };
             self.cfg.nota = pulisci_testo(&nuova, NOTA_MAX);
             self.menus.nota.set_text(etichetta_nota(&self.cfg.nota));
-            Some(self.js_widget())
+            {
+                widget = true;
+                None
+            }
         } else if id == m.conto.id().0 {
             if !self.chiedi_conto() {
                 return Esito::Niente;
             }
             self.menus.conto.set_text(etichetta_conto(&self.cfg));
-            Some(self.js_widget())
+            {
+                widget = true;
+                None
+            }
         } else if id == m.statistiche.id().0 {
             self.cfg.widget_statistiche = m.statistiche.is_checked();
-            Some(self.js_widget())
+            {
+                widget = true;
+                None
+            }
         } else if let Some(i) = m.angoli.iter().position(|x| x.id().0 == id) {
             self.cfg.widget_angolo = ANGOLI[i].0.to_string();
             for (k, item) in self.menus.angoli.iter().enumerate() {
                 item.set_checked(k == i);
             }
-            Some(self.js_widget())
+            {
+                widget = true;
+                None
+            }
         } else if id == m.clic.id().0 {
             self.cfg.clic_desktop = m.clic.is_checked();
             None
@@ -240,6 +395,9 @@ impl Core {
             return Esito::Niente;
         };
         self.cfg.save();
+        if widget {
+            return Esito::Schermi;
+        }
         Esito::Cambiato(js)
     }
 }
@@ -386,6 +544,19 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     for item in &angoli {
         let _ = widget.append(item);
     }
+    let _ = widget.append(&PredefinedMenuItem::separator());
+    let _ = widget.append(&MenuItem::new("Schermo:", false, None));
+    let widget_schermi = vec![
+        (PRINCIPALE.to_string(), CheckMenuItem::new("Schermo principale", true, true, None)),
+        (TUTTI.to_string(), CheckMenuItem::new("Tutti gli schermi", true, false, None)),
+    ];
+    for (_, item) in &widget_schermi {
+        let _ = widget.append(item);
+    }
+    // gli schermi veri si aggiungono con set_schermi
+    let animali_sub = Submenu::new("Animale per schermo", true);
+    let animali_un_solo = MenuItem::new("(c'è un solo schermo)", false, None);
+    let _ = animali_sub.append(&animali_un_solo);
 
     let avvio_label = if cfg!(target_os = "macos") { "Apri al login" } else { "Avvia con Windows" };
     let m = Menus {
@@ -397,6 +568,12 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         conto,
         statistiche,
         angoli,
+        widget_sub: widget,
+        widget_schermi,
+        widget_schermi_fissi: Vec::new(),
+        animali_sub,
+        animali_schermi: Vec::new(),
+        animali_un_solo,
         clic: CheckMenuItem::new("Clic sul desktop agli animali", true, cfg.clic_desktop, None),
         koi: CheckMenuItem::new("Koi nello stagno in carica (con \"A rotazione\")", true, cfg.koi_in_carica, None),
         batteria: CheckMenuItem::new("Pausa a batteria", true, cfg.pausa_batteria, None),
@@ -406,9 +583,10 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         esci: MenuItem::new("Esci", true, None),
     };
     let _ = menu.append(&sub);
+    let _ = menu.append(&m.animali_sub);
     let _ = menu.append(&rot);
     let _ = menu.append(&nomi_sub);
-    let _ = menu.append(&widget);
+    let _ = menu.append(&m.widget_sub);
     let _ = menu.append(&m.koi);
     if solo_windows {
         let _ = menu.append(&m.clic);

@@ -2,11 +2,11 @@
 //!
 //! - per ogni monitor una finestra con dentro WebView2 viene messa dietro le icone del desktop
 //! - una finestra nascosta di controllo tiene il timer e si accorge dei cambi di schermo
-//!   (monitor collegati/scollegati, risoluzione, riavvio di Explorer) e rifà gli sfondi
+//!   (monitor collegati/scollegati, risoluzione, riavvio di Explorer) e rifÃ  gli sfondi
 //! - un'icona nell'area di notifica ha tutte le opzioni
 //! - pausa automatica a batteria e, schermo per schermo, con app a schermo intero
 //! - un clic su una zona vuota del desktop arriva agli animali: un hook del mouse
-//!   guarda solo dove si clicca (non blocca e non cambia niente) e, se sotto c'è il
+//!   guarda solo dove si clicca (non blocca e non cambia niente) e, se sotto c'Ã¨ il
 //!   desktop, lo passa allo sfondo
 
 use std::cell::RefCell;
@@ -19,7 +19,7 @@ use tray_icon::{TrayIcon, TrayIconBuilder};
 use windows::core::{w, BOOL};
 use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    EnumDisplayMonitors, GetMonitorInfoW, MonitorFromPoint, HDC, HMONITOR, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    EnumDisplayMonitors, GetMonitorInfoW, MonitorFromPoint, HDC, HMONITOR, MONITORINFO, MONITORINFOEXW, MONITOR_DEFAULTTONEAREST,
     MONITOR_DEFAULTTOPRIMARY,
 };
 use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
@@ -31,7 +31,7 @@ use windows::Win32::UI::HiDpi::{
 use windows::Win32::UI::WindowsAndMessaging::*;
 use wry::{PageLoadEvent, WebView, WebViewBuilder};
 
-use crate::shared::{self, Core, Esito, JS_START, JS_STOP, URL};
+use crate::shared::{self, Core, Esito, Schermo, JS_START, JS_STOP, URL};
 use crate::stats::Stats;
 use crate::{desktop, power};
 
@@ -40,7 +40,7 @@ const TIMER: usize = 1;
 const REBUILD_DELAY: u32 = 4;
 
 static PAGE_READY: AtomicBool = AtomicBool::new(false);
-/// un monitor è cambiato o Explorer è ripartito: gli sfondi vanno rifatti
+/// un monitor Ã¨ cambiato o Explorer Ã¨ ripartito: gli sfondi vanno rifatti
 static REBUILD: AtomicBool = AtomicBool::new(false);
 /// messaggio "TaskbarCreated", mandato da Explorer quando riparte
 static TASKBAR_CREATED: AtomicU32 = AtomicU32::new(0);
@@ -49,7 +49,7 @@ static CTL: AtomicIsize = AtomicIsize::new(0);
 /// clic sul desktop: x e y (pixel fisici dello schermo) in wParam e lParam
 const WM_CLIC: u32 = WM_APP + 1;
 
-/// HWND che wry può usare come finestra ospite
+/// HWND che wry puÃ² usare come finestra ospite
 struct Host(HWND);
 impl HasWindowHandle for Host {
     fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
@@ -64,6 +64,8 @@ struct Screen {
     hwnd: HWND,
     parent: HWND,
     rect: RECT,
+    /// nome del monitor ("\\.\DISPLAY1"): le impostazioni per schermo si legano a questo
+    id: String,
     paused: bool,
 }
 
@@ -101,12 +103,21 @@ impl App {
     fn push_settings(&mut self) {
         let ac = power::on_ac();
         self.last_ac = Some(ac);
-        for code in self.core.js_tutto(ac) {
-            self.js(&code);
-        }
         for s in &self.screens {
+            for code in self.core.js_tutto(ac, &s.id) {
+                s.js(&code);
+            }
             if s.paused {
                 s.js(JS_STOP);
+            }
+        }
+    }
+
+    /// manda a ogni schermo le impostazioni che dipendono dallo schermo
+    fn push_schermi(&self) {
+        for s in &self.screens {
+            for code in self.core.js_schermo(&s.id) {
+                s.js(&code);
             }
         }
     }
@@ -169,22 +180,29 @@ impl App {
             let _ = GetDpiForMonitor(mon, MDT_EFFECTIVE_DPI, &mut dx, &mut dy);
         }
         let scala = dx.max(48) as f64 / 96.0;
-        let (px, py) = ((x - s.rect.left) as f64 / scala, (y - s.rect.top) as f64 / scala);        s.js(&format!("window.zooPoke && zooPoke({px:.1}, {py:.1})"));
+        let (px, py) = ((x - s.rect.left) as f64 / scala, (y - s.rect.top) as f64 / scala);
+        s.js(&format!("window.zooPoke && zooPoke({px:.1}, {py:.1})"));
     }
 
-    /// rifà gli sfondi se i monitor sono cambiati (o se Explorer ha distrutto le finestre)
+    /// rifÃ  gli sfondi se i monitor sono cambiati (o se Explorer ha distrutto le finestre)
     fn rebuild(&mut self) {
-        let rects = monitors();
-        let same = rects.len() == self.screens.len()
-            && self.screens.iter().all(|s| unsafe { IsWindow(Some(s.hwnd)).as_bool() } && rects.contains(&s.rect));
+        let mons = monitors();
+        self.core.set_schermi(mons.iter().map(|m| m.1.clone()).collect());
+        let same = mons.len() == self.screens.len()
+            && self.screens.iter().all(|s| {
+                (unsafe { IsWindow(Some(s.hwnd)).as_bool() }) && mons.iter().any(|m| m.0 == s.rect && m.1.id == s.id)
+            });
         if same {
             for s in &self.screens {
                 unsafe { desktop::fit(s.hwnd, s.parent, s.rect) };
             }
+            // l'ordine o lo schermo principale possono essere cambiati
+            self.push_schermi();
             return;
         }
         drop_screens(&mut self.screens);
-        self.screens = make_screens(self.hinst, &rects);        // le impostazioni arrivano quando le pagine hanno finito di caricare (PAGE_READY)
+        self.screens = make_screens(self.hinst, &mons);
+        // le impostazioni arrivano quando le pagine hanno finito di caricare (PAGE_READY)
     }
 
     fn on_menu(&mut self, id: &str) {
@@ -196,6 +214,7 @@ impl App {
                 self.check_power();
                 self.sync_hook();
             }
+            Esito::Schermi => self.push_schermi(),
             Esito::Ricarica => {
                 for s in &mut self.screens {
                     s.paused = false;
@@ -215,7 +234,7 @@ impl App {
         }
         self.ticks = self.ticks.wrapping_add(1);
         if REBUILD.swap(false, Ordering::SeqCst) {
-            // altri cambi in arrivo spostano l'attesa: si rifà tutto una volta sola
+            // altri cambi in arrivo spostano l'attesa: si rifÃ  tutto una volta sola
             self.rebuild_at = Some(self.ticks.wrapping_add(REBUILD_DELAY));
         }
         if self.rebuild_at == Some(self.ticks) {
@@ -231,37 +250,42 @@ impl App {
     }
 }
 
-fn primary_monitor() -> RECT {
-    unsafe {
-        let mon = MonitorFromPoint(POINT { x: 0, y: 0 }, MONITOR_DEFAULTTOPRIMARY);
-        let mut mi = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
-        let _ = GetMonitorInfoW(mon, &mut mi);
-        mi.rcMonitor
+/// un monitor: rettangolo (pixel fisici), nome del dispositivo ("\\.\DISPLAY1"), principale?
+unsafe fn info_monitor(mon: HMONITOR) -> Option<(RECT, Schermo, bool)> {
+    let mut mi = MONITORINFOEXW::default();
+    mi.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
+    if !GetMonitorInfoW(mon, &mut mi as *mut MONITORINFOEXW as *mut MONITORINFO).as_bool() {
+        return None;
     }
+    let r = mi.monitorInfo.rcMonitor;
+    let n = mi.szDevice.iter().position(|&c| c == 0).unwrap_or(mi.szDevice.len());
+    let id = String::from_utf16_lossy(&mi.szDevice[..n]);
+    let s = Schermo { id, larghezza: (r.right - r.left) as u32, altezza: (r.bottom - r.top) as u32 };
+    Some((r, s, mi.monitorInfo.dwFlags & MONITORINFOF_PRIMARY != 0))
 }
 
-/// rettangoli di tutti i monitor collegati (pixel fisici)
-fn monitors() -> Vec<RECT> {
+/// tutti i monitor collegati: il principale per primo, poi da sinistra a destra
+fn monitors() -> Vec<(RECT, Schermo)> {
     unsafe extern "system" fn add(mon: HMONITOR, _: HDC, _: *mut RECT, out: LPARAM) -> BOOL {
-        let list = &mut *(out.0 as *mut Vec<RECT>);
-        let mut mi = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
-        if GetMonitorInfoW(mon, &mut mi).as_bool() {
-            list.push(mi.rcMonitor);
+        let list = &mut *(out.0 as *mut Vec<(RECT, Schermo, bool)>);
+        if let Some(m) = info_monitor(mon) {
+            list.push(m);
         }
         BOOL(1)
     }
-    let mut list: Vec<RECT> = Vec::new();
+    let mut list: Vec<(RECT, Schermo, bool)> = Vec::new();
     unsafe {
-        let _ = EnumDisplayMonitors(None, None, Some(add), LPARAM(&mut list as *mut Vec<RECT> as isize));
+        let _ = EnumDisplayMonitors(None, None, Some(add), LPARAM(&mut list as *mut _ as isize));
+        if list.is_empty() {
+            list.extend(info_monitor(MonitorFromPoint(POINT { x: 0, y: 0 }, MONITOR_DEFAULTTOPRIMARY)));
+        }
     }
-    if list.is_empty() {
-        list.push(primary_monitor());
-    }
-    list
+    list.sort_by_key(|(r, _, principale)| (!principale, r.left, r.top));
+    list.into_iter().map(|(r, s, _)| (r, s)).collect()
 }
 
 /// finestra + WebView dietro le icone, sopra il monitor `rect`
-unsafe fn make_screen(hinst: HINSTANCE, rect: RECT) -> Option<Screen> {
+unsafe fn make_screen(hinst: HINSTANCE, rect: RECT, id: String) -> Option<Screen> {
     let hwnd = CreateWindowExW(
         WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
         w!("AsciiZooWallpaper"),
@@ -295,7 +319,7 @@ unsafe fn make_screen(hinst: HINSTANCE, rect: RECT) -> Option<Screen> {
         })
         .build(&Host(hwnd));
     match built {
-        Ok(webview) => Some(Screen { webview, hwnd, parent: embed.parent, rect, paused: false }),
+        Ok(webview) => Some(Screen { webview, hwnd, parent: embed.parent, rect, id, paused: false }),
         Err(_) => {
             let _ = DestroyWindow(hwnd);
             None
@@ -303,8 +327,8 @@ unsafe fn make_screen(hinst: HINSTANCE, rect: RECT) -> Option<Screen> {
     }
 }
 
-fn make_screens(hinst: HINSTANCE, rects: &[RECT]) -> Vec<Screen> {
-    rects.iter().filter_map(|r| unsafe { make_screen(hinst, *r) }).collect()
+fn make_screens(hinst: HINSTANCE, mons: &[(RECT, Schermo)]) -> Vec<Screen> {
+    mons.iter().filter_map(|(r, s)| unsafe { make_screen(hinst, *r, s.id.clone()) }).collect()
 }
 
 fn drop_screens(screens: &mut Vec<Screen>) {
@@ -324,7 +348,7 @@ unsafe fn classe(h: HWND) -> String {
     String::from_utf16_lossy(&buf[..n])
 }
 
-/// true se nel punto c'è il desktop (lo spazio tra le icone o lo sfondo stesso)
+/// true se nel punto c'Ã¨ il desktop (lo spazio tra le icone o lo sfondo stesso)
 unsafe fn sul_desktop(pt: POINT) -> bool {
     let h = WindowFromPoint(pt);
     if h.is_invalid() {
@@ -341,7 +365,7 @@ unsafe fn sul_desktop(pt: POINT) -> bool {
 }
 
 /// Hook del mouse: legge solo dove si preme il tasto sinistro e lascia passare
-/// sempre il clic (CallNextHookEx), così le icone funzionano come prima.
+/// sempre il clic (CallNextHookEx), cosÃ¬ le icone funzionano come prima.
 /// Il lavoro vero si fa dopo, nella finestra di controllo.
 unsafe extern "system" fn mouse_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
     if code == HC_ACTION as i32 && wp.0 as u32 == WM_LBUTTONDOWN {
@@ -387,7 +411,7 @@ unsafe extern "system" fn control_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPA
             LRESULT(0)
         }
         m if m != 0 && m == TASKBAR_CREATED.load(Ordering::SeqCst) => {
-            // Explorer è ripartito: il desktop è nuovo, gli sfondi vanno riagganciati
+            // Explorer Ã¨ ripartito: il desktop Ã¨ nuovo, gli sfondi vanno riagganciati
             REBUILD.store(true, Ordering::SeqCst);
             LRESULT(0)
         }
@@ -456,12 +480,15 @@ pub fn run() {
         TASKBAR_CREATED.store(RegisterWindowMessageW(w!("TaskbarCreated")), Ordering::SeqCst);
         CTL.store(ctl.0 as isize, Ordering::SeqCst);
 
-        let screens = make_screens(hinst, &monitors());        if screens.is_empty() {
+        let mons = monitors();
+        let screens = make_screens(hinst, &mons);
+        if screens.is_empty() {
             MessageBoxW(None, w!("Non riesco a trovare il desktop di Windows."), w!("ASCII Zoo"), MB_ICONERROR);
             return;
         }
 
-        let (core, menu) = Core::new(true);
+        let (mut core, menu) = Core::new(true);
+        core.set_schermi(mons.into_iter().map(|m| m.1).collect());
         let tray = TrayIconBuilder::new()
             .with_menu(Box::new(menu))
             .with_tooltip("ASCII Zoo")
