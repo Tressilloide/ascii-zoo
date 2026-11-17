@@ -203,7 +203,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, macos]
+    needs: [windows, macos, linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write      # creare la Release
@@ -259,6 +259,13 @@ jobs:
           ### macOS
           Apri il DMG e trascina **ASCII Zoo** in **Applicazioni**. L'app non è firmata con un certificato Apple, quindi al primo avvio macOS la blocca:
           apri **Impostazioni di Sistema → Privacy e sicurezza** e premi **Apri comunque** (poi conferma). L'icona compare nella barra dei menu.
+
+          ### Linux
+          Un solo comando nel terminale: scarica il sorgente di \`main\`, lo compila e lo installa nella cartella utente (librerie con apt, dnf o pacman). L'icona compare nella barra in alto.
+
+          \`\`\`
+          curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/linux/install.sh | bash
+          \`\`\`
 
           ## Verificarli
 
