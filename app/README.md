@@ -86,11 +86,12 @@ l'attestazione di provenienza e pubblica la Release con `ascii-zoo.exe`,
 |---|---|
 | `src/main.rs` | sceglie la parte per il sistema in uso |
 | `src/shared.rs` | parte comune: specie, menu dell'icona, impostazioni da mandare allo sfondo |
-| `src/win.rs` | Windows: finestre e WebView per monitor, timer, cambi di schermo |
+| `src/win.rs` | Windows: finestre e WebView per monitor, timer, cambi di schermo, clic sul desktop, margini della barra delle applicazioni |
 | `src/desktop.rs` | Windows: aggancio dietro le icone (WorkerW / Progman) |
 | `src/power.rs`, `src/dialog.rs` | Windows: batteria e schermo intero, finestrella dei nomi |
+| `src/stats.rs`, `src/stats_mac.rs` | CPU, RAM (e batteria su Windows) per il widget "pc" |
 | `src/mac.rs` | macOS: finestre al livello del desktop, barra dei menu, controllo degli schermi |
 | `src/power_mac.rs`, `src/dialog_mac.rs` | macOS: batteria, finestrella dei nomi |
-| `src/config.rs` | impostazioni (nomi e rotazione compresi) e avvio automatico |
+| `src/config.rs` | impostazioni (nomi, rotazione, widget, animale per schermo) e avvio automatico |
 | `macos/Info.plist` | descrizione dell'app per macOS |
 | `build.rs`, `app.manifest` | incorporano il manifest dei controlli moderni di Windows (solo linker MSVC) |
