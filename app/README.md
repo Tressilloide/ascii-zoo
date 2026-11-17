@@ -37,6 +37,23 @@ perché l'avvio automatico ricorda il percorso da cui è stato lanciato.
 
 > Lo sfondo è una copia in `assets/`: dopo aver modificato `sfondo/index.html`
 > (nella radice della repo) copialo in `assets/ascii-zoo-sfondo.html` e ricompila.
+> La build su GitHub fallisce se le due copie sono diverse.
+
+## Pubblicare una versione
+L'exe delle Releases lo compila GitHub Actions ([`../.github/workflows/windows.yml`](../.github/workflows/windows.yml)),
+mai il PC di qualcuno. Il workflow compila anche a ogni push e pull request (l'exe si
+trova tra gli artifact della run), ma pubblica solo con un tag:
+
+1. aggiorna `version` in `Cargo.toml` (es. `0.2.0`) e fai `cargo build` per aggiornare `Cargo.lock`;
+2. fai il commit su `main`;
+3. crea e pubblica il tag con la stessa versione:
+   ```
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+
+Il workflow controlla che tag e versione coincidano, compila, calcola l'SHA256, crea
+l'attestazione di provenienza e pubblica la Release con `ascii-zoo.exe` e `ascii-zoo.exe.sha256`.
 
 ## File
 | File | Cosa contiene |
