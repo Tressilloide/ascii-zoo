@@ -1,18 +1,22 @@
-# ASCII Zoo — programma per Windows e macOS (Rust)
+# ASCII Zoo — programma per Windows, macOS e Linux (Rust)
 
 Mette lo sfondo animato (`sfondo/index.html`) dietro le icone del desktop, su tutti gli schermi.
 
 ## Cosa fa
 - Sfondo HTML incorporato nell'eseguibile, mostrato con una WebView (WebView2 su Windows,
-  WKWebView su macOS).
+  WKWebView su macOS, WebKitGTK su Linux).
 - **Windows**: una finestra dietro le icone per ogni monitor (funziona anche con il desktop
   "raised" di Windows 11 24H2+). Se un monitor viene collegato o scollegato, cambia
   risoluzione o Explorer riparte, gli sfondi vengono rifatti da soli.
 - **macOS**: una finestra per ogni schermo al livello del desktop: sopra l'immagine di sfondo,
   sotto le icone del Finder e tutte le finestre, in tutti gli Spazi, trasparente ai clic e
   assente da Mission Control. Gli schermi vengono ricontrollati ogni 2 secondi.
-- Icona a forma di koi (area di notifica su Windows, barra dei menu su macOS; niente icona
-  nel Dock) con il menu:
+- **Linux**: una finestra X11 di tipo "desktop" per ogni schermo: sotto tutte le finestre,
+  su tutti gli spazi di lavoro, fuori dalla barra delle applicazioni e trasparente ai clic.
+  Sotto Wayland passa da XWayland (`GDK_BACKEND=x11`), perché Wayland non permette a un
+  programma normale di mettersi al posto dello sfondo. Una sola copia per utente.
+- Icona a forma di koi (area di notifica su Windows, barra dei menu su macOS, barra in alto
+  su Linux con AppIndicator; niente icona nel Dock) con il menu:
   - **Animale**: a rotazione oppure uno fisso
   - **Rotazione**: ogni quanto cambia animale (da 30 secondi a un'ora) e quali animali far girare
     (almeno uno resta sempre spuntato)
@@ -26,10 +30,12 @@ Mette lo sfondo animato (`sfondo/index.html`) dietro le icone del desktop, su tu
     si prova una griglia di punti, uno ogni 160 pixel circa; se nessuno cade sul desktop,
     quello schermo si ferma e riparte appena il desktop torna a vedersi)
   - **Avvia con Windows** / **Apri al login**, **Ricarica sfondo**, **Esci**
-- Impostazioni salvate in `%APPDATA%\AsciiZoo\config.json` (Windows) o
-  `~/Library/Application Support/AsciiZoo/config.json` (macOS).
-- Avvio automatico: valore `AsciiZoo` nella chiave `HKCU\…\Run` (Windows) o
-  `~/Library/LaunchAgents/io.github.tressilloide.asciizoo.plist` (macOS), solo se attivato.
+- Impostazioni salvate in `%APPDATA%\AsciiZoo\config.json` (Windows),
+  `~/Library/Application Support/AsciiZoo/config.json` (macOS) o
+  `~/.config/AsciiZoo/config.json` (Linux, `$XDG_CONFIG_HOME` se impostata).
+- Avvio automatico: valore `AsciiZoo` nella chiave `HKCU\…\Run` (Windows),
+  `~/Library/LaunchAgents/io.github.tressilloide.asciizoo.plist` (macOS) o
+  `~/.config/autostart/ascii-zoo.desktop` (Linux), solo se attivato.
 
 > Su un computer fisso (senza batteria) il sistema risulta sempre "in carica": con
 > **Koi nello stagno in carica** attivo lo sfondo mostra sempre le koi.
@@ -61,6 +67,19 @@ L'eseguibile è `target/release/ascii-zoo` e si può avviare così. Per avere l'
 (`ASCII Zoo.app`, senza icona nel Dock) e il DMG, guarda il job `macos` di
 [`../.github/workflows/build.yml`](../.github/workflows/build.yml): mette insieme l'app
 con `app/macos/Info.plist` e crea il DMG con `hdiutil`.
+
+### Linux
+Il modo semplice è [`../linux/install.sh`](../linux/install.sh), che installa anche le
+librerie. A mano servono Rust e i pacchetti di sviluppo di WebKitGTK 4.1, GTK 3,
+libayatana-appindicator3 e libxdo (su Ubuntu: `libwebkit2gtk-4.1-dev libgtk-3-dev
+libayatana-appindicator3-dev libxdo-dev build-essential pkg-config`). Nella cartella `app`:
+
+```
+cargo build --release --locked
+```
+
+L'eseguibile è `target/release/ascii-zoo`. Il job `linux` del workflow esegue
+`install.sh` per intero su Ubuntu 24.04 e avvia il programma sotto Xvfb come prova.
 
 > Lo sfondo è una copia in `assets/`: dopo aver modificato `sfondo/index.html`
 > (nella radice della repo) copialo in `assets/ascii-zoo-sfondo.html` e ricompila.
@@ -95,6 +114,8 @@ l'attestazione di provenienza e pubblica la Release con `ascii-zoo.exe`,
 | `src/stats.rs`, `src/stats_mac.rs` | CPU, RAM (e batteria su Windows) per il widget "pc" |
 | `src/mac.rs` | macOS: finestre al livello del desktop, barra dei menu, controllo degli schermi |
 | `src/power_mac.rs`, `src/dialog_mac.rs` | macOS: batteria, finestrella dei nomi |
+| `src/linux.rs` | Linux: finestre di tipo "desktop", icona AppIndicator, controllo degli schermi, margini della barra in alto |
+| `src/power_linux.rs`, `src/stats_linux.rs`, `src/dialog_linux.rs` | Linux: batteria e CPU/RAM da `/sys` e `/proc`, finestrella dei nomi (zenity o kdialog) |
 | `src/config.rs` | impostazioni (nomi, rotazione, widget, animale per schermo) e avvio automatico |
 | `macos/Info.plist` | descrizione dell'app per macOS |
 | `build.rs`, `app.manifest` | incorporano il manifest dei controlli moderni di Windows (solo linker MSVC) |

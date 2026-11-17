@@ -2,7 +2,7 @@
 
 <p align="center">
   Animali fatti di caratteri da tastiera che volano, nuotano e saltano intorno a un orologio ASCII.<br>
-  Uno sfondo animato per Windows (un piccolo programma in Rust, oppure <a href="https://github.com/rocksdanister/lively">Lively Wallpaper</a>) e una nuova scheda per Firefox.
+  Uno sfondo animato per Windows, macOS e Linux (un piccolo programma in Rust; su Windows anche con <a href="https://github.com/rocksdanister/lively">Lively Wallpaper</a>) e una nuova scheda per Firefox.
 </p>
 
 <p align="center">
@@ -86,11 +86,12 @@ ascii-zoo/
 │   ├── index.html           tutto in un file: motore, orologio, carattere incorporato
 │   ├── LivelyInfo.json      descrizione del pacchetto per Lively
 │   └── thumbnail.jpg        miniatura nella libreria di Lively
-├── app/                     programma in Rust per Windows e macOS
+├── app/                     programma in Rust per Windows, macOS e Linux
 │   ├── src/                 finestre dietro le icone, menu, nomi, rotazione, pause
 │   ├── assets/              copia di sfondo/index.html incorporata nell'eseguibile
 │   ├── macos/               Info.plist dell'app per macOS
 │   └── build.rs, app.manifest   aspetto moderno della finestrella dei nomi
+├── linux/                   install.sh (installazione con un comando) e l'icona
 ├── firefox/                 estensione "nuova scheda" per Firefox
 │   ├── manifest.json
 │   ├── index.html, app.js, zoo.js, style.css, icon.svg
@@ -169,6 +170,38 @@ Lo stesso programma esiste per macOS 11 o successivo, su Mac con Apple Silicon e
 - Lo sfondo copre ogni schermo sopra l'immagine del desktop e sotto le icone del Finder, in tutti gli Spazi. Il menu è l'icona a forma di koi nella **barra dei menu**, con le stesse voci della versione Windows (al posto di "Avvia con Windows" c'è **Apri al login**).
 - **"Impossibile aprire l'app".** L'app non è firmata con un certificato Apple, quindi al primo avvio macOS la blocca: apri **Impostazioni di Sistema → Privacy e sicurezza** e premi **Apri comunque**, poi conferma.
 - **Da dove viene il DMG e cosa tocca**: come per Windows, lo compila GitHub Actions, ha SHA256 e attestazione (`gh attestation verify ascii-zoo-macos.dmg --repo Tressilloide/ascii-zoo`), scrive solo `~/Library/Application Support/AsciiZoo/config.json` e, se attivi **Apri al login**, `~/Library/LaunchAgents/io.github.tressilloide.asciizoo.plist`. Non si collega a internet.
+
+## Sfondo animato per Linux
+
+Si installa con un solo comando nel terminale. Lo script compila il programma dal sorgente e lo mette nella tua cartella utente:
+
+```
+git clone https://github.com/Tressilloide/ascii-zoo.git && bash ascii-zoo/linux/install.sh
+```
+
+Finché la repo è privata `git clone` chiede di accedere a GitHub (nome utente e un token come password). Se la repo diventa pubblica basta:
+
+```
+curl -fsSL https://raw.githubusercontent.com/Tressilloide/ascii-zoo/main/linux/install.sh | bash
+```
+
+Lo script ([`linux/install.sh`](linux/install.sh)):
+
+1. installa le librerie per compilarlo con **apt** (Ubuntu, Debian, Mint), **dnf** (Fedora) o **pacman** (Arch); chiede la password di `sudo` solo per questo;
+2. installa Rust con rustup se manca, in `~/.cargo`, senza toccare il `PATH`;
+3. compila il programma (la prima volta qualche minuto);
+4. lo copia in `~/.local/bin/ascii-zoo`, aggiunge icona e voce **ASCII Zoo** nel menu delle applicazioni, lo fa partire all'accesso e lo avvia.
+
+L'icona a forma di koi compare **nella barra in alto**, con lo stesso menu delle altre versioni (al posto di "Avvia con Windows" c'è **Apri al login**). Per aggiornare si rilancia lo stesso comando; per togliere tutto:
+
+```
+bash ascii-zoo/linux/install.sh --disinstalla
+```
+
+- **Ubuntu** mostra le icone nella barra in alto di serie (estensione *Ubuntu AppIndicators*). Su GNOME senza Ubuntu (Fedora, Debian…) serve l'estensione *AppIndicator and KStatusNotifierItem Support*: lo script avvisa se manca.
+- **Wayland.** Wayland non permette a un programma normale di mettersi al posto dello sfondo, quindi ASCII Zoo passa da XWayland (`GDK_BACKEND=x11`) e usa una finestra di tipo "desktop", sotto tutte le altre e su tutti gli spazi di lavoro. I clic la attraversano e arrivano alle icone del desktop.
+- **Cosa tocca:** `~/.local/bin/ascii-zoo`, `~/.local/share/applications/ascii-zoo.desktop`, l'icona in `~/.local/share/icons`, `~/.config/autostart/ascii-zoo.desktop` e le impostazioni in `~/.config/AsciiZoo/config.json`. Non si collega a internet.
+- Su Linux ci sono la pausa a batteria e i widget (CPU, RAM, batteria da `/proc` e `/sys`); le pause "schermo intero" e "finestre che coprono il desktop" per ora ci sono solo su Windows.
 
 ## Nuova scheda per Firefox
 
