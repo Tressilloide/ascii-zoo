@@ -19,7 +19,7 @@ use tray_icon::{TrayIcon, TrayIconBuilder};
 use windows::core::{w, BOOL};
 use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    EnumDisplayMonitors, GetMonitorInfoW, MonitorFromPoint, HDC, HMONITOR, MONITORINFO, MONITORINFOEXW, MONITOR_DEFAULTTONEAREST,
+    EnumDisplayMonitors, GetMonitorInfoW, MonitorFromPoint, MonitorFromRect, HDC, HMONITOR, MONITORINFO, MONITORINFOEXW, MONITOR_DEFAULTTONEAREST,
     MONITOR_DEFAULTTOPRIMARY,
 };
 use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
@@ -67,6 +67,8 @@ struct Screen {
     /// nome del monitor ("\\.\DISPLAY1"): le impostazioni per schermo si legano a questo
     id: String,
     paused: bool,
+    /// ultimi margini mandati alla pagina (pixel fisici coperti dalla barra delle applicazioni)
+    margini: Option<[i32; 4]>,
 }
 
 impl Screen {
@@ -142,6 +144,36 @@ impl App {
         if self.core.cfg.widget_statistiche && self.screens.iter().any(|s| !s.paused) {
             let v = self.stats.leggi();
             self.js(&shared::js_statistiche(&v));
+        }
+    }
+
+    /// Quanto della parte di schermo coperta dallo sfondo è occupato dalla barra delle
+    /// applicazioni (area di lavoro più piccola del monitor): lo si dice alla pagina,
+    /// così i widget non ci finiscono sotto. Si manda solo quando cambia.
+    fn check_margini(&mut self) {
+        for s in &mut self.screens {
+            let r = s.rect;
+            let (m, scala) = unsafe {
+                let mon = MonitorFromRect(&r, MONITOR_DEFAULTTONEAREST);
+                let mut mi = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
+                if !GetMonitorInfoW(mon, &mut mi).as_bool() {
+                    continue;
+                }
+                let w = mi.rcWork;
+                let (mut dx, mut dy) = (96u32, 96u32);
+                let _ = GetDpiForMonitor(mon, MDT_EFFECTIVE_DPI, &mut dx, &mut dy);
+                let m = [w.top - r.top, r.right - w.right, r.bottom - w.bottom, w.left - r.left].map(|v| v.max(0));
+                (m, dx.max(48) as f64 / 96.0)
+            };
+            if s.margini == Some(m) {
+                continue;
+            }
+            s.margini = Some(m);
+            let c = m.map(|v| (v as f64 / scala).round());
+            s.js(&format!(
+                "window.zooSetting && zooSetting('margini', {{alto: {}, destra: {}, basso: {}, sinistra: {}}})",
+                c[0], c[1], c[2], c[3]
+            ));
         }
     }
 
@@ -242,10 +274,16 @@ impl App {
             self.rebuild();
         }
         if PAGE_READY.swap(false, Ordering::SeqCst) {
+            // una pagina (ri)caricata non sa niente: si rimanda tutto, margini compresi
+            for s in &mut self.screens {
+                s.margini = None;
+            }
             self.push_settings();
+            self.check_margini();
         }
         if self.ticks % 8 == 0 {
             self.check_power();
+            self.check_margini();
         }
     }
 }
@@ -319,7 +357,7 @@ unsafe fn make_screen(hinst: HINSTANCE, rect: RECT, id: String) -> Option<Screen
         })
         .build(&Host(hwnd));
     match built {
-        Ok(webview) => Some(Screen { webview, hwnd, parent: embed.parent, rect, id, paused: false }),
+        Ok(webview) => Some(Screen { webview, hwnd, parent: embed.parent, rect, id, paused: false, margini: None }),
         Err(_) => {
             let _ = DestroyWindow(hwnd);
             None

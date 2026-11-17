@@ -194,10 +194,12 @@ h1 {
   color: var(--ink-dim); font-size: 12px; line-height: 1.35;
   text-shadow: 0 0 8px var(--bg), 0 0 3px var(--bg);
 }
-.widgets[data-angolo="basso-destra"] { right: 24px; bottom: 24px; justify-items: end; }
-.widgets[data-angolo="basso-sinistra"] { left: 24px; bottom: 24px; }
-.widgets[data-angolo="alto-destra"] { right: 24px; top: 24px; justify-items: end; }
-.widgets[data-angolo="alto-sinistra"] { left: 24px; top: 24px; }
+/* --m-*: spazio occupato da barra delle applicazioni o barra dei menu, inviato dal programma */
+.widgets { --gap: 24px; }
+.widgets[data-angolo="basso-destra"] { right: calc(var(--gap) + var(--m-destra, 0px)); bottom: calc(var(--gap) + var(--m-basso, 0px)); justify-items: end; }
+.widgets[data-angolo="basso-sinistra"] { left: calc(var(--gap) + var(--m-sinistra, 0px)); bottom: calc(var(--gap) + var(--m-basso, 0px)); }
+.widgets[data-angolo="alto-destra"] { right: calc(var(--gap) + var(--m-destra, 0px)); top: calc(var(--gap) + var(--m-alto, 0px)); justify-items: end; }
+.widgets[data-angolo="alto-sinistra"] { left: calc(var(--gap) + var(--m-sinistra, 0px)); top: calc(var(--gap) + var(--m-alto, 0px)); }
 .widgets pre { margin: 0; font: inherit; white-space: pre; }
 .widgets b { color: var(--ink); font-weight: 500; }
 .widgets i { color: var(--accent); font-style: normal; }
@@ -2051,6 +2053,15 @@ h1 {
 
   window.zooSetting = function (name, val) {
     if (name === 'widget') { impostaWidget(val); return; }
+    if (name === 'margini') {
+      // pixel CSS coperti da barre di sistema ai quattro lati: i widget restano fuori
+      var mg = asObject(val);
+      ['alto', 'destra', 'basso', 'sinistra'].forEach(function (k) {
+        var v = Math.max(0, Math.min(400, +mg[k] || 0));
+        wbox.style.setProperty('--m-' + k, v + 'px');
+      });
+      return;
+    }
     if (name === 'statistiche') { impostaStats(val); return; }
     if (name === 'nomi') { zoo.setNames(asObject(val)); return; }
     if (name === 'rotazione') {
