@@ -50,7 +50,7 @@ enum Evento {
 
 /// Clic sul desktop. Sotto Wayland un programma non vede i clic fatti sulle altre finestre,
 /// e su Ubuntu le icone del desktop (DING) stanno in una finestra a tutto schermo sopra lo
-/// sfondo: i clic li vede solo GNOME Shell. L'estensione `zoo-clic@tressilloide.github.io`
+/// sfondo: i clic li vede solo GNOME Shell. L'estensione `zoo-click@tressilloide.github.io`
 /// (linux/gnome) aspetta che questo nome compaia sul bus di sessione e, a ogni clic sinistro
 /// su una zona del desktop, chiama Clic(x, y, larghezza, altezza): il punto e le dimensioni
 /// dello schermo intero di GNOME. Il nome lo si tiene solo con "Clic sul desktop" acceso,

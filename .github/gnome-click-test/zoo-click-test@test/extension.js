@@ -1,4 +1,4 @@
-// Solo per la prova automatica (.github/prova-clic-gnome/prova.sh): simula clic con un
+// Solo per la prova automatica (.github/gnome-click-test/run.sh): simula clic con un
 // mouse virtuale di Clutter, come li farebbe una persona.
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';

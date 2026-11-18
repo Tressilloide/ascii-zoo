@@ -24,8 +24,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Lo sfondo incorporato è uguale a sfondo/index.html
-        run: cmp sfondo/index.html app/assets/ascii-zoo-sfondo.html
+      - name: Lo sfondo incorporato è uguale a wallpaper/index.html
+        run: cmp wallpaper/index.html app/assets/ascii-zoo-wallpaper.html
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -184,8 +184,8 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      - name: Lo sfondo incorporato è uguale a sfondo/index.html
-        run: cmp sfondo/index.html app/assets/ascii-zoo-sfondo.html
+      - name: Lo sfondo incorporato è uguale a wallpaper/index.html
+        run: cmp wallpaper/index.html app/assets/ascii-zoo-wallpaper.html
 
       - name: Rust
         run: |
@@ -302,7 +302,7 @@ jobs:
           gnome-shell --version
 
       - name: Prova - clic simulati
-        run: bash .github/prova-clic-gnome/prova.sh
+        run: bash .github/gnome-click-test/run.sh
 
   # La riserva di linux/install.sh: se la Release non ha il programma per Linux (qui un
   # indirizzo dove non c'è niente) compila dal sorgente, cioè questo commit. Lo si esegue
@@ -313,8 +313,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Lo sfondo incorporato è uguale a sfondo/index.html
-        run: cmp sfondo/index.html app/assets/ascii-zoo-sfondo.html
+      - name: Lo sfondo incorporato è uguale a wallpaper/index.html
+        run: cmp wallpaper/index.html app/assets/ascii-zoo-wallpaper.html
 
       - name: Estensione di GNOME per il clic sul desktop - sintassi
         run: |

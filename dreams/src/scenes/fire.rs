@@ -2,7 +2,7 @@
 //! e la legna in basso.
 
 use super::Scena;
-use crate::griglia::{da_rampa, rumore, scala, Caso, Griglia};
+use crate::grid::{da_rampa, rumore, scala, Caso, Griglia};
 
 const COLORI: [[u8; 3]; 6] = [[60, 8, 4], [170, 30, 8], [235, 90, 20], [255, 160, 40], [255, 225, 120], [255, 250, 235]];
 

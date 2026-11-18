@@ -17,16 +17,16 @@
 //!     opzioni: --scena id  --secondi n  --dim 1920x1080  --senza-orologio
 
 mod config;
-mod griglia;
-mod orologio;
-mod pittore;
-mod regia;
-mod scene;
+mod grid;
+mod clock;
+mod painter;
+mod director;
+mod scenes;
 #[cfg(windows)]
 mod win;
 
 use config::Config;
-use orologio::Ora;
+use clock::Ora;
 
 /// true se Windows ha lanciato il programma come salvaschermo: `/s`, `/p`, `/c`
 /// (anche `-s` o `/s:...`), oppure senza argomenti ma da un file `.scr`
@@ -182,9 +182,9 @@ fn senza_finestra(args: &[String]) -> Result<(), String> {
         })
         .unwrap_or((1920usize, 1080usize));
 
-    let pittore = pittore::Pittore::new(h / cfg.righe as usize);
+    let pittore = painter::Pittore::new(h / cfg.righe as usize);
     let (gw, gh) = pittore.misura(w, h);
-    let mut regia = regia::Regia::new(gw, gh, &cfg, 7);
+    let mut regia = director::Regia::new(gw, gh, &cfg, 7);
     let mut buf = vec![0u32; w * h];
     let fps = 30.0;
     let n = (secondi * fps) as usize;

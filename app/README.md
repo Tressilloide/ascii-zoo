@@ -1,6 +1,6 @@
 # ASCII Zoo — programma per Windows, macOS e Linux (Rust)
 
-Mette lo sfondo animato (`sfondo/index.html`) dietro le icone del desktop, su tutti gli schermi.
+Mette lo sfondo animato (`wallpaper/index.html`) dietro le icone del desktop, su tutti gli schermi.
 
 ## Cosa fa
 - Sfondo HTML incorporato nell'eseguibile, mostrato con una WebView (WebView2 su Windows,
@@ -115,8 +115,8 @@ Nel workflow:
   questo commit; poi avvia il programma sotto Xvfb, prova il comando da una riga e la
   disinstallazione.
 
-> Lo sfondo è una copia in `assets/`: dopo aver modificato `sfondo/index.html`
-> (nella radice della repo) copialo in `assets/ascii-zoo-sfondo.html` e ricompila.
+> Lo sfondo è una copia in `assets/`: dopo aver modificato `wallpaper/index.html`
+> (nella radice della repo) copialo in `assets/ascii-zoo-wallpaper.html` e ricompila.
 > La build su GitHub fallisce se le due copie sono diverse.
 
 ## Pubblicare una versione

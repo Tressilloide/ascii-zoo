@@ -9,7 +9,7 @@ use crate::config::{
 };
 use crate::dialog;
 
-pub static HTML: &str = include_str!("../assets/ascii-zoo-sfondo.html");
+pub static HTML: &str = include_str!("../assets/ascii-zoo-wallpaper.html");
 
 /// indirizzo della pagina: wry su Windows trasforma "zoo://" in http://zoo.localhost/
 #[cfg(windows)]

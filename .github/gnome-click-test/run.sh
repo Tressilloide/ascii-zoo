@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Prova dell'estensione per il clic sul desktop (linux/gnome) in un GNOME Shell senza
 # schermo (--headless) con le icone di DING, come su Ubuntu. Al posto di ASCII Zoo c'è
-# finto-zoo.py, che prende lo stesso nome su D-Bus e scrive le chiamate Clic che riceve;
-# zoo-prova-clic@test simula i clic con un mouse virtuale: due sul desktop (sopra DING),
+# fake-zoo.py, che prende lo stesso nome su D-Bus e scrive le chiamate Clic che riceve;
+# zoo-click-test@test simula i clic con un mouse virtuale: due sul desktop (sopra DING),
 # uno su una finestra normale, uno sulla barra in alto e uno per chiudere il menu che
 # quel clic ha aperto. Devono arrivare solo i primi due.
 #
-#   bash .github/prova-clic-gnome/prova.sh
+#   bash .github/gnome-click-test/run.sh
 #
 # Serve gnome-shell 45 o successivo con DING (Ubuntu: gnome-shell-extension-desktop-icons-ng),
 # zenity, python3-gi. Tutto (impostazioni, bus di sessione) sta in una cartella temporanea.
@@ -18,7 +18,7 @@ trap 'rm -rf "$T"' EXIT
 mkdir -p "$T"/{home/Desktop,config,data/gnome-shell/extensions,cache,run}
 chmod 700 "$T/run"
 echo ciao > "$T/home/Desktop/prova.txt"
-cp -r "$REPO/linux/gnome/zoo-clic@tressilloide.github.io" "$QUI/zoo-prova-clic@test" "$T/data/gnome-shell/extensions/"
+cp -r "$REPO/linux/gnome/zoo-click@tressilloide.github.io" "$QUI/zoo-click-test@test" "$T/data/gnome-shell/extensions/"
 ver=$(gnome-shell --version | grep -oE '[0-9]+' | head -n1)
 for d in "$T"/data/gnome-shell/extensions/*/; do
   # la versione di GNOME in uso, come fa install.sh
@@ -26,9 +26,9 @@ for d in "$T"/data/gnome-shell/extensions/*/; do
 done
 
 cat > "$T/sessione.sh" <<FINE
-python3 "$QUI/finto-systemd.py" &
-python3 "$QUI/finto-zoo.py" > "$T/clic.log" 2>&1 &
-gsettings set org.gnome.shell enabled-extensions "['ding@rastersoft.com', 'zoo-clic@tressilloide.github.io', 'zoo-prova-clic@test']"
+python3 "$QUI/fake-systemd.py" &
+python3 "$QUI/fake-zoo.py" > "$T/clic.log" 2>&1 &
+gsettings set org.gnome.shell enabled-extensions "['ding@rastersoft.com', 'zoo-click@tressilloide.github.io', 'zoo-click-test@test']"
 gsettings set org.gnome.desktop.interface enable-animations false
 timeout 45 gnome-shell --headless --wayland --virtual-monitor 1920x1080 > "$T/shell.log" 2>&1 || true
 FINE

@@ -19,9 +19,9 @@ use windows::Win32::UI::Input::KeyboardAndMouse::VK_ESCAPE;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 use crate::config::{Config, MINUTI, RIGHE};
-use crate::pittore::Pittore;
-use crate::regia::Regia;
-use crate::scene::SCENE;
+use crate::painter::Pittore;
+use crate::director::Regia;
+use crate::scenes::SCENE;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Modo {

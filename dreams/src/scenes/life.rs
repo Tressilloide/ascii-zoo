@@ -3,7 +3,7 @@
 //! Se il mondo si ferma, arriva una pioggia di nuove cellule.
 
 use super::Scena;
-use crate::griglia::{scala, Caso, Griglia};
+use crate::grid::{scala, Caso, Griglia};
 
 const ETA: [[u8; 3]; 5] = [[120, 255, 230], [90, 220, 120], [230, 230, 90], [255, 140, 80], [230, 90, 200]];
 

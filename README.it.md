@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/anteprima.gif" alt="Farfalle ASCII che volano sul prato fiorito intorno all'orologio: due sono posate sulle cifre" width="800">
+  <img src="docs/preview.gif" alt="Farfalle ASCII che volano sul prato fiorito intorno all'orologio: due sono posate sulle cifre" width="800">
 </p>
 
 ---
@@ -18,7 +18,7 @@
 Sette specie, una alla volta, ognuna con il suo ambiente. Di serie lo sfondo passa alla successiva ogni 2 minuti; dal programma per Windows si sceglie ogni quanto (da 30 secondi a un'ora) e quali animali far girare. Quando il PC è in carica restano le koi nel loro stagno (si può disattivare).
 
 <p align="center">
-  <img src="docs/animali.png" alt="Le sette specie, ognuna nel suo ambiente: farfalle sul prato fiorito, meduse tra le bolle, libellule sulle canne, koi nello stagno, rane nel prato con sassi e lucciole, aironi con i nidi, granchi sulla sabbia; più l'orologio" width="100%">
+  <img src="docs/animals.png" alt="Le sette specie, ognuna nel suo ambiente: farfalle sul prato fiorito, meduse tra le bolle, libellule sulle canne, koi nello stagno, rane nel prato con sassi e lucciole, aironi con i nidi, granchi sulla sabbia; più l'orologio" width="100%">
 </p>
 
 | Specie | Come si muove | L'ambiente | Con l'orologio |
@@ -60,12 +60,12 @@ Riquadri di solo testo, nello stesso stile degli animali, in un angolo dello sch
 - **CPU, RAM e batteria**, aggiornati ogni 2 secondi (`bat+` = in carica). Su macOS CPU e RAM.
 - **Posizione**: uno dei quattro angoli; **Schermo**: il principale, uno a scelta o tutti.
 
-Nel browser si vedono con dati di prova aprendo `sfondo/index.html?widget=demo`.
+Nel browser si vedono con dati di prova aprendo `wallpaper/index.html?widget=demo`.
 
 ## L'orologio
 
 <p align="center">
-  <img src="docs/sfondo-koi.png" alt="Lo sfondo intero su uno schermo ultrawide: koi nello stagno con le ninfee intorno all'orologio 08:17, con KARPISA" width="100%">
+  <img src="docs/koi-wallpaper.png" alt="Lo sfondo intero su uno schermo ultrawide: koi nello stagno con le ninfee intorno all'orologio 08:17, con KARPISA" width="100%">
 </p>
 
 - **Sette segmenti** disegnati con gli stessi caratteri degli animali; i segmenti spenti restano appena visibili, come su un display LCD.
@@ -78,30 +78,32 @@ Nel browser si vedono con dati di prova aprendo `sfondo/index.html?widget=demo`.
 Le dimensioni si adattano allo schermo: funziona anche in verticale e su schermi piccoli.
 
 <p align="center">
-  <img src="docs/schermo-verticale.png" alt="Lo sfondo su uno schermo verticale 1080×1920 con le meduse e le bolle" width="300">
+  <img src="docs/vertical-screen.png" alt="Lo sfondo su uno schermo verticale 1080×1920 con le meduse e le bolle" width="300">
 </p>
 
 ## Struttura
 
 ```
 ascii-zoo/
-├── sfondo/                  sfondo animato (anche pronto per Lively Wallpaper)
+├── wallpaper/               sfondo animato (anche pronto per Lively Wallpaper)
 │   ├── index.html           tutto in un file: motore, orologio, carattere incorporato
 │   ├── LivelyInfo.json      descrizione del pacchetto per Lively
 │   ├── LivelyProperties.json  impostazioni in Lively (orologio al centro)
 │   └── thumbnail.jpg        miniatura nella libreria di Lively
 ├── app/                     programma in Rust per Windows, macOS e Linux
 │   ├── src/                 finestre dietro le icone, menu, nomi, rotazione, pause
-│   ├── assets/              copia di sfondo/index.html incorporata nell'eseguibile
+│   ├── assets/              copia di wallpaper/index.html incorporata nell'eseguibile
 │   ├── macos/               Info.plist dell'app per macOS
 │   └── build.rs, app.manifest   aspetto moderno della finestrella dei nomi
+├── dreams/                  screensaver per Windows: motore nativo con 6 scene (stelle, pioggia, fuoco…)
+│   └── src/scenes/          una scena per file
 ├── linux/                   install.sh (installazione con un comando) e l'icona
 │   └── gnome/               estensione di GNOME Shell per il clic sul desktop
 ├── firefox/                 estensione "nuova scheda" per Firefox
 │   ├── manifest.json
 │   ├── index.html, app.js, zoo.js, style.css, icon.svg
 │   ├── fonts/               IBM Plex Mono (SIL OFL 1.1)
-│   └── LEGGIMI.txt
+│   └── README.txt
 └── docs/                    immagini di questo README
 ```
 
@@ -132,7 +134,7 @@ Dalla pagina [**Releases**](https://github.com/Tressilloide/ascii-zoo/releases/l
 - **"Windows ha protetto il PC".** L'exe non è firmato, quindi al primo avvio SmartScreen lo blocca: **Ulteriori informazioni → Esegui comunque**.
 - **Aggiornare.** Scarica l'exe nuovo e avvialo, anche da un'altra cartella: chiude da solo la versione che sta girando (che rimette lo sfondo di Windows) e prende il suo posto. Se **Avvia con Windows** è attivo, da quel momento all'accesso parte il nuovo. L'exe vecchio non lo cancella, perché l'hai messo tu: se è in un'altra cartella toglilo a mano.
 - **Cosa tocca sul PC.** Scrive solo `%APPDATA%\AsciiZoo\config.json` (le impostazioni) e, se attivi **Avvia con Windows**, il valore `AsciiZoo` nella chiave `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (che una versione nuova, se il valore c'è, fa puntare a sé). Non si collega a internet: lo sfondo è dentro l'exe. Per **Clic sul desktop agli animali** usa un hook del mouse di Windows (`WH_MOUSE_LL`): legge solo dove si preme il tasto sinistro, lascia sempre passare il clic e non registra niente; si spegne togliendo la spunta dal menu. Un programma non firmato che si aggancia al desktop e si mette in avvio automatico può far scattare qualche antivirus.
-- **Senza eseguire niente.** Lo sfondo è solo HTML: `sfondo/index.html` si apre in qualsiasi browser (vedi sotto).
+- **Senza eseguire niente.** Lo sfondo è solo HTML: `wallpaper/index.html` si apre in qualsiasi browser (vedi sotto).
 
 Per compilarlo da sé: [`app/README.md`](app/README.md).
 
@@ -140,7 +142,7 @@ Per compilarlo da sé: [`app/README.md`](app/README.md).
 
 Serve [Lively Wallpaper](https://www.rocksdanister.com/lively/) (gratuito, anche dal Microsoft Store).
 
-**Dall'app.** In Lively aggiungi un nuovo sfondo con il pulsante **+**, scegli il file `sfondo/index.html` e applicalo. Con più schermi puoi applicarlo a ognuno.
+**Dall'app.** In Lively aggiungi un nuovo sfondo con il pulsante **+**, scegli il file `wallpaper/index.html` e applicalo. Con più schermi puoi applicarlo a ognuno.
 
 **Da riga di comando** (provato con Lively 2.5.6 dal Microsoft Store):
 
@@ -156,7 +158,7 @@ Da riga di comando Lively accetta solo una cartella con `LivelyInfo.json`: un `.
 
 ### Provarlo nel browser
 
-Apri `sfondo/index.html` in un browser qualsiasi. Aggiungendo il nome di una specie dopo `#` resta fissa quella, senza cambio ogni 2 minuti:
+Apri `wallpaper/index.html` in un browser qualsiasi. Aggiungendo il nome di una specie dopo `#` resta fissa quella, senza cambio ogni 2 minuti:
 
 ```
 index.html#koi      index.html#meduse      index.html#granchi
@@ -214,8 +216,8 @@ curl -fsSL https://raw.githubusercontent.com/Tressilloide/ascii-zoo/main/linux/i
 - **Se apt si ferma** con `unmet dependencies`: su Ubuntu capita dopo un aggiornamento di versione, quando un pacchetto resta a una build poi ritirata dall'archivio (per esempio `libbz2-1.0 1.0.8-6ubuntu0.1`) e il suo `-dev` chiede la versione dell'archivio. Lo script lo riconosce, simula il downgrade dei pacchetti interessati e, se non toglie niente, stampa il comando da lanciare; il downgrade non lo fa da solo, perché se trascinasse via altri pacchetti potrebbe togliere il desktop.
 - **Ubuntu** mostra le icone nella barra in alto di serie (estensione *Ubuntu AppIndicators*). Su GNOME senza Ubuntu (Fedora, Debian…) serve l'estensione *AppIndicator and KStatusNotifierItem Support*: lo script avvisa se manca.
 - **Wayland.** Wayland non permette a un programma normale di mettersi al posto dello sfondo, quindi ASCII Zoo passa da XWayland (`GDK_BACKEND=x11`) e usa una finestra di tipo "desktop", sotto tutte le altre e su tutti gli spazi di lavoro. I clic la attraversano e arrivano alle icone del desktop.
-- **Clic sul desktop.** Sotto Wayland un programma normale non vede i clic fatti sulle altre finestre, e su Ubuntu le icone del desktop (DING) stanno in una finestra a tutto schermo sopra lo sfondo. Su GNOME 45 o successivo (Ubuntu 23.10 e seguenti, Fedora 39 e seguenti…) lo script mette allora una piccola estensione di GNOME Shell, [`zoo-clic@tressilloide.github.io`](linux/gnome/zoo-clic@tressilloide.github.io/extension.js): quando premi il tasto sinistro sul desktop (anche sopra le icone di DING; non sulle finestre, sulla barra in alto o per chiudere un menu) passa il punto ad ASCII Zoo, che dà da mangiare alle koi o fa scappare gli altri animali. Non blocca né cambia il clic e non registra niente. GNOME carica le estensioni nuove solo all'accesso, quindi **funziona dal prossimo accesso**. Lavora solo mentre ASCII Zoo è acceso con **Clic sul desktop agli animali** spuntato, e si ferma quando non tocchi mouse e tastiera per 2 secondi. Con altri desktop o con GNOME più vecchio il clic sul desktop non c'è; lo sfondo funziona lo stesso.
-- **Cosa tocca:** `~/.local/bin/ascii-zoo`, `~/.local/share/applications/ascii-zoo.desktop`, l'icona in `~/.local/share/icons`, `~/.config/autostart/ascii-zoo.desktop`, le impostazioni in `~/.config/AsciiZoo/config.json` e, su GNOME, l'estensione in `~/.local/share/gnome-shell/extensions/zoo-clic@tressilloide.github.io` (aggiunta a quelle attive, `enabled-extensions`); toglie solo le estensioni GNOME `ascii-zoo…@…` delle versioni vecchie (vedi il punto 6). Non si collega a internet.
+- **Clic sul desktop.** Sotto Wayland un programma normale non vede i clic fatti sulle altre finestre, e su Ubuntu le icone del desktop (DING) stanno in una finestra a tutto schermo sopra lo sfondo. Su GNOME 45 o successivo (Ubuntu 23.10 e seguenti, Fedora 39 e seguenti…) lo script mette allora una piccola estensione di GNOME Shell, [`zoo-click@tressilloide.github.io`](linux/gnome/zoo-click@tressilloide.github.io/extension.js): quando premi il tasto sinistro sul desktop (anche sopra le icone di DING; non sulle finestre, sulla barra in alto o per chiudere un menu) passa il punto ad ASCII Zoo, che dà da mangiare alle koi o fa scappare gli altri animali. Non blocca né cambia il clic e non registra niente. GNOME carica le estensioni nuove solo all'accesso, quindi **funziona dal prossimo accesso**. Lavora solo mentre ASCII Zoo è acceso con **Clic sul desktop agli animali** spuntato, e si ferma quando non tocchi mouse e tastiera per 2 secondi. Con altri desktop o con GNOME più vecchio il clic sul desktop non c'è; lo sfondo funziona lo stesso.
+- **Cosa tocca:** `~/.local/bin/ascii-zoo`, `~/.local/share/applications/ascii-zoo.desktop`, l'icona in `~/.local/share/icons`, `~/.config/autostart/ascii-zoo.desktop`, le impostazioni in `~/.config/AsciiZoo/config.json` e, su GNOME, l'estensione in `~/.local/share/gnome-shell/extensions/zoo-click@tressilloide.github.io` (aggiunta a quelle attive, `enabled-extensions`); toglie solo le estensioni GNOME `ascii-zoo…@…` delle versioni vecchie (vedi il punto 6). Non si collega a internet.
 - **Pause.** Lo sfondo si ferma a batteria, con lo schermo bloccato o spento (salvaschermo di GNOME, o quello standard di KDE e altri desktop) e, su GNOME, quando un'app a schermo intero lo copre del tutto: GNOME rallenta i fotogrammi delle finestre che non si vedono e ASCII Zoo se ne accorge. Le finestre solo massimizzate non bastano, perché la barra in alto resta visibile. Riparte entro mezzo secondo da quando torna visibile. Animarlo quando non si vede costerebbe CPU e GPU per niente: sotto Wayland ogni fotogramma passa da XWayland.
 - I widget ci sono tutti, con CPU, RAM e batteria lette da `/proc` e `/sys`.
 

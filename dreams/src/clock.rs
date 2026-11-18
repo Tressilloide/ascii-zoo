@@ -2,7 +2,7 @@
 //! (le celle sono alte il doppio), che si spostano piano rimbalzando sui bordi
 //! così niente resta fermo nello stesso punto dello schermo.
 
-use crate::griglia::Griglia;
+use crate::grid::Griglia;
 
 const CIFRE: [[&str; 7]; 11] = [
     ["01110", "10001", "10011", "10101", "11001", "10001", "01110"],

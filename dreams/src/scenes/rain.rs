@@ -1,7 +1,7 @@
 //! Pioggia di notte: gocce col vento, schizzi e cerchi nelle pozzanghere, ogni tanto un fulmine.
 
 use super::Scena;
-use crate::griglia::{rumore, Caso, Griglia};
+use crate::grid::{rumore, Caso, Griglia};
 
 struct Goccia {
     x: f32,

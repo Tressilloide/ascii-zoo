@@ -2,7 +2,7 @@
 //! JetBrains Mono rasterizzato una volta sola e un alone morbido intorno
 //! ai caratteri luminosi. Il lavoro è diviso a fasce di righe tra i core.
 
-use crate::griglia::Griglia;
+use crate::grid::Griglia;
 
 static FONT: &[u8] = include_bytes!("../assets/JetBrainsMono-Regular.ttf");
 

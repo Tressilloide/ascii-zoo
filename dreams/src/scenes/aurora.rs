@@ -2,7 +2,7 @@
 //! stelle che brillano e un lago che riflette tutto.
 
 use super::Scena;
-use crate::griglia::{frattale, rumore, scala, Caso, Griglia};
+use crate::grid::{frattale, rumore, scala, Caso, Griglia};
 
 const TENDA: [[u8; 3]; 4] = [[70, 255, 150], [40, 220, 190], [90, 140, 255], [190, 90, 230]];
 

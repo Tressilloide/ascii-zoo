@@ -2,9 +2,9 @@
 //! dissolvenza al nero e ci disegna sopra l'orologio.
 
 use crate::config::Config;
-use crate::griglia::Griglia;
-use crate::orologio::{Ora, Orologio};
-use crate::scene::{self, Scena};
+use crate::grid::Griglia;
+use crate::clock::{Ora, Orologio};
+use crate::scenes::{self, Scena};
 
 const DISSOLVENZA: f32 = 1.2;
 
@@ -22,15 +22,15 @@ pub struct Regia {
 
 impl Regia {
     pub fn new(w: usize, h: usize, cfg: &Config, seme: u64) -> Self {
-        let rotazione = !scene::esiste(&cfg.scena);
+        let rotazione = !scenes::esiste(&cfg.scena);
         let indice = if rotazione {
-            (seme as usize) % scene::SCENE.len()
+            (seme as usize) % scenes::SCENE.len()
         } else {
-            scene::SCENE.iter().position(|s| s.0 == cfg.scena).unwrap_or(0)
+            scenes::SCENE.iter().position(|s| s.0 == cfg.scena).unwrap_or(0)
         };
         Regia {
             griglia: Griglia::new(w, h),
-            scena: scene::crea(scene::SCENE[indice].0, w, h, seme),
+            scena: scenes::crea(scenes::SCENE[indice].0, w, h, seme),
             indice,
             t_scena: 0.0,
             durata: cfg.minuti.max(1) as f32 * 60.0,
@@ -51,9 +51,9 @@ impl Regia {
         if self.uscita > 0.0 {
             self.uscita -= dt;
             if self.uscita <= 0.0 {
-                self.indice = (self.indice + 1) % scene::SCENE.len();
+                self.indice = (self.indice + 1) % scenes::SCENE.len();
                 self.seme = self.seme.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-                self.scena = scene::crea(scene::SCENE[self.indice].0, self.griglia.w, self.griglia.h, self.seme);
+                self.scena = scenes::crea(scenes::SCENE[self.indice].0, self.griglia.w, self.griglia.h, self.seme);
                 self.t_scena = 0.0;
             }
         }

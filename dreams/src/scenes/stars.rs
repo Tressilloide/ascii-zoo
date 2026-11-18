@@ -1,7 +1,7 @@
 //! Volo tra le stelle: le stelle arrivano dal centro, crescono e lasciano una scia.
 
 use super::Scena;
-use crate::griglia::{mescola, Caso, Griglia};
+use crate::grid::{mescola, Caso, Griglia};
 
 struct Stella {
     x: f32,

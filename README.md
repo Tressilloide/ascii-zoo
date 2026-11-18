@@ -42,7 +42,7 @@ It's a small example of what two people and an AI can ship together in a short t
 ## Features
 
 <p align="center">
-  <img src="docs/animali.png" alt="The seven species, each in its own world: butterflies on a flower meadow, jellyfish among bubbles, dragonflies on reeds, koi in a pond, frogs in the grass with fireflies, herons with nests, crabs on the sand" width="100%">
+  <img src="docs/animals.png" alt="The seven species, each in its own world: butterflies on a flower meadow, jellyfish among bubbles, dragonflies on reeds, koi in a pond, frogs in the grass with fireflies, herons with nests, crabs on the sand" width="100%">
 </p>
 
 - **7 species, 7 worlds.** Butterflies on a flower meadow, jellyfish among rising bubbles, dragonflies on reeds, koi in a pond with lily pads, frogs and fireflies, herons with nests that hatch, crabs on the sand. They rotate automatically, or you pick one.
@@ -58,8 +58,8 @@ It's a small example of what two people and an AI can ship together in a short t
 
 | | | |
 |---|---|---|
-| ![Starfield](dreams/docs/stelle.png) **Starfield** | ![Rain and lightning](dreams/docs/pioggia.png) **Rain & lightning** | ![Campfire](dreams/docs/fuoco.png) **Campfire** |
-| ![Aurora](dreams/docs/aurora.png) **Aurora** | ![Game of Life](dreams/docs/vita.png) **Game of Life** | ![Night sea](dreams/docs/mare.png) **Night sea** |
+| ![Starfield](dreams/docs/stars.png) **Starfield** | ![Rain and lightning](dreams/docs/rain.png) **Rain & lightning** | ![Campfire](dreams/docs/fire.png) **Campfire** |
+| ![Aurora](dreams/docs/aurora.png) **Aurora** | ![Game of Life](dreams/docs/life.png) **Game of Life** | ![Night sea](dreams/docs/sea.png) **Night sea** |
 
 In the tray menu choose **Usa come screensaver…** (use as screensaver): Windows opens its screensaver settings with ASCII Zoo already picked. Choose the wait time, and tick *On resume, display logon screen* if you want the PC to lock. In **Settings** you pick the scene (or all of them in rotation), how often it changes, the character size and the big drifting clock.
 
@@ -110,7 +110,7 @@ Only the Windows executable built by GitHub Actions from a tagged release is sig
 
 ## Try it in your browser
 
-No install needed: open [`sfondo/index.html`](sfondo/index.html) in any browser. Add a species after `#` to keep it fixed:
+No install needed: open [`wallpaper/index.html`](wallpaper/index.html) in any browser. Add a species after `#` to keep it fixed:
 `index.html#koi`, `index.html#meduse` (jellyfish), `index.html#granchi` (crabs)…
 
 ## Build from source

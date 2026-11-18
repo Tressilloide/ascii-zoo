@@ -2,7 +2,7 @@
 //! il riflesso che tremola sulle onde e una barchetta a vela che attraversa.
 
 use super::Scena;
-use crate::griglia::{frattale, rumore, Caso, Griglia};
+use crate::grid::{frattale, rumore, Caso, Griglia};
 
 const BARCA: [&str; 4] = ["    |\\    ", "    | \\   ", "  __|__\\_ ", "  \\_____/ "];
 

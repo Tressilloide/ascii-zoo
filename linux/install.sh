@@ -25,7 +25,7 @@
 #   3. lo copia in ~/.local/bin (al posto della versione di prima, che ferma), mette icona e
 #      voce nel menu delle applicazioni, lo fa partire all'accesso e lo avvia: l'icona a forma
 #      di koi compare nella barra in alto
-#   4. su GNOME 45 o successivo mette la piccola estensione zoo-clic@tressilloide.github.io
+#   4. su GNOME 45 o successivo mette la piccola estensione zoo-click@tressilloide.github.io
 #      (linux/gnome), che passa ad ASCII Zoo i clic sul desktop: sotto Wayland un programma
 #      non li vede. GNOME la carica dal prossimo accesso
 #   5. se trova una versione vecchia fatta come estensione di GNOME Shell (uuid ascii-zoo…@…),
@@ -64,6 +64,7 @@ main() {
       rm -f "$BIN" "$MENU" "$ICONA" "$AUTOSTART"
       if command -v update-desktop-database >/dev/null; then update-desktop-database "$DATA/applications" 2>/dev/null || true; fi
       togli_estensione "$DATA"
+      togli_estensione "$DATA" "$ESTENSIONE_VECCHIA"
       togli_vecchie "$DATA"
       say "ASCII Zoo disinstallato. Le impostazioni restano in $CONF/AsciiZoo: cancellala a mano se non servono più."
       say "Rust (in ~/.cargo), se c'è, non l'ho toccato: se l'aveva installato questo script e non ti serve, 'rustup self uninstall'."
@@ -347,14 +348,17 @@ togli_vecchie() {
   fi
 }
 
-# Clic sul desktop su GNOME: l'estensione zoo-clic@… (vedi linux/gnome) vede i clic sul
+# Clic sul desktop su GNOME: l'estensione zoo-click@… (vedi linux/gnome) vede i clic sul
 # desktop, anche sopra le icone di DING, e li passa ad ASCII Zoo. L'uuid non comincia per
 # "ascii-zoo", se no togli_vecchie la prenderebbe per una versione vecchia dello sfondo.
 # GNOME carica le estensioni nuove solo all'accesso: la si mette in enabled-extensions e
 # funziona dal prossimo. Se l'utente l'ha spenta (disabled-extensions) resta spenta.
-ESTENSIONE=zoo-clic@tressilloide.github.io
+ESTENSIONE=zoo-click@tressilloide.github.io
+# nome della stessa estensione fino alla 0.4 (messa da questo script): si toglie
+ESTENSIONE_VECCHIA=zoo-clic@tressilloide.github.io
 installa_estensione() {
   local src="$1/$ESTENSIONE" data="$2" ver dest lista prima=""
+  togli_estensione "$data" "$ESTENSIONE_VECCHIA"
   command -v gnome-shell >/dev/null || return 0
   [ -f "$src/extension.js" ] || return 0
   ver=$(gnome-shell --version 2>/dev/null | grep -oE '[0-9]+' | head -n1 || true)
@@ -394,10 +398,11 @@ installa_estensione() {
 # "gnome-extensions disable", che la metterebbe anche in disabled-extensions: reinstallando
 # sembrerebbe spenta dall'utente.
 togli_estensione() {
-  local dest="$1/gnome-shell/extensions/$ESTENSIONE" lista nuova
+  local uuid="${2:-$ESTENSIONE}" dest lista nuova
+  dest="$1/gnome-shell/extensions/$uuid"
   [ -d "$dest" ] || return 0
-  if lista=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null) && [[ "$lista" == *"'$ESTENSIONE'"* ]]; then
-    nuova=$(printf '%s' "$lista" | sed -E "s/'${ESTENSIONE//./\\.}'(, )?//; s/, \]/]/")
+  if lista=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null) && [[ "$lista" == *"'$uuid'"* ]]; then
+    nuova=$(printf '%s' "$lista" | sed -E "s/'${uuid//./\\.}'(, )?//; s/, \]/]/")
     gsettings set org.gnome.shell enabled-extensions "$nuova" 2>/dev/null || true
   fi
   rm -rf -- "$dest"

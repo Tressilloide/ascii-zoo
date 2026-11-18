@@ -1,13 +1,13 @@
 //! Le scene. Ognuna riceve la griglia già pulita a ogni fotogramma e ci disegna sopra.
 
-use crate::griglia::Griglia;
+use crate::grid::Griglia;
 
 mod aurora;
-mod fuoco;
-mod mare;
-mod pioggia;
-mod stelle;
-mod vita;
+mod fire;
+mod sea;
+mod rain;
+mod stars;
+mod life;
 
 pub trait Scena {
     /// `dt` = secondi dall'ultimo fotogramma, `t` = secondi dall'inizio della scena
@@ -30,11 +30,11 @@ pub fn esiste(id: &str) -> bool {
 
 pub fn crea(id: &str, w: usize, h: usize, seme: u64) -> Box<dyn Scena> {
     match id {
-        "pioggia" => Box::new(pioggia::Pioggia::new(w, h, seme)),
-        "fuoco" => Box::new(fuoco::Fuoco::new(w, h, seme)),
+        "pioggia" => Box::new(rain::Pioggia::new(w, h, seme)),
+        "fuoco" => Box::new(fire::Fuoco::new(w, h, seme)),
         "aurora" => Box::new(aurora::Aurora::new(w, h, seme)),
-        "vita" => Box::new(vita::Vita::new(w, h, seme)),
-        "mare" => Box::new(mare::Mare::new(w, h, seme)),
-        _ => Box::new(stelle::Stelle::new(w, h, seme)),
+        "vita" => Box::new(life::Vita::new(w, h, seme)),
+        "mare" => Box::new(sea::Mare::new(w, h, seme)),
+        _ => Box::new(stars::Stelle::new(w, h, seme)),
     }
 }
