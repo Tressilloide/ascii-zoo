@@ -32,7 +32,7 @@ use tray_icon::{TrayIcon, TrayIconBuilder};
 use wry::{PageLoadEvent, WebView, WebViewBuilder, WebViewBuilderExtUnix};
 
 use crate::power;
-use crate::shared::{self, Core, Esito, Schermo, JS_START, JS_STOP, URL};
+use crate::shared::{self, zoo_log, Core, Esito, Schermo, JS_START, JS_STOP, URL};
 use crate::stats::Stats;
 
 /// ogni quanto si ricontrollano le pause: quando lo sfondo torna visibile riparte subito
@@ -224,6 +224,11 @@ impl App {
             let pause = batteria || bloccato || coperto;
             if pause != s.paused {
                 s.paused = pause;
+                zoo_log!(
+                    "schermo {}: {} (batteria {batteria}, bloccato {bloccato}, schermo intero {coperto})",
+                    s.id,
+                    if pause { "in pausa" } else { "riparte" }
+                );
                 let _ = s.webview.evaluate_script(if pause { JS_STOP } else { JS_START });
             }
         }
@@ -292,6 +297,9 @@ impl App {
                 .into_iter()
                 .filter_map(|(pos, size, scala, sc)| make_screen(target, proxy, pos, size, scala, sc.id))
                 .collect();
+            for s in &self.screens {
+                zoo_log!("schermo {}: {}×{} a {},{}, scala {}", s.id, s.size.width, s.size.height, s.pos.x, s.pos.y, s.scala);
+            }
         }
     }
 }

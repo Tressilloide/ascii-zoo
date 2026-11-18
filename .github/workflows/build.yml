@@ -86,10 +86,16 @@ jobs:
 
       - name: Prova - avvia l'app e fotografa lo schermo
         run: |
-          "build/ASCII Zoo.app/Contents/MacOS/ascii-zoo" &
+          ASCII_ZOO_LOG=1 "build/ASCII Zoo.app/Contents/MacOS/ascii-zoo" 2> app-macos.log &
           pid=$!
           sleep 20
           screencapture -x prova-macos.png || echo "::warning::screenshot non riuscito"
+          echo "--- log dell'app ---"; cat app-macos.log
+          # il desktop del runner è vuoto e lo sfondo si vede: se risulta in pausa, lo stato
+          # di occlusione di macOS non dice quello che ci si aspetta
+          if grep -q "in pausa" app-macos.log; then
+            echo "::warning::su macOS lo sfondo è in pausa sul desktop vuoto del runner (log qui sopra)"
+          fi
           if ! kill -0 "$pid" 2>/dev/null; then
             echo "::error::l'app si è chiusa da sola"
             exit 1
@@ -146,7 +152,7 @@ jobs:
           openbox &
           sleep 1
           cat > prova.sh <<'FINE'
-          ~/.local/bin/ascii-zoo > app.log 2>&1 &
+          ASCII_ZOO_LOG=1 ~/.local/bin/ascii-zoo > app.log 2>&1 &
           pid=$!
           sleep 20
           # una finestra normale: deve restare sopra lo sfondo

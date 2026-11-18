@@ -46,6 +46,22 @@ pub const ANGOLI: [(&str, &str); 4] = [
     ("alto-sinistra", "In alto a sinistra"),
 ];
 
+/// ASCII_ZOO_LOG=1: scrive su stderr cosa succede (pause, schermi, clic), per le prove e la CI
+pub fn log_attivo() -> bool {
+    static ATTIVO: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ATTIVO.get_or_init(|| std::env::var_os("ASCII_ZOO_LOG").is_some_and(|v| !v.is_empty() && v != "0"))
+}
+
+/// una riga di log, solo con ASCII_ZOO_LOG=1
+macro_rules! zoo_log {
+    ($($a:tt)*) => {
+        if $crate::shared::log_attivo() {
+            eprintln!("ascii-zoo: {}", format_args!($($a)*));
+        }
+    };
+}
+pub(crate) use zoo_log;
+
 pub const JS_STOP: &str = "window.asciiZoo && window.asciiZoo.stop()";
 pub const JS_START: &str = "window.asciiZoo && window.asciiZoo.start()";
 

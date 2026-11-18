@@ -27,7 +27,7 @@
 Animated wallpapers are fun, but the apps that run them are often heavy, closed source or tied to a single OS.
 We wanted the opposite: a **tiny, fast, open-source** live wallpaper that looks good on any desktop.
 
-- **Light.** Under 1 MB on Windows, capped at 30 fps and redrawing only the cells that change (usually about 1 in 10). It pauses on battery, and on Windows also behind fullscreen apps and when windows cover the desktop.
+- **Light.** Under 1 MB on Windows, capped at 30 fps and redrawing only the cells that change (usually about 1 in 10). It pauses on battery and whenever nobody can see it (fullscreen apps, covered desktop, locked screen; details per OS in the [Italian README](README.it.md)).
 - **Private.** No internet, no telemetry, no account. The whole wallpaper is a single HTML file built into the app.
 - **Open.** MIT licensed, built in public, with every release compiled by GitHub Actions from the tagged source.
 

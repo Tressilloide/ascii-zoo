@@ -30,7 +30,10 @@ Mette lo sfondo animato (`sfondo/index.html`) dietro le icone del desktop, su tu
     sullo schermo dell'app; su macOS le app a schermo intero stanno in uno Spazio a parte) e
     **Pausa quando le finestre coprono il desktop** (schermo per schermo: ogni mezzo secondo
     si prova una griglia di punti, uno ogni 160 pixel circa; se nessuno cade sul desktop,
-    quello schermo si ferma e riparte appena il desktop torna a vedersi)
+    quello schermo si ferma e riparte appena il desktop torna a vedersi). Su macOS e Linux
+    le pause per "sfondo che non si vede" sono sempre attive: su macOS dallo stato di
+    occlusione della finestra, su Linux con lo schermo bloccato o spento e, su GNOME, con
+    un'app a schermo intero (la `Sonda` in `linux.rs`)
   - **Avvia con Windows** / **Apri al login**, **Ricarica sfondo**, **Esci**
 - Impostazioni salvate in `%APPDATA%\AsciiZoo\config.json` (Windows),
   `~/Library/Application Support/AsciiZoo/config.json` (macOS) o
@@ -38,6 +41,9 @@ Mette lo sfondo animato (`sfondo/index.html`) dietro le icone del desktop, su tu
 - Avvio automatico: valore `AsciiZoo` nella chiave `HKCU\…\Run` (Windows),
   `~/Library/LaunchAgents/io.github.tressilloide.asciizoo.plist` (macOS) o
   `~/.config/autostart/ascii-zoo.desktop` (Linux), solo se attivato.
+
+Con la variabile d'ambiente `ASCII_ZOO_LOG=1` il programma scrive su stderr cosa succede
+(schermi trovati, pause e ripartenze con il motivo): la CI la usa nelle prove su macOS e Linux.
 
 > Su un computer fisso (senza batteria) il sistema risulta sempre "in carica": con
 > **Koi nello stagno in carica** attivo lo sfondo mostra sempre le koi.

@@ -31,7 +31,7 @@ use windows::Win32::UI::HiDpi::{
 use windows::Win32::UI::WindowsAndMessaging::*;
 use wry::{PageLoadEvent, WebView, WebViewBuilder};
 
-use crate::shared::{self, Core, Esito, Schermo, JS_START, JS_STOP, URL};
+use crate::shared::{self, zoo_log, Core, Esito, Schermo, JS_START, JS_STOP, URL};
 use crate::stats::Stats;
 use crate::{desktop, power};
 
@@ -136,6 +136,7 @@ impl App {
             let pause = battery || full == Some(s.rect) || (coperto && unsafe { desktop_coperto(s.rect) });
             if pause != s.paused {
                 s.paused = pause;
+                zoo_log!("schermo {}: {}", s.id, if pause { "in pausa" } else { "riparte" });
                 s.js(if pause { JS_STOP } else { JS_START });
             }
         }
