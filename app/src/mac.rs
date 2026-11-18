@@ -332,6 +332,7 @@ impl App {
             // CoreGraphics ha l'origine in alto a sinistra dello schermo principale
             let alto = unsafe { CGDisplayBounds(CGMainDisplayID()) }.size.height;
             if !sul_desktop(x, alto - y) {
+                zoo_log!("clic a {x:.0},{y:.0}: non sul desktop (c'è una finestra, il Dock o la barra dei menu)");
                 return;
             }
             let (cx, cy) = (x - f.origin.x, f.origin.y + f.size.height - y);

@@ -128,11 +128,27 @@ jobs:
 
       - name: Prova - avvia l'app e fotografa lo schermo
         run: |
+          xcrun swiftc -O -o clic .github/macos-click-test/click.swift || echo "::warning::non si compila il simulatore di clic"
           ASCII_ZOO_LOG=1 "build/ASCII Zoo.app/Contents/MacOS/ascii-zoo" 2> app-macos.log &
           pid=$!
           sleep 20
           screencapture -x prova-macos.png || echo "::warning::screenshot non riuscito"
+          # clic simulati: sul desktop vuoto deve arrivare allo sfondo, sulla barra dei menu no
+          if [ -x ./clic ]; then
+            ./clic 400 400; sleep 1
+            ./clic 900 8; sleep 1
+            ./clic 400 400; sleep 1
+          fi
           echo "--- log dell'app ---"; cat app-macos.log
+          arrivati=$(grep -c "→ schermo" app-macos.log || true)
+          if grep -q "clic a 900,.*non sul desktop" app-macos.log && [ "$arrivati" = 2 ]; then
+            echo "clic sul desktop: arrivati i 2 sul desktop, scartato quello sulla barra dei menu"
+          elif [ "$arrivati" -gt 2 ]; then
+            echo "::error::su macOS un clic sulla barra dei menu è arrivato allo sfondo"
+            exit 1
+          else
+            echo "::warning::su macOS i clic simulati non sono arrivati come previsto ($arrivati sul desktop): il runner potrebbe scartare i clic simulati (permesso Accessibilità), vedi il log"
+          fi
           # il desktop del runner è vuoto e lo sfondo si vede: se risulta in pausa, lo stato
           # di occlusione di macOS non dice quello che ci si aspetta
           if grep -q "in pausa" app-macos.log; then
@@ -258,7 +274,16 @@ jobs:
           pid=$!
           sleep 20
           import -window root prova-linux-binario.png || echo "::warning::screenshot non riuscito"
+          # il clic sul desktop come lo manda l'estensione di GNOME (punto e dimensioni dello
+          # schermo intero di GNOME): deve arrivare allo sfondo, alla pagina
+          gdbus call --session --dest io.github.tressilloide.AsciiZoo --object-path /io/github/tressilloide/AsciiZoo \
+            --method io.github.tressilloide.AsciiZoo.Clic 960.0 540.0 1920.0 1080.0
+          sleep 1
           echo "--- log dell'app ---"; cat app.log
+          if ! grep -q "clic sul desktop: 960,540" app.log; then
+            echo "::error::il clic mandato via D-Bus non è arrivato allo sfondo"
+            exit 1
+          fi
           if ! kill -0 "$pid" 2>/dev/null; then
             echo "::error::l'app si è chiusa da sola"
             exit 1
@@ -284,19 +309,21 @@ jobs:
   # stesso nome D-Bus) devono arrivare solo quelli sul desktop.
   linux-gnome-clic:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
       # Senza -qq, così se si blocca si vede dove; man-db spento perché il suo trigger
-      # sui runner può durare minuti. Il limite di tempo evita i 20 minuti appesi.
+      # sui runner può durare minuti. A volte il mirror di Ubuntu va pianissimo (una volta
+      # 12 minuti per 150 pacchetti): limite di tempo largo e tentativi ripetuti.
       - name: GNOME Shell e le icone del desktop (DING)
-        timeout-minutes: 12
+        timeout-minutes: 25
         run: |
           echo "set man-db/auto-update false" | sudo debconf-communicate >/dev/null || true
           sudo rm -f /var/lib/man-db/auto-update
-          sudo apt-get update -q
+          sudo apt-get update -q -o Acquire::Retries=3
           sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
+            -o Acquire::Retries=3 -o Acquire::http::Timeout=30 \
             -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold \
             gnome-shell gnome-shell-extension-desktop-icons-ng xwayland zenity python3-gi dbus-x11 </dev/null
           gnome-shell --version
