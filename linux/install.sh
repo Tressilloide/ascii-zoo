@@ -57,7 +57,11 @@ main() {
     say "Installo le librerie necessarie con apt (può chiedere la password)"
     sudo apt-get update -qq </dev/null
     # shellcheck disable=SC2086
-    sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $PKG </dev/null
+    if ! sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $PKG </dev/null; then
+      # shellcheck disable=SC2086
+      spiega_apt $PKG
+      errore "apt non è riuscito a installare le librerie (vedi sopra)"
+    fi
   elif command -v dnf >/dev/null; then
     PKG="gcc gcc-c++ make pkgconf-pkg-config curl git webkit2gtk4.1-devel gtk3-devel libayatana-appindicator-gtk3-devel libxdo-devel zenity"
     say "Installo le librerie necessarie con dnf (può chiedere la password)"
@@ -139,6 +143,53 @@ ferma() {
   pkill -x -u "$(id -u)" ascii-zoo 2>/dev/null || true
   local _
   for _ in $(seq 20); do pgrep -x -u "$(id -u)" ascii-zoo >/dev/null || return 0; sleep 0.25; done
+}
+
+# Quando apt non riesce a installare le librerie, il caso più comune dopo un aggiornamento
+# di versione di Ubuntu: un pacchetto è installato a una build poi ritirata dall'archivio
+# (es. libbz2-1.0 1.0.8-6ubuntu0.1) e il suo -dev chiede la versione esatta che c'è
+# nell'archivio (1.0.8-6build2). Qui lo si riconosce e si dice come sistemarlo, con una
+# simulazione (senza sudo, non cambia niente). Il downgrade non lo fa lo script: se
+# trascina via altri pacchetti può togliere il desktop.
+spiega_apt() {
+  local sim dip pkg ver stato inst src bin bver
+  local -a vecchi=() famiglia=()
+  sim=$(LC_ALL=C apt-get -s install "$@" 2>&1 </dev/null || true)
+  # "Depends: libfoo (= 1.2-3)" (apt classico) o "Depends libfoo (= 1.2-3)" (solver3)
+  while IFS= read -r dip; do
+    pkg=${dip%% *}; pkg=${pkg%%:*}; ver=${dip#*"(= "}; ver=${ver%)}
+    stato=; inst=
+    IFS=' ' read -r stato inst < <(dpkg-query -W -f='${db:Status-Abbrev} ${Version}\n' "$pkg" 2>/dev/null | head -n1) || true
+    [ "${stato:-}" = ii ] && [ "${inst:-}" != "$ver" ] || continue
+    case " ${vecchi[*]} " in *" $pkg "*) continue ;; esac
+    vecchi+=("$pkg")
+    avviso "$pkg è installato alla versione $inst, ma le librerie da installare chiedono $ver"
+    # gli altri pacchetti dello stesso sorgente alla stessa versione vanno spostati insieme
+    src=$(dpkg-query -W -f='${source:Package}' "$pkg" 2>/dev/null | head -n1 || true)
+    while IFS=' ' read -r bin bver; do
+      [ "$bver" = "$inst" ] || continue
+      case " ${famiglia[*]} " in *" $bin=$ver "*) ;; *) famiglia+=("$bin=$ver") ;; esac
+    done < <(dpkg-query -W -f='${db:Status-Abbrev}|${binary:Package}|${source:Package}|${Version}\n' 2>/dev/null \
+               | awk -F'|' -v s="$src" '$1 ~ /^ii/ && $3 == s { print $2, $4 }')
+  done < <(printf '%s\n' "$sim" | grep -oE 'Depends:? [A-Za-z0-9.+:-]+ \(= [^)]+\)' | sed -E 's/^Depends:? //' | sort -u)
+
+  [ "${#famiglia[@]}" -gt 0 ] || return 0
+  avviso "Succede dopo un aggiornamento di versione di Ubuntu, quando una build viene ritirata dall'archivio."
+  avviso "Si sistema riportando questi pacchetti alla versione dell'archivio, tutti insieme: ${famiglia[*]}"
+  sim=$(LC_ALL=C apt-get -s install --allow-downgrades "${famiglia[@]}" "$@" 2>&1 </dev/null) || {
+    printf '%s\n' "$sim" | grep -E '^(E:| )' | head -n 15 >&2
+    avviso "Anche così apt non trova una soluzione (simulazione qui sopra): serve sistemarlo a mano."
+    return 0
+  }
+  local tolti
+  tolti=$(printf '%s\n' "$sim" | grep -c '^Remv' || true)
+  if [ "$tolti" -gt 0 ]; then
+    printf '%s\n' "$sim" | grep '^Remv' | head -n 15 >&2
+    avviso "La simulazione toglierebbe $tolti pacchetti (qui sopra): NON farlo, rischi di perdere il desktop. Serve sistemarlo a mano."
+  else
+    avviso "Ho simulato il downgrade: non toglie nessun pacchetto. Per farlo, e poi rilanciare questo script:"
+    printf '\n  sudo apt-get install --allow-downgrades %s %s\n\n' "${famiglia[*]}" "$*" >&2
+  fi
 }
 
 # voce .desktop comune a menu e avvio automatico
