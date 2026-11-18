@@ -18,7 +18,8 @@ pub struct Config {
     pub pausa_batteria: bool,
     /// ferma l'animazione quando un'app (gioco, video) è a schermo intero
     pub pausa_schermo_intero: bool,
-    /// ferma l'animazione di uno schermo quando le finestre ne coprono tutto il desktop (solo Windows)
+    /// ferma l'animazione di uno schermo quando le finestre ne coprono tutto il desktop (su Linux
+    /// non si distingue da un'app a schermo intero: basta una delle due)
     pub pausa_coperto: bool,
     /// nome dell'animale più grande, per specie (id della specie → nome; "" = nessuno)
     pub nomi: BTreeMap<String, String>,

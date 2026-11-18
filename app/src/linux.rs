@@ -247,15 +247,18 @@ impl App {
     }
 
     /// Pausa schermo per schermo: a batteria, con lo schermo bloccato o spento, con
-    /// un'app a schermo intero sopra lo sfondo.
+    /// un'app a schermo intero o finestre che coprono tutto lo sfondo. Da qui le due cose
+    /// non si distinguono (su Wayland non si vedono le finestre delle altre app): basta una
+    /// delle due voci del menu.
     fn check_pause(&mut self) {
         let cfg = &self.core.cfg;
         let batteria = cfg.pausa_batteria && self.last_ac == Some(false);
         let bloccato = schermo_bloccato(self.bus.as_ref());
         let display = gtk::gdk::Display::default();
+        let nascosto_conta = cfg.pausa_schermo_intero || cfg.pausa_coperto;
         for s in &mut self.screens {
-            // la sonda serve solo se lo schermo intero è l'unico motivo che resta
-            let coperto = if cfg.pausa_schermo_intero && !batteria && !bloccato {
+            // la sonda serve solo se lo sfondo coperto è l'unico motivo che resta
+            let coperto = if nascosto_conta && !batteria && !bloccato {
                 let (cx, cy) = s.centro_logico();
                 let refresh = display
                     .as_ref()
@@ -272,7 +275,7 @@ impl App {
             if pause != s.paused {
                 s.paused = pause;
                 zoo_log!(
-                    "schermo {}: {} (batteria {batteria}, bloccato {bloccato}, schermo intero {coperto})",
+                    "schermo {}: {} (batteria {batteria}, bloccato {bloccato}, coperto {coperto})",
                     s.id,
                     if pause { "in pausa" } else { "riparte" }
                 );

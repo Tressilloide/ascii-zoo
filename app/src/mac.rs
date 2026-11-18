@@ -78,6 +78,8 @@ struct Screen {
     /// vale come pausa (se per qualche motivo risultasse sempre coperta, per esempio
     /// dalla finestra trasparente delle icone del Finder, lo sfondo non resta fermo)
     visto: bool,
+    /// ultimi margini mandati alla pagina (barra dei menu, Dock), in punti
+    margini: Option<[i32; 4]>,
 }
 
 impl Screen {
@@ -95,6 +97,59 @@ impl Screen {
         }
         unsafe { &*ns }.occlusionState().contains(NSWindowOcclusionState::Visible)
     }
+
+    /// Quanto dello schermo coprono la barra dei menu e il Dock (in punti, come i pixel
+    /// CSS della pagina): `frame` contro `visibleFrame` dello schermo della finestra.
+    fn margini(&self) -> Option<[i32; 4]> {
+        let ns = self.window.ns_window() as *const NSWindow;
+        if ns.is_null() {
+            return None;
+        }
+        let schermo = unsafe { &*ns }.screen()?;
+        let (f, v) = (schermo.frame(), schermo.visibleFrame());
+        // Cocoa ha l'origine in basso a sinistra
+        let m = [
+            (f.origin.y + f.size.height) - (v.origin.y + v.size.height),
+            (f.origin.x + f.size.width) - (v.origin.x + v.size.width),
+            v.origin.y - f.origin.y,
+            v.origin.x - f.origin.x,
+        ];
+        Some(m.map(|x| x.round().max(0.0) as i32))
+    }
+}
+
+/// C'è un'app a schermo intero sul riquadro `f` (coordinate di Cocoa)? Lo è una finestra
+/// normale (livello 0) di un'altra app grande quanto tutto lo schermo: le app a schermo
+/// intero di macOS e i giochi. Una finestra solo ingrandita lascia fuori la barra dei menu.
+fn schermo_intero(f: NSRect) -> bool {
+    let mio = std::process::id() as f64;
+    let alto = unsafe { CGDisplayBounds(CGMainDisplayID()) }.size.height;
+    // lo stesso riquadro in coordinate di CoreGraphics (origine in alto a sinistra)
+    let (x, y) = (f.origin.x, alto - (f.origin.y + f.size.height));
+    let Some(lista) = (unsafe { Retained::from_raw(CGWindowListCopyWindowInfo(K_CG_WINDOW_LIST_ON_SCREEN_ONLY, 0)) })
+    else {
+        return false;
+    };
+    let numero = |d: &NSDictionary<NSString, AnyObject>, chiave: &NSString| -> Option<f64> {
+        d.objectForKey(chiave)?.downcast::<NSNumber>().ok().map(|n| n.doubleValue())
+    };
+    lista.iter().any(|d| {
+        if numero(&d, ns_string!("kCGWindowOwnerPID")) == Some(mio)
+            || numero(&d, ns_string!("kCGWindowLayer")).unwrap_or(-1.0) != 0.0
+            || numero(&d, ns_string!("kCGWindowAlpha")).is_some_and(|a| a <= 0.0)
+        {
+            return false;
+        }
+        let Some(b) = d.objectForKey(ns_string!("kCGWindowBounds")) else { return false };
+        let mut r = NSRect::ZERO;
+        if !unsafe { CGRectMakeWithDictionaryRepresentation(Retained::as_ptr(&b), &mut r) } {
+            return false;
+        }
+        (r.origin.x - x).abs() < 1.0
+            && (r.origin.y - y).abs() < 1.0
+            && (r.size.width - f.size.width).abs() < 1.0
+            && (r.size.height - f.size.height).abs() < 1.0
+    })
 }
 
 struct App {
@@ -152,14 +207,17 @@ impl App {
     fn push_settings(&mut self) {
         let ac = power::on_ac();
         self.last_ac = Some(ac);
-        for s in &self.screens {
+        for s in &mut self.screens {
             for code in self.core.js_tutto(ac, &s.id) {
                 let _ = s.webview.evaluate_script(&code);
             }
             if s.paused {
                 let _ = s.webview.evaluate_script(JS_STOP);
             }
+            // una pagina (ri)caricata non sa niente dei margini
+            s.margini = None;
         }
+        self.check_margini();
     }
 
     /// manda a ogni schermo le impostazioni che dipendono dallo schermo
@@ -171,17 +229,25 @@ impl App {
         }
     }
 
-    /// Pausa schermo per schermo: a batteria, oppure quando lo sfondo non si vede.
-    /// L'occlusione non distingue le finestre che coprono il desktop da un'app a schermo
-    /// intero: basta una delle due opzioni del menu.
+    /// Pausa schermo per schermo: a batteria, oppure quando lo sfondo non si vede. Se non
+    /// si vede perché sopra c'è un'app a schermo intero conta "Pausa con app a schermo
+    /// intero", se no (finestre che coprono il desktop) "Pausa quando le finestre coprono il
+    /// desktop".
     fn check_pause(&mut self) {
         let cfg = &self.core.cfg;
         let batteria = cfg.pausa_batteria && self.last_ac == Some(false);
-        let nascosto_conta = cfg.pausa_coperto || cfg.pausa_schermo_intero;
         for s in &mut self.screens {
             let visibile = s.visibile();
             s.visto |= visibile;
-            let pause = batteria || (nascosto_conta && s.visto && !visibile);
+            let nascosto = s.visto && !visibile;
+            let conta = if !nascosto || batteria {
+                false
+            } else if s.frame().is_some_and(schermo_intero) {
+                cfg.pausa_schermo_intero
+            } else {
+                cfg.pausa_coperto
+            };
+            let pause = batteria || conta;
             if pause != s.paused {
                 s.paused = pause;
                 zoo_log!(
@@ -194,7 +260,24 @@ impl App {
         }
     }
 
+    /// la barra dei menu e il Dock: lo si dice alla pagina, così i widget non ci finiscono
+    /// sotto. Si manda solo quando cambia (Dock spostato, nascosto, schermo cambiato).
+    fn check_margini(&mut self) {
+        for s in &mut self.screens {
+            let Some(m) = s.margini() else { continue };
+            if s.margini == Some(m) {
+                continue;
+            }
+            s.margini = Some(m);
+            let _ = s.webview.evaluate_script(&format!(
+                "window.zooSetting && zooSetting('margini', {{alto: {}, destra: {}, basso: {}, sinistra: {}}})",
+                m[0], m[1], m[2], m[3]
+            ));
+        }
+    }
+
     fn check_power(&mut self) {
+        self.check_margini();
         let ac = power::on_ac();
         if self.last_ac != Some(ac) {
             self.last_ac = Some(ac);
@@ -343,7 +426,7 @@ fn make_screen(
         .build(&window)
         .ok()?;
     window.set_visible(true);
-    Some(Screen { webview, window, pos, size, id, paused: false, visto: false })
+    Some(Screen { webview, window, pos, size, id, paused: false, visto: false, margini: None })
 }
 
 /// l'identificativo dell'app (CFBundleIdentifier in macos/Info.plist)

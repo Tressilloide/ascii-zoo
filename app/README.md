@@ -42,14 +42,16 @@ Mette lo sfondo animato (`wallpaper/index.html`) dietro le icone del desktop, su
     [`../linux/gnome`](../linux/gnome) chiama il metodo D-Bus `Clic(x, y, larghezza,
     altezza)` sul nome `io.github.tressilloide.AsciiZoo`, che il programma tiene solo con
     l'opzione accesa
-  - **Pausa a batteria**; solo su Windows anche **Pausa con app a schermo intero** (solo
-    sullo schermo dell'app; su macOS le app a schermo intero stanno in uno Spazio a parte) e
-    **Pausa quando le finestre coprono il desktop** (schermo per schermo: ogni mezzo secondo
-    si prova una griglia di punti, uno ogni 160 pixel circa; se nessuno cade sul desktop,
-    quello schermo si ferma e riparte appena il desktop torna a vedersi). Su macOS e Linux
-    le pause per "sfondo che non si vede" sono sempre attive: su macOS dallo stato di
-    occlusione della finestra, su Linux con lo schermo bloccato o spento e, su GNOME, con
-    un'app a schermo intero (la `Sonda` in `linux.rs`)
+  - **Pausa a batteria**, **Pausa con app a schermo intero** (solo sullo schermo dell'app) e
+    **Pausa quando le finestre coprono il desktop**, uguali sui tre sistemi. Windows: ogni
+    mezzo secondo si prova una griglia di punti, uno ogni 160 pixel circa; se nessuno cade
+    sul desktop, quello schermo si ferma e riparte appena il desktop torna a vedersi. macOS:
+    lo stato di occlusione della finestra dice se lo sfondo si vede; se sopra c'è una
+    finestra di un'altra app grande quanto tutto lo schermo (`CGWindowListCopyWindowInfo`)
+    vale la voce "schermo intero", se no quella delle finestre. Linux: con lo schermo
+    bloccato o spento sempre; su GNOME, quando i fotogrammi della finestra rallentano perché
+    non si vede (la `Sonda` in `linux.rs`): da lì app a schermo intero e finestre non si
+    distinguono, basta una delle due voci
   - **Avvia con Windows** / **Apri al login**, **Ricarica sfondo**, **Esci**
 - Impostazioni salvate in `%APPDATA%\AsciiZoo\config.json` (Windows),
   `~/Library/Application Support/AsciiZoo/config.json` (macOS) o
