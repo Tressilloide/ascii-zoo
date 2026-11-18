@@ -1773,6 +1773,23 @@ h1 {
     this.clockStartle();
   };
 
+  // Accende o spegne l'orologio al centro. Spento: niente cifre né data, nessuno ci gira
+  // intorno o ci si posa, e la scenografia (fiori, canne, sassi, nidi…) può usare il centro.
+  Zoo.prototype.setClock = function (on) {
+    on = !!on;
+    if (on === this.clockOn) return;
+    this.clockOn = on;
+    this.clock = null;
+    this.clockStr = ''; // riacceso dopo ore o giorni: ora e data si rileggono da capo
+    this.clockT0 = -1;
+    this.layoutClock();
+    this.scn = null; // la scenografia si rifà, con o senza il posto per l'orologio
+    this.creatures.forEach(function (c) { c.goal = null; c.spot = null; c.perched = false; });
+    this.invalidate();
+    // in pausa non arrivano fotogrammi: senza questo resterebbe l'immagine di prima
+    if (!this.running) this.render();
+  };
+
   // intensità di una cella per la cifra ch in posizione k: >0 acceso, -1 segmento spento
   Zoo.prototype.digitV = function (k, ch, px, py) {
     var C = this.clock, sg = C.seg[k], lit = DIGITS[ch] || '', r = C.r, dl = 1e9, dg = 1e9;
@@ -2163,6 +2180,7 @@ h1 {
       return;
     }
     if (name === 'statistiche') { impostaStats(val); return; }
+    if (name === 'orologio') { zoo.setClock(val === true || val === 'true'); return; }
     if (name === 'nomi') { zoo.setNames(asObject(val)); return; }
     if (name === 'rotazione') {
       var r = asObject(val);
@@ -2264,6 +2282,15 @@ h1 {
   }
   setInterval(disegnaWidget, 60000); // il conto alla rovescia cambia a mezzanotte
   disegnaWidget();
+
+  /* Orologio al centro: lo spegne il programma con zooSetting('orologio', false), nel
+     browser index.html?orologio=0 e in Lively la casella "Orologio al centro"
+     (LivelyProperties.json; Lively chiama livelyPropertyListener). */
+  var qo = /[?&]orologio=([^&#]*)/.exec(location.search);
+  if (qo) zoo.setClock(!/^(0|no|off|false)$/i.test(qo[1]));
+  window.livelyPropertyListener = function (name, val) {
+    if (name === 'orologio') zoo.setClock(val === true || val === 'true');
+  };
   if (/[?&]widget=demo/.test(location.search)) {
     var tra = new Date(Date.now() + 12 * 86400000);
     impostaWidget({ nota: 'comprare il mangime per KARPISA', conto: { etichetta: 'esame di analisi', data: tra.toISOString().slice(0, 10) }, statistiche: true });

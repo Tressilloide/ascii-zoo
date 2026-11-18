@@ -23,6 +23,8 @@ Mette lo sfondo animato (`sfondo/index.html`) dietro le icone del desktop, su tu
   - **Nomi degli animali**: il nome dell'animale più grande di ogni specie, scritto in una
     finestrella (Invio = OK, Esc = annulla, vuoto = nessun nome, al massimo 16 lettere);
     di serie le koi hanno KARPISA
+  - **Orologio al centro** (di serie acceso): senza, la pagina riceve
+    `zooSetting('orologio', false)` e gli animali e la scenografia usano anche il centro
   - **Koi nello stagno in carica** (vale con "A rotazione")
   - **Pausa a batteria**; solo su Windows anche **Pausa con app a schermo intero** (solo
     sullo schermo dell'app; su macOS le app a schermo intero stanno in uno Spazio a parte) e

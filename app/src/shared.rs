@@ -102,6 +102,7 @@ pub struct Menus {
     pub animali_schermi: Vec<(String, Submenu, Vec<CheckMenuItem>)>,
     animali_un_solo: MenuItem,
     pub clic: CheckMenuItem,
+    pub orologio: CheckMenuItem,
     pub koi: CheckMenuItem,
     pub batteria: CheckMenuItem,
     pub schermo: CheckMenuItem,
@@ -144,6 +145,10 @@ impl Core {
     pub fn js_nomi(&self) -> String {
         let nomi = serde_json::to_string(&self.cfg.nomi).unwrap_or_else(|_| "{}".into());
         format!("window.zooSetting && zooSetting('nomi', {nomi})")
+    }
+
+    pub fn js_orologio(&self) -> String {
+        format!("window.zooSetting && zooSetting('orologio', {})", self.cfg.orologio)
     }
 
     pub fn js_rotazione(&self) -> String {
@@ -204,6 +209,7 @@ impl Core {
         let mut v = vec![
             self.js_nomi(),
             self.js_rotazione(),
+            self.js_orologio(),
             format!(
                 "if (window.zooSetting) {{ zooSetting('inCarica', {ac}); zooSetting('koiInCarica', {}); }}",
                 self.cfg.koi_in_carica
@@ -375,6 +381,9 @@ impl Core {
         } else if id == m.clic.id().0 {
             self.cfg.clic_desktop = m.clic.is_checked();
             None
+        } else if id == m.orologio.id().0 {
+            self.cfg.orologio = m.orologio.is_checked();
+            Some(self.js_orologio())
         } else if id == m.koi.id().0 {
             self.cfg.koi_in_carica = m.koi.is_checked();
             Some(format!("window.zooSetting && zooSetting('koiInCarica', {})", self.cfg.koi_in_carica))
@@ -579,6 +588,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         animali_schermi: Vec::new(),
         animali_un_solo,
         clic: CheckMenuItem::new("Clic sul desktop agli animali", true, cfg.clic_desktop, None),
+        orologio: CheckMenuItem::new("Orologio al centro", true, cfg.orologio, None),
         koi: CheckMenuItem::new("Koi nello stagno in carica (con \"A rotazione\")", true, cfg.koi_in_carica, None),
         batteria: CheckMenuItem::new("Pausa a batteria", true, cfg.pausa_batteria, None),
         schermo: CheckMenuItem::new("Pausa con app a schermo intero", true, cfg.pausa_schermo_intero, None),
@@ -592,6 +602,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     let _ = menu.append(&rot);
     let _ = menu.append(&nomi_sub);
     let _ = menu.append(&m.widget_sub);
+    let _ = menu.append(&m.orologio);
     let _ = menu.append(&m.koi);
     if solo_windows {
         let _ = menu.append(&m.clic);

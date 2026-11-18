@@ -73,6 +73,7 @@ Nel browser si vedono con dati di prova aprendo `sfondo/index.html?widget=demo`.
 - **La data** sta sotto, una lettera per casella.
 - **Allo scatto del minuto** le cifre cambiate si ricompongono con un bordo che scintilla, parte un'onda dall'orologio, chi era posato sulle cifre vola via e chi è vicino si spaventa.
 - **Chi si posa:** farfalle, libellule e rane, solo le più piccole e al massimo due alla volta, per 4–13 secondi. Gli altri animali girano intorno all'orologio, così l'ora resta sempre leggibile; anche fiori, canne, sassi e nidi stanno lontani dalle cifre.
+- **Si può togliere:** voce **Orologio al centro** nel menu del programma (Windows, macOS e Linux). Senza orologio non ci sono né l'ora né la data, gli animali passano anche dal centro e fiori, canne, sassi e nidi possono stare dappertutto. Nel browser si toglie con `index.html?orologio=0`, in Lively con la casella **Orologio al centro** tra le impostazioni dello sfondo.
 
 Le dimensioni si adattano allo schermo: funziona anche in verticale e su schermi piccoli.
 
@@ -87,6 +88,7 @@ ascii-zoo/
 ├── sfondo/                  sfondo animato (anche pronto per Lively Wallpaper)
 │   ├── index.html           tutto in un file: motore, orologio, carattere incorporato
 │   ├── LivelyInfo.json      descrizione del pacchetto per Lively
+│   ├── LivelyProperties.json  impostazioni in Lively (orologio al centro)
 │   └── thumbnail.jpg        miniatura nella libreria di Lively
 ├── app/                     programma in Rust per Windows, macOS e Linux
 │   ├── src/                 finestre dietro le icone, menu, nomi, rotazione, pause
@@ -113,6 +115,7 @@ La cartella `app/` contiene un programma che mette lo sfondo dietro le icone su 
 - **Animale per schermo**: con più monitor, un animale diverso su ognuno (koi sul portatile, meduse sull'altro…);
 - **Nomi degli animali**: il nome dell'animale più grande di ogni specie;
 - **Widget**: nota, conto alla rovescia, CPU/RAM/batteria (vedi [I widget](#i-widget));
+- **Orologio al centro**: togliendo la spunta l'orologio sparisce e lo schermo è tutto per gli animali;
 - **Clic sul desktop agli animali**: un clic in una zona vuota del desktop dà da mangiare alle koi o fa scappare gli altri animali, come nel browser;
 - le pause (a batteria, con app a schermo intero, quando le finestre coprono il desktop), l'avvio con Windows.
 

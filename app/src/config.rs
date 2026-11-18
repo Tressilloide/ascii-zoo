@@ -41,6 +41,9 @@ pub struct Config {
     pub animale_schermi: BTreeMap<String, u32>,
     /// un clic su una zona vuota del desktop arriva agli animali (solo Windows)
     pub clic_desktop: bool,
+    /// l'orologio con la data al centro dello schermo (spento: gli animali e la scenografia
+    /// usano anche il centro)
+    pub orologio: bool,
 }
 
 impl Default for Config {
@@ -62,6 +65,7 @@ impl Default for Config {
             widget_schermo: String::new(),
             animale_schermi: BTreeMap::new(),
             clic_desktop: true,
+            orologio: true,
         }
     }
 }

@@ -1,0 +1,7 @@
+{
+  "orologio": {
+    "text": "Orologio al centro",
+    "type": "checkbox",
+    "value": true
+  }
+}

@@ -46,7 +46,7 @@ It's a small example of what two people and an AI can ship together in a short t
 </p>
 
 - **7 species, 7 worlds.** Butterflies on a flower meadow, jellyfish among rising bubbles, dragonflies on reeds, koi in a pond with lily pads, frogs and fireflies, herons with nests that hatch, crabs on the sand. They rotate automatically, or you pick one.
-- **An ASCII clock** they interact with: butterflies land on the digits, koi flee when the minute ticks over.
+- **An ASCII clock** they interact with: butterflies land on the digits, koi flee when the minute ticks over. Don't want it? Untick **Orologio al centro** (clock in the middle) in the menu, or open `index.html?orologio=0` in the browser.
 - **Click the desktop** (Windows) to feed the koi or scatter the other animals.
 - **Multi-monitor**, with a different animal on each screen if you like.
 - **ASCII widgets**: a sticky note, a countdown, CPU/RAM/battery meters.
