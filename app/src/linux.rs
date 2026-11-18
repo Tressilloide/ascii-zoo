@@ -8,14 +8,20 @@
 //!   al posto dello sfondo.
 //! - icona AppIndicator nella barra in alto (Ubuntu la mostra di serie; su GNOME senza
 //!   Ubuntu serve l'estensione "AppIndicator and KStatusNotifierItem Support")
-//! - ogni 2 secondi: pausa a batteria, controllo degli schermi collegati, margini della
-//!   barra in alto per i widget
+//! - ogni mezzo secondo le pause: a batteria, con lo schermo bloccato o spento, con
+//!   un'app a schermo intero (vedi `Sonda`); animare quello che nessuno vede costa
+//!   CPU e GPU per niente, e qui ogni fotogramma passa da XWayland
+//! - ogni 2 secondi: controllo degli schermi collegati, margini della barra in alto
+//!   per i widget
 
+use std::cell::Cell;
 use std::os::linux::net::SocketAddrExt;
 use std::os::unix::net::{SocketAddr, UnixListener};
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gtk::prelude::*;
+use gtk::{gio, glib};
 use tao::dpi::{PhysicalPosition, PhysicalSize};
 use tao::event::{Event, StartCause};
 use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy, EventLoopWindowTarget};
@@ -29,8 +35,10 @@ use crate::power;
 use crate::shared::{self, Core, Esito, Schermo, JS_START, JS_STOP, URL};
 use crate::stats::Stats;
 
-/// ogni quanto si controllano batteria, schermi e margini
-const CONTROLLO: Duration = Duration::from_secs(2);
+/// ogni quanto si ricontrollano le pause: quando lo sfondo torna visibile riparte subito
+const GIRO: Duration = Duration::from_millis(500);
+/// ogni quanti giri si controllano batteria, schermi e margini (2 secondi)
+const GIRI_CONTROLLO: u32 = 4;
 
 enum Evento {
     Menu(String),
@@ -50,6 +58,103 @@ struct Screen {
     paused: bool,
     /// ultimi margini mandati alla pagina (barra in alto, dock…)
     margini: Option<[i32; 4]>,
+    sonda: Sonda,
+}
+
+impl Screen {
+    /// il centro dello schermo in pixel "logici", quelli di GDK (e della pagina)
+    fn centro_logico(&self) -> (i32, i32) {
+        let sc = if self.scala > 0.0 { self.scala } else { 1.0 };
+        (
+            ((self.pos.x as f64 + self.size.width as f64 / 2.0) / sc) as i32,
+            ((self.pos.y as f64 + self.size.height as f64 / 2.0) / sc) as i32,
+        )
+    }
+}
+
+/// Capisce se uno schermo è occupato per intero da un'altra finestra (un'app a schermo
+/// intero). Sotto Wayland un'app X11 non vede le finestre native che le stanno sopra,
+/// ma mutter (GNOME), quando una finestra X11 è nascosta del tutto, le manda i messaggi
+/// "fotogramma disegnato" (_NET_WM_FRAME_DRAWN) a un sesto della frequenza dello
+/// schermo: il frame clock di GTK passa da ~60 a ~10 giri al secondo. La sonda tiene il
+/// frame clock in moto e a ogni giro ridisegna un pixel (senza niente da disegnare GTK
+/// non aspetta il compositor e gira sempre a 60). Con le finestre solo massimizzate non
+/// scatta: per mutter la striscia sotto la barra in alto e la dock resta visibile.
+/// Dove il compositor non rallenta (altri desktop) semplicemente non scatta mai, e
+/// "lento" vale come "coperto" solo dopo aver visto almeno una volta il ritmo pieno:
+/// con un compositor che rallentasse sempre lo sfondo non resta fermo.
+#[derive(Default)]
+struct Sonda {
+    giri: Rc<Cell<u32>>,
+    id: Option<gtk::TickCallbackId>,
+    da: Option<Instant>,
+    /// controlli di fila con il frame clock rallentato
+    lenti: u32,
+    /// il frame clock ha girato almeno una volta a ritmo pieno
+    visto_veloce: bool,
+}
+
+impl Sonda {
+    /// true se la finestra è nascosta del tutto da più di un controllo
+    fn coperto(&mut self, gw: &gtk::ApplicationWindow, refresh_hz: f64) -> bool {
+        if self.id.is_none() {
+            let giri = self.giri.clone();
+            self.id = Some(gw.add_tick_callback(move |w, _| {
+                giri.set(giri.get() + 1);
+                w.queue_draw_area(0, 0, 1, 1);
+                glib::ControlFlow::Continue
+            }));
+            // la prima misura parte adesso
+            self.giri.set(0);
+            self.da = Some(Instant::now());
+            return false;
+        }
+        let ora = Instant::now();
+        let dt = self.da.map_or(0.0, |d| (ora - d).as_secs_f64());
+        self.da = Some(ora);
+        let giri = self.giri.replace(0);
+        if dt > 0.0 && (giri as f64 / dt) < refresh_hz / 3.0 {
+            self.lenti += 1;
+        } else {
+            self.lenti = 0;
+            self.visto_veloce = true;
+        }
+        self.visto_veloce && self.lenti >= 2
+    }
+
+    /// quando non serve (in pausa per altri motivi) il frame clock si lascia stare
+    fn spegni(&mut self) {
+        if let Some(id) = self.id.take() {
+            id.remove();
+        }
+        self.lenti = 0;
+    }
+}
+
+/// Schermo bloccato o spento (salvaschermo di GNOME, o quello standard di KDE e altri):
+/// lo sfondo non lo vede nessuno.
+fn schermo_bloccato(bus: Option<&gio::DBusConnection>) -> bool {
+    let Some(bus) = bus else { return false };
+    let Ok(tipo) = glib::VariantTy::new("(b)") else { return false };
+    for (nome, percorso) in
+        [("org.gnome.ScreenSaver", "/org/gnome/ScreenSaver"), ("org.freedesktop.ScreenSaver", "/org/freedesktop/ScreenSaver")]
+    {
+        let risposta = bus.call_sync(
+            Some(nome),
+            percorso,
+            nome,
+            "GetActive",
+            None,
+            Some(tipo),
+            gio::DBusCallFlags::NO_AUTO_START,
+            200,
+            gio::Cancellable::NONE,
+        );
+        if let Some((attivo,)) = risposta.ok().and_then(|v| v.get::<(bool,)>()) {
+            return attivo;
+        }
+    }
+    false
 }
 
 struct App {
@@ -58,6 +163,8 @@ struct App {
     tray: Option<TrayIcon>,
     last_ac: Option<bool>,
     stats: Stats,
+    /// bus di sessione, per sapere se lo schermo è bloccato
+    bus: Option<gio::DBusConnection>,
 }
 
 impl App {
@@ -92,19 +199,43 @@ impl App {
         }
     }
 
+    /// Pausa schermo per schermo: a batteria, con lo schermo bloccato o spento, con
+    /// un'app a schermo intero sopra lo sfondo.
+    fn check_pause(&mut self) {
+        let cfg = &self.core.cfg;
+        let batteria = cfg.pausa_batteria && self.last_ac == Some(false);
+        let bloccato = schermo_bloccato(self.bus.as_ref());
+        let display = gtk::gdk::Display::default();
+        for s in &mut self.screens {
+            // la sonda serve solo se lo schermo intero è l'unico motivo che resta
+            let coperto = if cfg.pausa_schermo_intero && !batteria && !bloccato {
+                let (cx, cy) = s.centro_logico();
+                let refresh = display
+                    .as_ref()
+                    .and_then(|d| d.monitor_at_point(cx, cy))
+                    .map(|m| m.refresh_rate())
+                    .filter(|&mhz| mhz > 0)
+                    .map_or(60.0, |mhz| mhz as f64 / 1000.0);
+                s.sonda.coperto(s.window.gtk_window(), refresh)
+            } else {
+                s.sonda.spegni();
+                false
+            };
+            let pause = batteria || bloccato || coperto;
+            if pause != s.paused {
+                s.paused = pause;
+                let _ = s.webview.evaluate_script(if pause { JS_STOP } else { JS_START });
+            }
+        }
+    }
+
     fn check_power(&mut self) {
         let ac = power::on_ac();
         if self.last_ac != Some(ac) {
             self.last_ac = Some(ac);
             self.js(&shared::js_in_carica(ac));
         }
-        let pause = self.core.cfg.pausa_batteria && !ac;
-        for s in &mut self.screens {
-            if pause != s.paused {
-                s.paused = pause;
-                let _ = s.webview.evaluate_script(if pause { JS_STOP } else { JS_START });
-            }
-        }
+        self.check_pause();
         // widget "pc": nuovi valori ogni 2 secondi, solo se si vede
         if self.core.cfg.widget_statistiche && self.screens.iter().any(|s| !s.paused) {
             let v = self.stats.leggi();
@@ -118,10 +249,7 @@ impl App {
     fn check_margini(&mut self) {
         let Some(display) = gtk::gdk::Display::default() else { return };
         for s in &mut self.screens {
-            // GDK ragiona in pixel "logici", come la pagina: si divide per la scala
-            let sc = if s.scala > 0.0 { s.scala } else { 1.0 };
-            let cx = ((s.pos.x as f64 + s.size.width as f64 / 2.0) / sc) as i32;
-            let cy = ((s.pos.y as f64 + s.size.height as f64 / 2.0) / sc) as i32;
+            let (cx, cy) = s.centro_logico();
             let Some(mon) = display.monitor_at_point(cx, cy) else { continue };
             let (g, w) = (mon.geometry(), mon.workarea());
             let m = [
@@ -230,7 +358,7 @@ fn make_screen(
     if let Some(w) = gw.window() {
         w.lower();
     }
-    Some(Screen { webview, window, pos, size, scala, id, paused: false, margini: None })
+    Some(Screen { webview, window, pos, size, scala, id, paused: false, margini: None, sonda: Sonda::default() })
 }
 
 /// Una sola copia per utente: un socket "astratto" (non è un file, sparisce da solo
@@ -264,7 +392,9 @@ pub fn run() {
 
     let (core, menu) = Core::new(false);
     let mut menu = Some(menu);
-    let mut app = App { core, screens: Vec::new(), tray: None, last_ac: None, stats: Stats::default() };
+    let bus = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE).ok();
+    let mut app = App { core, screens: Vec::new(), tray: None, last_ac: None, stats: Stats::default(), bus };
+    let mut giro: u32 = 0;
 
     event_loop.run(move |event, target, control_flow| match event {
         Event::NewEvents(StartCause::Init) => {
@@ -278,14 +408,19 @@ pub fn run() {
                     .map_err(|e| eprintln!("ascii-zoo: icona nella barra non disponibile: {e}"))
                     .ok();
             }
-            *control_flow = ControlFlow::WaitUntil(Instant::now() + CONTROLLO);
+            *control_flow = ControlFlow::WaitUntil(Instant::now() + GIRO);
         }
         Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
-            app.check_screens(target, &proxy);
-            app.check_power();
-            app.check_margini();
-            app.tieni_sotto();
-            *control_flow = ControlFlow::WaitUntil(Instant::now() + CONTROLLO);
+            giro = giro.wrapping_add(1);
+            if giro % GIRI_CONTROLLO == 0 {
+                app.check_screens(target, &proxy);
+                app.check_power(); // ricontrolla anche le pause
+                app.check_margini();
+                app.tieni_sotto();
+            } else {
+                app.check_pause();
+            }
+            *control_flow = ControlFlow::WaitUntil(Instant::now() + GIRO);
         }
         Event::UserEvent(Evento::PaginaPronta) => app.push_settings(),
         Event::UserEvent(Evento::Menu(id)) => match app.core.on_menu(&id) {

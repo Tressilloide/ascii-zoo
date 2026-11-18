@@ -4,11 +4,15 @@
 //!   desktop: sopra l'immagine di sfondo, sotto le icone del Finder e tutte le finestre;
 //!   presente in tutti gli Spazi, non riceve clic e non compare in Mission Control
 //! - icona nella barra dei menu, niente icona nel Dock (app "accessory")
-//! - ogni 2 secondi: pausa a batteria e controllo degli schermi collegati
+//! - ogni mezzo secondo le pause: a batteria e quando lo sfondo non si vede (finestre
+//!   che coprono il desktop, app a schermo intero, schermo bloccato o spento: lo dice
+//!   macOS con lo stato di occlusione della finestra); animare quello che nessuno vede
+//!   costa CPU e GPU per niente
+//! - ogni 2 secondi: controllo degli schermi collegati
 
 use std::time::{Duration, Instant};
 
-use objc2_app_kit::{NSWindow, NSWindowCollectionBehavior};
+use objc2_app_kit::{NSWindow, NSWindowCollectionBehavior, NSWindowOcclusionState};
 use tao::dpi::{PhysicalPosition, PhysicalSize};
 use tao::event::{Event, StartCause};
 use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy, EventLoopWindowTarget};
@@ -22,8 +26,10 @@ use crate::power;
 use crate::stats::Stats;
 use crate::shared::{self, Core, Esito, Schermo, JS_START, JS_STOP, URL};
 
-/// ogni quanto si controllano batteria e schermi
-const CONTROLLO: Duration = Duration::from_secs(2);
+/// ogni quanto si ricontrollano le pause: quando lo sfondo torna visibile riparte subito
+const GIRO: Duration = Duration::from_millis(500);
+/// ogni quanti giri si controllano batteria e schermi (2 secondi)
+const GIRI_CONTROLLO: u32 = 4;
 
 #[link(name = "CoreGraphics", kind = "framework")]
 extern "C" {
@@ -41,12 +47,27 @@ enum Evento {
 /// distruggono in quest'ordine)
 struct Screen {
     webview: WebView,
-    _window: Window,
+    window: Window,
     pos: PhysicalPosition<i32>,
     size: PhysicalSize<u32>,
     /// nome e posizione dello schermo: le impostazioni per schermo si legano a questo
     id: String,
     paused: bool,
+    /// macOS ha detto almeno una volta che la finestra si vede: solo dopo "non si vede"
+    /// vale come pausa (se per qualche motivo risultasse sempre coperta, per esempio
+    /// dalla finestra trasparente delle icone del Finder, lo sfondo non resta fermo)
+    visto: bool,
+}
+
+impl Screen {
+    /// qualche pezzo della finestra si vede (lo calcola il window server)
+    fn visibile(&self) -> bool {
+        let ns = self.window.ns_window() as *const NSWindow;
+        if ns.is_null() {
+            return true;
+        }
+        unsafe { &*ns }.occlusionState().contains(NSWindowOcclusionState::Visible)
+    }
 }
 
 struct App {
@@ -86,19 +107,31 @@ impl App {
         }
     }
 
+    /// Pausa schermo per schermo: a batteria, oppure quando lo sfondo non si vede.
+    /// L'occlusione non distingue le finestre che coprono il desktop da un'app a schermo
+    /// intero: basta una delle due opzioni del menu.
+    fn check_pause(&mut self) {
+        let cfg = &self.core.cfg;
+        let batteria = cfg.pausa_batteria && self.last_ac == Some(false);
+        let nascosto_conta = cfg.pausa_coperto || cfg.pausa_schermo_intero;
+        for s in &mut self.screens {
+            let visibile = s.visibile();
+            s.visto |= visibile;
+            let pause = batteria || (nascosto_conta && s.visto && !visibile);
+            if pause != s.paused {
+                s.paused = pause;
+                let _ = s.webview.evaluate_script(if pause { JS_STOP } else { JS_START });
+            }
+        }
+    }
+
     fn check_power(&mut self) {
         let ac = power::on_ac();
         if self.last_ac != Some(ac) {
             self.last_ac = Some(ac);
             self.js(&shared::js_in_carica(ac));
         }
-        let pause = self.core.cfg.pausa_batteria && !ac;
-        for s in &mut self.screens {
-            if pause != s.paused {
-                s.paused = pause;
-                let _ = s.webview.evaluate_script(if pause { JS_STOP } else { JS_START });
-            }
-        }
+        self.check_pause();
         // widget "pc": nuovi valori ogni 2 secondi, solo se si vede
         if self.core.cfg.widget_statistiche && self.screens.iter().any(|s| !s.paused) {
             let v = self.stats.leggi();
@@ -188,7 +221,7 @@ fn make_screen(
         .build(&window)
         .ok()?;
     window.set_visible(true);
-    Some(Screen { webview, _window: window, pos, size, id, paused: false })
+    Some(Screen { webview, window, pos, size, id, paused: false, visto: false })
 }
 
 pub fn run() {
@@ -205,6 +238,7 @@ pub fn run() {
     let (core, menu) = Core::new(false);
     let mut menu = Some(menu);
     let mut app = App { core, screens: Vec::new(), tray: None, last_ac: None, stats: Stats::default() };
+    let mut giro: u32 = 0;
 
     event_loop.run(move |event, target, control_flow| match event {
         Event::NewEvents(StartCause::Init) => {
@@ -218,12 +252,17 @@ pub fn run() {
                     .build()
                     .ok();
             }
-            *control_flow = ControlFlow::WaitUntil(Instant::now() + CONTROLLO);
+            *control_flow = ControlFlow::WaitUntil(Instant::now() + GIRO);
         }
         Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
-            app.check_screens(target, &proxy);
-            app.check_power();
-            *control_flow = ControlFlow::WaitUntil(Instant::now() + CONTROLLO);
+            giro = giro.wrapping_add(1);
+            if giro % GIRI_CONTROLLO == 0 {
+                app.check_screens(target, &proxy);
+                app.check_power(); // ricontrolla anche le pause
+            } else {
+                app.check_pause();
+            }
+            *control_flow = ControlFlow::WaitUntil(Instant::now() + GIRO);
         }
         Event::UserEvent(Evento::PaginaPronta) => app.push_settings(),
         Event::UserEvent(Evento::Menu(id)) => match app.core.on_menu(&id) {
