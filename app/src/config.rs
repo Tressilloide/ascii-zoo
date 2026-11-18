@@ -104,6 +104,24 @@ pub fn data_italiana(iso: &str) -> String {
     if p.len() == 3 { format!("{}/{}/{}", p[2], p[1], p[0]) } else { iso.to_string() }
 }
 
+/// Un eseguibile che non resta dov'è: compilato da cargo (`target/debug`, `target/release`),
+/// nella cartella temporanea o, su macOS, aperto dal DMG (`/Volumes`) o "traslocato" da
+/// Gatekeeper (`AppTranslocation`). L'avvio automatico non lo si sposta lì da solo.
+pub fn provvisorio(exe: &std::path::Path) -> bool {
+    let nomi: Vec<String> = exe.components().map(|c| c.as_os_str().to_string_lossy().to_lowercase()).collect();
+    let build = |n: &String| n == "debug" || n == "release";
+    // target/release/ascii-zoo oppure target/<piattaforma>/release/ascii-zoo
+    let cargo = nomi.windows(2).any(|w| w[0] == "target" && build(&w[1]))
+        || nomi.windows(3).any(|w| w[0] == "target" && build(&w[2]));
+    cargo || exe.starts_with(std::env::temp_dir()) || mac_volatile(exe)
+}
+
+/// macOS: l'app aperta dal DMG o traslocata da Gatekeeper sparisce o cambia percorso
+fn mac_volatile(exe: &std::path::Path) -> bool {
+    cfg!(target_os = "macos")
+        && (exe.starts_with("/Volumes") || exe.components().any(|c| c.as_os_str() == "AppTranslocation"))
+}
+
 /// Windows: %APPDATA%\AsciiZoo\config.json
 #[cfg(windows)]
 fn path() -> PathBuf {
@@ -188,6 +206,19 @@ pub mod autostart {
             let _ = key.delete_value(NAME);
         }
     }
+
+    /// L'exe non si installa: una versione nuova può stare in un'altra cartella. Se l'avvio
+    /// con Windows è attivo ma lancia un altro exe, lo si fa puntare a questo, la copia
+    /// appena avviata. Spento resta spento; si tocca solo il valore "AsciiZoo".
+    pub fn aggiorna() {
+        let Ok(key) = RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(RUN, KEY_READ | KEY_WRITE) else { return };
+        let Ok(attuale) = key.get_value::<String, _>(NAME) else { return };
+        let Ok(exe) = std::env::current_exe() else { return };
+        let nuovo = format!("\"{}\"", exe.display());
+        if !attuale.eq_ignore_ascii_case(&nuovo) && !super::provvisorio(&exe) {
+            let _ = key.set_value(NAME, &nuovo);
+        }
+    }
 }
 
 /// Apri al login su macOS: un LaunchAgent dell'utente,
@@ -219,6 +250,10 @@ pub mod autostart {
             return;
         }
         let Ok(exe) = std::env::current_exe() else { return };
+        // dal DMG o traslocata: al prossimo accesso quel percorso non c'è più
+        if super::mac_volatile(&exe) {
+            return;
+        }
         let body = format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -243,6 +278,19 @@ pub mod autostart {
             let _ = std::fs::create_dir_all(dir);
         }
         let _ = std::fs::write(p, body);
+    }
+
+    /// Una versione nuova può stare in un'altra .app: se "Apri al login" è attivo ma il
+    /// LaunchAgent lancia un altro programma, lo si fa puntare a questo, la copia appena
+    /// avviata. Spento resta spento.
+    pub fn aggiorna() {
+        let Some(p) = plist() else { return };
+        let Ok(attuale) = std::fs::read_to_string(&p) else { return };
+        let Ok(exe) = std::env::current_exe() else { return };
+        let riga = format!("<string>{}</string>", xml(&exe.to_string_lossy()));
+        if !attuale.contains(&riga) && !super::provvisorio(&exe) {
+            set(true);
+        }
     }
 }
 
@@ -295,5 +343,16 @@ pub mod autostart {
             let _ = std::fs::create_dir_all(dir);
         }
         let _ = std::fs::write(p, body);
+    }
+
+    /// Se "Apri al login" è attivo ma lancia un altro programma (una copia in un'altra
+    /// cartella), lo si fa puntare a questo, la copia appena avviata. Spento resta spento.
+    pub fn aggiorna() {
+        let Ok(attuale) = std::fs::read_to_string(file()) else { return };
+        let Ok(exe) = std::env::current_exe() else { return };
+        let riga = format!("Exec={}", exec(&exe.to_string_lossy()));
+        if !attuale.lines().any(|l| l.trim_end() == riga) && !super::provvisorio(&exe) {
+            set(true);
+        }
     }
 }

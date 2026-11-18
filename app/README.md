@@ -14,7 +14,15 @@ Mette lo sfondo animato (`sfondo/index.html`) dietro le icone del desktop, su tu
 - **Linux**: una finestra X11 di tipo "desktop" per ogni schermo: sotto tutte le finestre,
   su tutti gli spazi di lavoro, fuori dalla barra delle applicazioni e trasparente ai clic.
   Sotto Wayland passa da XWayland (`GDK_BACKEND=x11`), perché Wayland non permette a un
-  programma normale di mettersi al posto dello sfondo. Una sola copia per utente.
+  programma normale di mettersi al posto dello sfondo.
+- **Una sola copia**, e la nuova prende il posto della vecchia: se all'avvio ne trova già
+  una (magari una versione vecchia, anche da un'altra cartella) le chiede di uscire e, se
+  dopo qualche secondo c'è ancora, la chiude per forza. Windows: WM_CLOSE alla finestra
+  `AsciiZooControl` e attesa del mutex `AsciiZoo.SingleInstance`; macOS: le app con lo
+  stesso bundle id (`terminate`, poi `forceTerminate`); Linux: il processo che tiene il
+  socket astratto `ascii-zoo-$USER` (SIGTERM, poi SIGKILL). Se l'avvio automatico è attivo
+  e lancia un altro eseguibile, lo fa puntare a sé (non da `target/`, dalla cartella
+  temporanea, dal DMG o da una .app traslocata da Gatekeeper). Non cancella mai file.
 - Icona a forma di koi (area di notifica su Windows, barra dei menu su macOS, barra in alto
   su Linux con AppIndicator; niente icona nel Dock) con il menu:
   - **Animale**: a rotazione oppure uno fisso

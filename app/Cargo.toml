@@ -34,11 +34,14 @@ features = [
 [target.'cfg(target_os = "macos")'.dependencies]
 tao = "0.34"
 objc2-app-kit = "0.3"
+objc2-foundation = "0.3"
+libc = "0.2"
 
 # Linux: tao e gtk sono gli stessi che usano già wry e tray-icon
 [target.'cfg(target_os = "linux")'.dependencies]
 tao = "0.34"
 gtk = "0.18"
+libc = "0.2"
 
 [profile.release]
 opt-level = "s"

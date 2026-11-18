@@ -65,6 +65,8 @@ It's a small example of what two people and an AI can ship together in a short t
 on Windows SmartScreen says *"Windows protected your PC"* → **More info → Run anyway**;
 on macOS go to **System Settings → Privacy & Security → Open Anyway**.
 
+**Updating.** Just start the new version: it closes the running one and takes its place (autostart too, if enabled).
+
 **Can I trust the binary?** It's never committed to the repo: GitHub Actions builds it from the tagged source ([workflow](.github/workflows/build.yml), public logs), and every release ships a SHA256 and a GitHub provenance attestation:
 
 ```

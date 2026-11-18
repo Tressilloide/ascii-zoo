@@ -17,20 +17,27 @@ use raw_window_handle::{HandleError, HasWindowHandle, RawWindowHandle, Win32Wind
 use tray_icon::menu::MenuEvent;
 use tray_icon::{TrayIcon, TrayIconBuilder};
 use windows::core::{w, BOOL};
-use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Foundation::{
+    CloseHandle, GetLastError, ERROR_ALREADY_EXISTS, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WAIT_ABANDONED,
+    WAIT_OBJECT_0, WPARAM,
+};
 use windows::Win32::Graphics::Gdi::{
     EnumDisplayMonitors, GetMonitorInfoW, MonitorFromPoint, MonitorFromRect, HDC, HMONITOR, MONITORINFO, MONITORINFOEXW, MONITOR_DEFAULTTONEAREST,
     MONITOR_DEFAULTTOPRIMARY,
 };
 use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::System::Threading::CreateMutexW;
+use windows::Win32::System::Threading::{
+    CreateMutexW, GetCurrentProcessId, OpenProcess, TerminateProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE,
+    PROCESS_TERMINATE,
+};
 use windows::Win32::UI::HiDpi::{
     GetDpiForMonitor, SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, MDT_EFFECTIVE_DPI,
 };
 use windows::Win32::UI::WindowsAndMessaging::*;
 use wry::{PageLoadEvent, WebView, WebViewBuilder};
 
+use crate::config::autostart;
 use crate::shared::{self, zoo_log, Core, Esito, Schermo, JS_START, JS_STOP, URL};
 use crate::stats::Stats;
 use crate::{desktop, power};
@@ -498,6 +505,31 @@ unsafe extern "system" fn screen_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPAR
     DefWindowProcW(hwnd, msg, wp, lp)
 }
 
+/// C'è già un ASCII Zoo, magari una versione vecchia in un'altra cartella: gli si chiede di
+/// chiudersi (WM_CLOSE alla sua finestra di controllo: esce come con "Esci" e rimette lo
+/// sfondo di Windows) e si aspetta il suo mutex. Se dopo 8 secondi c'è ancora, lo si
+/// termina. true se il mutex adesso è di questa copia.
+unsafe fn prendi_il_posto(mutex: HANDLE) -> bool {
+    let preso = |ms| matches!(WaitForSingleObject(mutex, ms), WAIT_OBJECT_0 | WAIT_ABANDONED);
+    let mut pid = 0u32;
+    if let Ok(vecchia) = FindWindowW(w!("AsciiZooControl"), None) {
+        GetWindowThreadProcessId(vecchia, Some(&mut pid));
+        let _ = PostMessageW(Some(vecchia), WM_CLOSE, WPARAM(0), LPARAM(0));
+    }
+    zoo_log!("c'è già un ASCII Zoo (pid {pid}): lo chiudo e prendo il suo posto");
+    if preso(8000) {
+        return true;
+    }
+    if pid != 0 && pid != GetCurrentProcessId() {
+        if let Ok(p) = OpenProcess(PROCESS_TERMINATE | PROCESS_SYNCHRONIZE, false, pid) {
+            let _ = TerminateProcess(p, 1);
+            let _ = WaitForSingleObject(p, 3000);
+            let _ = CloseHandle(p);
+        }
+    }
+    preso(3000)
+}
+
 /// ridisegna lo sfondo normale di Windows quando il programma si chiude
 fn restore_wallpaper() {
     unsafe {
@@ -510,11 +542,15 @@ fn restore_wallpaper() {
 
 pub fn run() {
     unsafe {
-        // una sola copia alla volta
-        let _mutex = CreateMutexW(None, true, w!("AsciiZoo.SingleInstance"));
-        if GetLastError() == ERROR_ALREADY_EXISTS {
+        // una sola copia alla volta: se ce n'è già una (magari una versione vecchia) si
+        // chiude lei e questa, appena avviata, prende il suo posto. Va fatto prima di creare
+        // la finestra di controllo, se no FindWindow troverebbe la nostra.
+        let mutex = CreateMutexW(None, true, w!("AsciiZoo.SingleInstance"));
+        if GetLastError() == ERROR_ALREADY_EXISTS && !mutex.as_ref().is_ok_and(|m| prendi_il_posto(*m)) {
             return;
         }
+        // "Avvia con Windows" segue la copia appena avviata
+        autostart::aggiorna();
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
 

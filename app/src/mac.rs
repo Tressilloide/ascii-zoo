@@ -12,7 +12,8 @@
 
 use std::time::{Duration, Instant};
 
-use objc2_app_kit::{NSWindow, NSWindowCollectionBehavior, NSWindowOcclusionState};
+use objc2_app_kit::{NSRunningApplication, NSWindow, NSWindowCollectionBehavior, NSWindowOcclusionState};
+use objc2_foundation::NSString;
 use tao::dpi::{PhysicalPosition, PhysicalSize};
 use tao::event::{Event, StartCause};
 use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy, EventLoopWindowTarget};
@@ -22,6 +23,7 @@ use tray_icon::menu::MenuEvent;
 use tray_icon::{TrayIcon, TrayIconBuilder};
 use wry::{PageLoadEvent, WebView, WebViewBuilder};
 
+use crate::config::autostart;
 use crate::power;
 use crate::stats::Stats;
 use crate::shared::{self, zoo_log, Core, Esito, Schermo, JS_START, JS_STOP, URL};
@@ -232,7 +234,51 @@ fn make_screen(
     Some(Screen { webview, window, pos, size, id, paused: false, visto: false })
 }
 
+/// l'identificativo dell'app (CFBundleIdentifier in macos/Info.plist)
+const BUNDLE_ID: &str = "io.github.tressilloide.asciizoo";
+
+/// Una sola copia: se ce n'è già una (magari una versione vecchia, anche da un'altra .app)
+/// le si chiede di uscire, come con "Esci" dal menu, e questa, appena avviata, prende il suo
+/// posto. Se dopo 5 secondi c'è ancora, la si chiude per forza. Le .app non si cancellano:
+/// le ha messe l'utente.
+fn prendi_il_posto() {
+    let mio = std::process::id() as libc::pid_t;
+    let altre: Vec<_> = NSRunningApplication::runningApplicationsWithBundleIdentifier(&NSString::from_str(BUNDLE_ID))
+        .iter()
+        .filter(|a| a.processIdentifier() != mio)
+        .collect();
+    if altre.is_empty() {
+        return;
+    }
+    let pids: Vec<libc::pid_t> = altre.iter().map(|a| a.processIdentifier()).collect();
+    zoo_log!("c'è già un ASCII Zoo (pid {pids:?}): lo chiudo e prendo il suo posto");
+    // kill(pid, 0) dice solo se il processo c'è ancora (le proprietà di NSRunningApplication
+    // si aggiornano solo con il ciclo degli eventi, che qui non è ancora partito)
+    let vive = || pids.iter().any(|&p| p > 0 && unsafe { libc::kill(p, 0) } == 0);
+    for a in &altre {
+        a.terminate();
+    }
+    for _ in 0..50 {
+        if !vive() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    for a in &altre {
+        a.forceTerminate();
+    }
+    for _ in 0..20 {
+        if !vive() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
 pub fn run() {
+    prendi_il_posto();
+    // "Apri al login" segue la copia appena avviata
+    autostart::aggiorna();
     let mut event_loop = EventLoopBuilder::<Evento>::with_user_event().build();
     // niente icona nel Dock né nel selettore delle app: solo la barra dei menu
     event_loop.set_activation_policy(ActivationPolicy::Accessory);

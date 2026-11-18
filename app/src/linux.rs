@@ -31,6 +31,7 @@ use tray_icon::menu::MenuEvent;
 use tray_icon::{TrayIcon, TrayIconBuilder};
 use wry::{PageLoadEvent, WebView, WebViewBuilder, WebViewBuilderExtUnix};
 
+use crate::config::autostart;
 use crate::power;
 use crate::shared::{self, zoo_log, Core, Esito, Schermo, JS_START, JS_STOP, URL};
 use crate::stats::Stats;
@@ -370,15 +371,71 @@ fn make_screen(
 }
 
 /// Una sola copia per utente: un socket "astratto" (non è un file, sparisce da solo
-/// quando il programma si chiude). Se il nome è già preso, c'è già un ASCII Zoo.
+/// quando il programma si chiude). Se il nome è già preso c'è già un ASCII Zoo, magari una
+/// versione vecchia: lo si chiude e questa copia, appena avviata, prende il suo posto.
+/// Si chiude solo il processo che tiene proprio quel socket (lo usano tutte le versioni).
 fn una_sola_copia() -> Option<UnixListener> {
     let utente = std::env::var("USER").unwrap_or_default();
-    let addr = SocketAddr::from_abstract_name(format!("ascii-zoo-{utente}")).ok()?;
-    UnixListener::bind_addr(&addr).ok()
+    let nome = format!("ascii-zoo-{utente}");
+    let addr = SocketAddr::from_abstract_name(&nome).ok()?;
+    if let Ok(l) = UnixListener::bind_addr(&addr) {
+        return Some(l);
+    }
+    let vecchi = chi_tiene(&nome);
+    zoo_log!("c'è già un ASCII Zoo (pid {vecchi:?}): lo chiudo e prendo il suo posto");
+    // prima gli si chiede di uscire, poi, se dopo 3 secondi c'è ancora, lo si chiude per forza
+    for segnale in [libc::SIGTERM, libc::SIGKILL] {
+        for &pid in &vecchi {
+            unsafe { libc::kill(pid, segnale) };
+        }
+        for _ in 0..30 {
+            std::thread::sleep(Duration::from_millis(100));
+            if let Ok(l) = UnixListener::bind_addr(&addr) {
+                return Some(l);
+            }
+        }
+    }
+    zoo_log!("non riesco a prendere il posto dell'altra copia: esco");
+    None
+}
+
+/// I processi che tengono aperto il socket astratto `nome`: il suo inode da /proc/net/unix,
+/// poi chi ha quel socket tra i suoi file aperti (si leggono solo i processi dell'utente).
+fn chi_tiene(nome: &str) -> Vec<i32> {
+    let cercato = format!("@{nome}");
+    let socket: Vec<String> = std::fs::read_to_string("/proc/net/unix")
+        .unwrap_or_default()
+        .lines()
+        .skip(1)
+        .filter_map(|riga| {
+            let c: Vec<&str> = riga.split_whitespace().collect();
+            (c.len() >= 8 && c[7] == cercato).then(|| format!("socket:[{}]", c[6]))
+        })
+        .collect();
+    if socket.is_empty() {
+        return Vec::new();
+    }
+    let mio = std::process::id() as i32;
+    let mut pids = Vec::new();
+    for voce in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
+        let Some(pid) = voce.file_name().to_str().and_then(|s| s.parse::<i32>().ok()) else { continue };
+        if pid == mio {
+            continue;
+        }
+        let Ok(fd) = std::fs::read_dir(voce.path().join("fd")) else { continue };
+        let tiene = fd.flatten().any(|f| {
+            std::fs::read_link(f.path()).is_ok_and(|l| socket.iter().any(|s| l.as_os_str() == s.as_str()))
+        });
+        if tiene {
+            pids.push(pid);
+        }
+    }
+    pids
 }
 
 pub fn run() {
     let Some(_una_sola) = una_sola_copia() else { return };
+    autostart::aggiorna();
 
     // Wayland non permette a un programma di mettersi al posto dello sfondo: si usa
     // XWayland, dove le finestre di tipo "desktop" funzionano
