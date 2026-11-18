@@ -150,6 +150,10 @@ impl App {
     }
 
     fn check_power(&mut self) {
+        // "Tema > Come il sistema": il tema del sistema è cambiato
+        if let Some(js) = self.core.tema_cambiato() {
+            self.js(&js);
+        }
         let ac = power::on_ac();
         if self.last_ac != Some(ac) {
             self.last_ac = Some(ac);

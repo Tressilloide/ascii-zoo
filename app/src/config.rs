@@ -46,6 +46,8 @@ pub struct Config {
     /// l'orologio con la data al centro dello schermo (spento: gli animali e la scenografia
     /// usano anche il centro)
     pub orologio: bool,
+    /// tema dello sfondo: "scuro", "chiaro" o "sistema" (segue il tema chiaro o scuro del sistema)
+    pub tema: String,
 }
 
 impl Default for Config {
@@ -68,6 +70,7 @@ impl Default for Config {
             animale_schermi: BTreeMap::new(),
             clic_desktop: true,
             orologio: true,
+            tema: "scuro".into(),
         }
     }
 }

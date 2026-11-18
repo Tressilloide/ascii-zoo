@@ -22,6 +22,9 @@ mod power;
 #[cfg_attr(target_os = "macos", path = "stats_mac.rs")]
 #[cfg_attr(target_os = "linux", path = "stats_linux.rs")]
 mod stats;
+#[cfg_attr(target_os = "macos", path = "tema_mac.rs")]
+#[cfg_attr(target_os = "linux", path = "tema_linux.rs")]
+mod tema;
 
 #[cfg(windows)]
 mod desktop;

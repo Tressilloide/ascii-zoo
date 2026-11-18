@@ -31,6 +31,14 @@ Mette lo sfondo animato (`wallpaper/index.html`) dietro le icone del desktop, su
   - **Nomi degli animali**: il nome dell'animale più grande di ogni specie, scritto in una
     finestrella (Invio = OK, Esc = annulla, vuoto = nessun nome, al massimo 16 lettere);
     di serie le koi hanno KARPISA
+  - **Tema**: **Scuro** (di serie), **Chiaro** o **Come il sistema**; la pagina riceve
+    `zooSetting('tema', 'scuro' | 'chiaro' | 'auto')`. Con "Come il sistema" il programma
+    legge il tema da sé, all'avvio e poi ogni 2 secondi, e lo manda solo quando cambia:
+    Windows `AppsUseLightTheme` in `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`;
+    macOS l'aspetto effettivo dell'app (`NSApp.effectiveAppearance`, Aqua o DarkAqua); Linux
+    il portale (`org.freedesktop.portal.Settings`, `org.freedesktop.appearance` `color-scheme`),
+    poi `color-scheme` e `gtk-theme` di `org.gnome.desktop.interface`. Se non lo capisce
+    manda `auto` e decide la pagina con `prefers-color-scheme`
   - **Orologio al centro** (di serie acceso): senza, la pagina riceve
     `zooSetting('orologio', false)` e gli animali e la scenografia usano anche il centro
   - **Koi nello stagno in carica** (vale con "A rotazione")

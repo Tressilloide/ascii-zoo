@@ -7,7 +7,7 @@ use tray_icon::Icon;
 use crate::config::{
     autostart, data_italiana, leggi_data, pulisci_nome, pulisci_testo, Config, ETICHETTA_MAX, NOME_MAX, NOTA_MAX,
 };
-use crate::dialog;
+use crate::{dialog, tema};
 
 pub static HTML: &str = include_str!("../assets/ascii-zoo-wallpaper.html");
 
@@ -45,6 +45,9 @@ pub const ANGOLI: [(&str, &str); 4] = [
     ("alto-destra", "In alto a destra"),
     ("alto-sinistra", "In alto a sinistra"),
 ];
+
+/// il tema dello sfondo: (valore in Config, nome nel menu)
+pub const TEMI: [(&str, &str); 3] = [("scuro", "Scuro"), ("chiaro", "Chiaro"), ("sistema", "Come il sistema")];
 
 /// ASCII_ZOO_LOG=1: scrive su stderr cosa succede (pause, schermi, clic), per le prove e la CI
 pub fn log_attivo() -> bool {
@@ -109,6 +112,7 @@ pub struct Menus {
     pub conto: MenuItem,
     pub statistiche: CheckMenuItem,
     pub angoli: Vec<CheckMenuItem>,
+    pub temi: Vec<CheckMenuItem>,
     pub widget_sub: Submenu,
     /// "Widget > Schermo": (valore, voce); i primi due sono principale e tutti
     pub widget_schermi: Vec<(String, CheckMenuItem)>,
@@ -149,6 +153,9 @@ pub struct Core {
     pub menus: Menus,
     /// gli schermi collegati, il principale per primo
     pub schermi: Vec<Schermo>,
+    /// il tema mandato alle pagine: "scuro", "chiaro" o "auto" (sistema non riconosciuto:
+    /// decide la pagina con prefers-color-scheme)
+    tema_pagina: &'static str,
 }
 
 impl Core {
@@ -156,7 +163,43 @@ impl Core {
     pub fn new(solo_windows: bool) -> (Self, Menu) {
         let cfg = Config::load();
         let (menu, menus) = build_menu(&cfg, solo_windows);
-        (Self { cfg, menus, schermi: Vec::new() }, menu)
+        let mut core = Self { cfg, menus, schermi: Vec::new(), tema_pagina: "scuro" };
+        core.tema_pagina = core.tema_ora();
+        zoo_log!("tema: {} (alla pagina: {})", core.cfg.tema, core.tema_pagina);
+        (core, menu)
+    }
+
+    /// Il tema da mandare alle pagine adesso. Con "Come il sistema" lo si chiede al sistema
+    /// (registro di Windows, aspetto di macOS, portale o impostazioni di GNOME su Linux).
+    fn tema_ora(&self) -> &'static str {
+        match self.cfg.tema.as_str() {
+            "chiaro" => "chiaro",
+            "sistema" => match tema::scuro() {
+                Some(true) => "scuro",
+                Some(false) => "chiaro",
+                None => "auto",
+            },
+            _ => "scuro",
+        }
+    }
+
+    pub fn js_tema(&self) -> String {
+        format!("window.zooSetting && zooSetting('tema', '{}')", self.tema_pagina)
+    }
+
+    /// Con "Come il sistema", da chiamare ogni pochi secondi: lo script per le pagine se il
+    /// tema del sistema è cambiato dall'ultima volta, se no None.
+    pub fn tema_cambiato(&mut self) -> Option<String> {
+        if self.cfg.tema != "sistema" {
+            return None;
+        }
+        let ora = self.tema_ora();
+        if ora == self.tema_pagina {
+            return None;
+        }
+        zoo_log!("tema del sistema: {ora}");
+        self.tema_pagina = ora;
+        Some(self.js_tema())
     }
 
     /// i nomi come oggetto JSON: serde_json mette gli escape, quindi apostrofi e
@@ -226,6 +269,7 @@ impl Core {
     /// tutte le impostazioni di uno schermo, da mandare quando la sua pagina ha finito di caricare
     pub fn js_tutto(&self, ac: bool, schermo: &str) -> Vec<String> {
         let mut v = vec![
+            self.js_tema(),
             self.js_nomi(),
             self.js_rotazione(),
             self.js_orologio(),
@@ -397,6 +441,13 @@ impl Core {
                 widget = true;
                 None
             }
+        } else if let Some(i) = m.temi.iter().position(|x| x.id().0 == id) {
+            self.cfg.tema = TEMI[i].0.to_string();
+            for (k, item) in self.menus.temi.iter().enumerate() {
+                item.set_checked(k == i);
+            }
+            self.tema_pagina = self.tema_ora();
+            Some(self.js_tema())
         } else if id == m.clic.id().0 {
             self.cfg.clic_desktop = m.clic.is_checked();
             None
@@ -588,6 +639,14 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         let _ = widget.append(item);
     }
     // gli schermi veri si aggiungono con set_schermi
+    let tema_sub = Submenu::new("Tema", true);
+    // un valore sconosciuto nella config vale come "scuro"
+    let tema_cfg = if TEMI.iter().any(|t| t.0 == cfg.tema) { cfg.tema.as_str() } else { "scuro" };
+    let temi: Vec<CheckMenuItem> =
+        TEMI.iter().map(|(id, name)| CheckMenuItem::new(*name, true, tema_cfg == *id, None)).collect();
+    for item in &temi {
+        let _ = tema_sub.append(item);
+    }
     let animali_sub = Submenu::new("Animale per schermo", true);
     let animali_un_solo = MenuItem::new("(c'è un solo schermo)", false, None);
     let _ = animali_sub.append(&animali_un_solo);
@@ -602,6 +661,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         conto,
         statistiche,
         angoli,
+        temi,
         widget_sub: widget,
         widget_schermi,
         widget_schermi_fissi: Vec::new(),
@@ -624,6 +684,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     let _ = menu.append(&rot);
     let _ = menu.append(&nomi_sub);
     let _ = menu.append(&m.widget_sub);
+    let _ = menu.append(&tema_sub);
     let _ = menu.append(&m.orologio);
     let _ = menu.append(&m.koi);
     let _ = menu.append(&m.clic);

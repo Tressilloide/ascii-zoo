@@ -3,5 +3,11 @@
     "text": "Orologio al centro",
     "type": "checkbox",
     "value": true
+  },
+  "tema": {
+    "text": "Tema",
+    "type": "dropdown",
+    "value": 0,
+    "items": ["Scuro", "Chiaro", "Come il sistema"]
   }
 }
