@@ -42,9 +42,41 @@ jobs:
           sha256sum ascii-zoo.exe | tee ascii-zoo.exe.sha256
 
       - uses: actions/upload-artifact@v4
+        id: non-firmato
         with:
           name: ascii-zoo-windows
           path: dist/
+          if-no-files-found: error
+
+      # Firma del codice, solo per i tag e solo quando SignPath è configurato
+      # (variabile SIGNPATH_ORGANIZATION_ID e segreto SIGNPATH_API_TOKEN del repository).
+      # Ogni firma va approvata a mano su SignPath: il job aspetta fino a un'ora.
+      # L'exe firmato prende il posto di quello di prima e lo SHA256 si ricalcola.
+      - name: Firma con SignPath
+        if: startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ascii-zoo
+          signing-policy-slug: release-signing
+          github-artifact-id: ${{ steps.non-firmato.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: firmato
+
+      - name: SHA256 dell'exe firmato
+        if: startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != ''
+        run: |
+          cd firmato
+          sha256sum ascii-zoo.exe | tee ascii-zoo.exe.sha256
+
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != ''
+        with:
+          name: ascii-zoo-windows
+          path: firmato/
+          overwrite: true
           if-no-files-found: error
 
   macos:
