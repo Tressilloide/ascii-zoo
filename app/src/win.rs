@@ -289,6 +289,16 @@ impl App {
             self.push_settings();
             self.check_margini();
         }
+        if self.ticks % 2 == 0 {
+            // dopo il salvaschermo lo sfondo fisso di Windows può tornare sopra gli animali
+            let mut fatti: Vec<HWND> = Vec::new();
+            for s in &self.screens {
+                if !fatti.contains(&s.parent) {
+                    fatti.push(s.parent);
+                    unsafe { desktop::riordina(s.parent) };
+                }
+            }
+        }
         if self.ticks % 8 == 0 {
             self.check_power(); // ricontrolla anche le pause
             self.check_margini();
