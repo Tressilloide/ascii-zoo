@@ -192,7 +192,8 @@ Lo script ([`linux/install.sh`](linux/install.sh)) compila il programma dal sorg
 1. installa le librerie per compilarlo con **apt** (Ubuntu, Debian, Mint), **dnf** (Fedora) o **pacman** (Arch); chiede la password di `sudo` solo per questo;
 2. installa Rust con rustup se manca, in `~/.cargo`, senza toccare il `PATH`;
 3. compila il programma (la prima volta qualche minuto);
-4. lo copia in `~/.local/bin/ascii-zoo`, aggiunge icona e voce **ASCII Zoo** nel menu delle applicazioni, lo fa partire all'accesso e lo avvia.
+4. lo copia in `~/.local/bin/ascii-zoo` al posto della versione di prima (che ferma), aggiunge icona e voce **ASCII Zoo** nel menu delle applicazioni, lo fa partire all'accesso e lo avvia;
+5. se trova una versione vecchia fatta come estensione di GNOME Shell (uuid `ascii-zoo…@…`), la spegne e la toglie, così non girano due sfondi uno sopra l'altro. Se ce n'è anche una copia di sistema per la schermata di accesso (in `/usr/share/gnome-shell/extensions`, attivata da un file in `/usr/share/gdm/dconf`), la toglie con `sudo`. Lo fa solo dopo che la versione nuova è compilata e installata.
 
 L'icona a forma di koi compare **nella barra in alto**, con lo stesso menu delle altre versioni (al posto di "Avvia con Windows" c'è **Apri al login**). Per aggiornare si rilancia lo stesso comando (il codice scaricato resta in `~/.cache/ascii-zoo`, quindi la volta dopo si compila molto più in fretta); per togliere tutto:
 
@@ -203,7 +204,7 @@ curl -fsSL https://raw.githubusercontent.com/Tressilloide/ascii-zoo/main/linux/i
 - **Se apt si ferma** con `unmet dependencies`: su Ubuntu capita dopo un aggiornamento di versione, quando un pacchetto resta a una build poi ritirata dall'archivio (per esempio `libbz2-1.0 1.0.8-6ubuntu0.1`) e il suo `-dev` chiede la versione dell'archivio. Lo script lo riconosce, simula il downgrade dei pacchetti interessati e, se non toglie niente, stampa il comando da lanciare; il downgrade non lo fa da solo, perché se trascinasse via altri pacchetti potrebbe togliere il desktop.
 - **Ubuntu** mostra le icone nella barra in alto di serie (estensione *Ubuntu AppIndicators*). Su GNOME senza Ubuntu (Fedora, Debian…) serve l'estensione *AppIndicator and KStatusNotifierItem Support*: lo script avvisa se manca.
 - **Wayland.** Wayland non permette a un programma normale di mettersi al posto dello sfondo, quindi ASCII Zoo passa da XWayland (`GDK_BACKEND=x11`) e usa una finestra di tipo "desktop", sotto tutte le altre e su tutti gli spazi di lavoro. I clic la attraversano e arrivano alle icone del desktop.
-- **Cosa tocca:** `~/.local/bin/ascii-zoo`, `~/.local/share/applications/ascii-zoo.desktop`, l'icona in `~/.local/share/icons`, `~/.config/autostart/ascii-zoo.desktop` e le impostazioni in `~/.config/AsciiZoo/config.json`. Non si collega a internet.
+- **Cosa tocca:** `~/.local/bin/ascii-zoo`, `~/.local/share/applications/ascii-zoo.desktop`, l'icona in `~/.local/share/icons`, `~/.config/autostart/ascii-zoo.desktop` e le impostazioni in `~/.config/AsciiZoo/config.json`; toglie solo le estensioni GNOME `ascii-zoo…@…` delle versioni vecchie (vedi il punto 5). Non si collega a internet.
 - Su Linux ci sono la pausa a batteria e i widget (CPU, RAM, batteria da `/proc` e `/sys`); le pause "schermo intero" e "finestre che coprono il desktop" per ora ci sono solo su Windows.
 
 ## Nuova scheda per Firefox

@@ -6,7 +6,8 @@
 # oppure, da un clone della repo:
 #
 #   bash linux/install.sh                installa (o aggiorna) e avvia
-#   bash linux/install.sh --disinstalla  toglie programma, icona, voce del menu e avvio automatico
+#   bash linux/install.sh --disinstalla  toglie programma, icona, voce del menu, avvio automatico
+#                                        e le versioni vecchie fatte come estensione di GNOME
 #
 # (con curl: ... | bash -s -- --disinstalla)
 #
@@ -14,10 +15,14 @@
 #   1. installa le librerie per compilarlo (apt, dnf o pacman: chiede la password di sudo)
 #   2. installa Rust con rustup se manca (in ~/.cargo, senza toccare il PATH)
 #   3. compila il programma (qualche minuto la prima volta, poi molto meno)
-#   4. lo copia in ~/.local/bin, mette icona e voce nel menu delle applicazioni,
-#      lo fa partire all'accesso e lo avvia: l'icona a forma di koi compare nella barra in alto
+#   4. lo copia in ~/.local/bin (al posto della versione di prima, che ferma), mette icona e
+#      voce nel menu delle applicazioni, lo fa partire all'accesso e lo avvia: l'icona a forma
+#      di koi compare nella barra in alto
+#   5. se trova una versione vecchia fatta come estensione di GNOME Shell (uuid ascii-zoo…@…),
+#      la spegne e la toglie, così non girano due sfondi insieme
 #
-# Tutto resta nella cartella dell'utente; con sudo si installano solo i pacchetti di sistema.
+# Tutto resta nella cartella dell'utente; con sudo si installano solo i pacchetti di sistema
+# e si toglie l'eventuale copia di sistema di una versione vecchia (schermata di accesso).
 # Variabile ASCII_ZOO_NON_AVVIARE=1: installa senza avviarlo (es. per le prove automatiche).
 #
 # Tutto è dentro main(), chiamata all'ultima riga: con "curl | bash" bash legge lo script
@@ -44,6 +49,7 @@ main() {
     ferma
     rm -f "$BIN" "$MENU" "$ICONA" "$AUTOSTART"
     if command -v update-desktop-database >/dev/null; then update-desktop-database "$DATA/applications" 2>/dev/null || true; fi
+    togli_vecchie "$DATA"
     say "ASCII Zoo disinstallato. Le impostazioni restano in $CONF/AsciiZoo: cancellala a mano se non servono più."
     say "Rust (in ~/.cargo) non l'ho toccato: se l'aveva installato questo script e non ti serve, 'rustup self uninstall'."
     return 0
@@ -114,6 +120,9 @@ main() {
   if command -v update-desktop-database >/dev/null; then update-desktop-database "$DATA/applications" 2>/dev/null || true; fi
   if command -v gtk-update-icon-cache >/dev/null; then gtk-update-icon-cache -q -t "$DATA/icons/hicolor" 2>/dev/null || true; fi
   say "Installato in $BIN (parte da solo all'accesso; si toglie dal menu: 'Apri al login')"
+
+  # 5. solo ora che la versione nuova è al suo posto si toglie quella vecchia
+  togli_vecchie "$DATA"
 
   # GNOME mostra le icone nella barra solo con l'estensione AppIndicator (su Ubuntu c'è di serie)
   if [[ "${XDG_CURRENT_DESKTOP:-}" == *GNOME* ]] && command -v gnome-extensions >/dev/null; then
@@ -189,6 +198,44 @@ spiega_apt() {
   else
     avviso "Ho simulato il downgrade: non toglie nessun pacchetto. Per farlo, e poi rilanciare questo script:"
     printf '\n  sudo apt-get install --allow-downgrades %s %s\n\n' "${famiglia[*]}" "$*" >&2
+  fi
+}
+
+# Le versioni vecchie fatte come estensione di GNOME Shell (lo sfondo disegnato dentro
+# gnome-shell, uuid "ascii-zoo…@…"): insieme al programma girerebbero due sfondi uno sopra
+# l'altro. Si spengono nella sessione (il loro disable() ferma anche il renderer) e si
+# tolgono: la copia dell'utente senza sudo, quella di sistema per la schermata di accesso
+# (/usr/share/gnome-shell/extensions e il file che la attiva in /usr/share/gdm/dconf) con sudo.
+togli_vecchie() {
+  local data="$1" d uuid
+  local -a utente=() sistema=() uuids=()
+  for d in "$data"/gnome-shell/extensions/ascii-zoo*@*; do
+    if [ -f "$d/metadata.json" ]; then utente+=("$d"); fi
+  done
+  for d in /usr/share/gnome-shell/extensions/ascii-zoo*@*; do
+    if [ -f "$d/metadata.json" ]; then sistema+=("$d"); fi
+  done
+  for d in "${utente[@]}" "${sistema[@]}"; do
+    uuid=${d##*/}
+    case " ${uuids[*]} " in *" $uuid "*) ;; *) uuids+=("$uuid") ;; esac
+  done
+  for d in /usr/share/gdm/dconf/*ascii-zoo*; do
+    if [ -f "$d" ]; then sistema+=("$d"); fi
+  done
+  [ "${#utente[@]}" -gt 0 ] || [ "${#sistema[@]}" -gt 0 ] || return 0
+
+  say "Tolgo la versione vecchia fatta come estensione di GNOME: ${uuids[*]:-attivazione nella schermata di accesso}"
+  if command -v gnome-extensions >/dev/null; then
+    for uuid in "${uuids[@]}"; do timeout 15 gnome-extensions disable "$uuid" </dev/null 2>/dev/null || true; done
+  fi
+  if [ "${#utente[@]}" -gt 0 ]; then rm -rf -- "${utente[@]}"; fi
+  if [ "${#sistema[@]}" -gt 0 ]; then
+    say "La copia per la schermata di accesso è di sistema: la tolgo con sudo (può chiedere la password)"
+    if ! sudo rm -rf -- "${sistema[@]}" </dev/null; then
+      avviso "Non sono riuscito a toglierla: lo puoi fare a mano con  sudo rm -rf ${sistema[*]}"
+      return 0
+    fi
+    if [ -x /usr/share/gdm/generate-config ]; then sudo /usr/share/gdm/generate-config </dev/null || true; fi
   fi
 }
 
