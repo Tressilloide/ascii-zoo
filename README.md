@@ -8,10 +8,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Tressilloide/ascii-zoo/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Tressilloide/ascii-zoo?label=download&color=ffb347"></a>
+  <a href="https://github.com/ascii-things/ascii-zoo/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/ascii-things/ascii-zoo?label=download&color=ffb347"></a>
   <img alt="Windows, macOS, Linux" src="https://img.shields.io/badge/Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-supported-3fe0b0">
   <img alt="Written in Rust" src="https://img.shields.io/badge/written%20in-Rust-e45bd0">
-  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/Tressilloide/ascii-zoo?color=5aa7ff"></a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/ascii-things/ascii-zoo?color=5aa7ff"></a>
 </p>
 
 <p align="center">
@@ -69,9 +69,9 @@ The screensaver is the same `ascii-zoo.exe`, copied as `%LOCALAPPDATA%\AsciiZoo\
 
 | | |
 |---|---|
-| **Windows 10/11** | [`ascii-zoo.exe`](https://github.com/Tressilloide/ascii-zoo/releases/latest/download/ascii-zoo.exe): no installer, put it in a folder (e.g. `%LOCALAPPDATA%\AsciiZoo`) and run it |
-| **macOS 11+** (Apple Silicon & Intel) | [`ascii-zoo-macos.dmg`](https://github.com/Tressilloide/ascii-zoo/releases/latest/download/ascii-zoo-macos.dmg): drag **ASCII Zoo** into Applications |
-| **Linux** (Ubuntu, Debian, Fedora, Arch…) | one command: `curl -fsSL https://raw.githubusercontent.com/Tressilloide/ascii-zoo/main/linux/install.sh \| bash` (downloads the prebuilt x86_64/aarch64 binary, checks its SHA256 and installs only the missing runtime libraries; builds from source as a fallback) |
+| **Windows 10/11** | [`ascii-zoo.exe`](https://github.com/ascii-things/ascii-zoo/releases/latest/download/ascii-zoo.exe): no installer, put it in a folder (e.g. `%LOCALAPPDATA%\AsciiZoo`) and run it |
+| **macOS 11+** (Apple Silicon & Intel) | [`ascii-zoo-macos.dmg`](https://github.com/ascii-things/ascii-zoo/releases/latest/download/ascii-zoo-macos.dmg): drag **ASCII Zoo** into Applications |
+| **Linux** (Ubuntu, Debian, Fedora, Arch…) | one command: `curl -fsSL https://raw.githubusercontent.com/ascii-things/ascii-zoo/main/linux/install.sh \| bash` (downloads the prebuilt x86_64/aarch64 binary, checks its SHA256 and installs only the missing runtime libraries; builds from source as a fallback) |
 
 **First launch.** The apps aren't code-signed (yet), so:
 on Windows SmartScreen says *"Windows protected your PC"* → **More info → Run anyway**;
@@ -82,7 +82,7 @@ on macOS go to **System Settings → Privacy & Security → Open Anyway**.
 **Can I trust the binary?** It's never committed to the repo: GitHub Actions builds it from the tagged source ([workflow](.github/workflows/build.yml), public logs), and every release ships a SHA256 and a GitHub provenance attestation:
 
 ```
-gh attestation verify ascii-zoo.exe --repo Tressilloide/ascii-zoo
+gh attestation verify ascii-zoo.exe --repo ascii-things/ascii-zoo
 ```
 
 The app only writes its settings file (and an autostart entry, if you enable it). Full details, file locations and the Linux script steps are in the [Italian README](README.it.md).
@@ -92,7 +92,7 @@ The app only writes its settings file (and an autostart entry, if you enable it)
 1. In the tray / menu bar icon untick **Avvia con Windows** / **Apri al login** (it removes the autostart entry), then choose **Esci** (quit): the normal wallpaper comes back.
 2. Windows, if you use the screensaver: open **Change screen saver** (search "screen saver" in Start), pick **(None)** and press OK, then delete `%LOCALAPPDATA%\AsciiZoo\ascii-zoo.scr`.
 3. Delete the app: `ascii-zoo.exe` on Windows, **ASCII Zoo** from Applications on macOS. On Linux run the install command with `--disinstalla`:
-   `curl -fsSL https://raw.githubusercontent.com/Tressilloide/ascii-zoo/main/linux/install.sh | bash -s -- --disinstalla`
+   `curl -fsSL https://raw.githubusercontent.com/ascii-things/ascii-zoo/main/linux/install.sh | bash -s -- --disinstalla`
 4. Optionally delete the settings: `%APPDATA%\AsciiZoo` (Windows), `~/Library/Application Support/AsciiZoo` (macOS), `~/.config/AsciiZoo` (Linux).
 
 ### Privacy

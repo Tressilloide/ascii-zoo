@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ASCII Zoo per Linux: installa o aggiorna con un solo comando.
 #
-#   curl -fsSL https://raw.githubusercontent.com/Tressilloide/ascii-zoo/main/linux/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/ascii-things/ascii-zoo/main/linux/install.sh | bash
 #
 # oppure, da un clone della repo:
 #
@@ -42,8 +42,8 @@
 set -euo pipefail
 
 main() {
-  local REPO="https://github.com/Tressilloide/ascii-zoo.git"
-  local RELEASE="${ASCII_ZOO_RELEASE_URL:-https://github.com/Tressilloide/ascii-zoo/releases/latest/download}"
+  local REPO="https://github.com/ascii-things/ascii-zoo.git"
+  local RELEASE="${ASCII_ZOO_RELEASE_URL:-https://github.com/ascii-things/ascii-zoo/releases/latest/download}"
   local DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
   local CONF="${XDG_CONFIG_HOME:-$HOME/.config}"
   local BIN="$HOME/.local/bin/ascii-zoo"
