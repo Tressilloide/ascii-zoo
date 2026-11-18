@@ -90,9 +90,10 @@ The app only writes its settings file (and an autostart entry, if you enable it)
 ### Uninstall
 
 1. In the tray / menu bar icon untick **Avvia con Windows** / **Apri al login** (it removes the autostart entry), then choose **Esci** (quit): the normal wallpaper comes back.
-2. Delete the app: `ascii-zoo.exe` on Windows, **ASCII Zoo** from Applications on macOS. On Linux run the install command with `--disinstalla`:
+2. Windows, if you use the screensaver: open **Change screen saver** (search "screen saver" in Start), pick **(None)** and press OK, then delete `%LOCALAPPDATA%\AsciiZoo\ascii-zoo.scr`.
+3. Delete the app: `ascii-zoo.exe` on Windows, **ASCII Zoo** from Applications on macOS. On Linux run the install command with `--disinstalla`:
    `curl -fsSL https://raw.githubusercontent.com/Tressilloide/ascii-zoo/main/linux/install.sh | bash -s -- --disinstalla`
-3. Optionally delete the settings: `%APPDATA%\AsciiZoo` (Windows), `~/Library/Application Support/AsciiZoo` (macOS), `~/.config/AsciiZoo` (Linux).
+4. Optionally delete the settings: `%APPDATA%\AsciiZoo` (Windows), `~/Library/Application Support/AsciiZoo` (macOS), `~/.config/AsciiZoo` (Linux).
 
 ### Privacy
 
