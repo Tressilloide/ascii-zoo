@@ -59,6 +59,20 @@ pub unsafe fn attach(hwnd: HWND) -> Option<Embed> {
     Some(Embed { parent })
 }
 
+/// Windows 11 24H2+: la WorkerW con lo sfondo fisso deve restare l'ultima figlia di
+/// Progman, sotto gli sfondi animati. Dopo il salvaschermo (e a volte dopo il blocco
+/// o un cambio di sfondo) Explorer la rimette subito sotto le icone, sopra gli animali,
+/// che restano accesi ma coperti. Se è successo la si rimanda in fondo.
+/// Sono due chiamate e non manda messaggi: si può fare spesso.
+pub unsafe fn riordina(parent: HWND) {
+    let Ok(worker) = FindWindowExW(Some(parent), None, w!("WorkerW"), None) else {
+        return;
+    };
+    if GetWindow(worker, GW_HWNDNEXT).is_ok_and(|h| !h.is_invalid()) {
+        let _ = SetWindowPos(worker, Some(HWND_BOTTOM), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+}
+
 /// Porta la finestra a coprire `screen` (coordinate dello schermo, pixel fisici).
 pub unsafe fn fit(hwnd: HWND, parent: HWND, screen: RECT) {
     let mut pr = RECT::default();
