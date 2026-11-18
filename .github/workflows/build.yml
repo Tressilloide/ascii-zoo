@@ -35,6 +35,15 @@ jobs:
         working-directory: app
         run: cargo build --release --locked
 
+      - name: Prova lo screensaver - un fotogramma per scena, senza finestra
+        working-directory: dreams
+        run: |
+          cargo build --release --locked
+          for s in stelle pioggia fuoco aurora vita mare; do
+            ./target/release/ascii-dreams.exe --png "prova-$s.png" --scena "$s" --secondi 2
+            test -s "prova-$s.png"
+          done
+
       - name: SHA256
         run: |
           mkdir dist

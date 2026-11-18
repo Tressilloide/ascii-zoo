@@ -17,6 +17,8 @@ winresource = "0.1"
 [target.'cfg(windows)'.dependencies]
 raw-window-handle = "0.6"
 winreg = "0.55"
+# lo screensaver (cartella dreams/): motore nativo, senza WebView
+ascii-dreams = { path = "../dreams" }
 
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.61"
@@ -47,6 +49,12 @@ libc = "0.2"
 tao = "0.34"
 gtk = "0.18"
 libc = "0.2"
+
+# lo screensaver disegna ogni fotogramma in software: qui conta la velocità, non la grandezza
+[profile.release.package.ascii-dreams]
+opt-level = 3
+[profile.release.package.fontdue]
+opt-level = 3
 
 [profile.release]
 opt-level = "s"

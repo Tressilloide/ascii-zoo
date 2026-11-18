@@ -615,7 +615,7 @@ pub fn run() {
                 app.tray = None;
                 *control_flow = ControlFlow::Exit;
             }
-            Esito::Niente => {}
+            Esito::Salvaschermo | Esito::Niente => {} // lo screensaver c'è solo su Windows
         },
         _ => {}
     });

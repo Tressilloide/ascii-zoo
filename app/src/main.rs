@@ -44,6 +44,16 @@ fn main() {
         println!("ascii-zoo {}", env!("CARGO_PKG_VERSION"));
         return;
     }
+    // Windows lancia lo screensaver (ascii-zoo.scr, cioè questo stesso programma)
+    // con /s, /p o /c: lo fa il motore nativo di dreams/, non lo sfondo
+    #[cfg(windows)]
+    {
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        if ascii_dreams::chiamata_da_salvaschermo(&args) {
+            ascii_dreams::avvia(&args);
+            return;
+        }
+    }
     #[cfg(windows)]
     win::run();
     #[cfg(target_os = "macos")]

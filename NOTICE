@@ -6,3 +6,8 @@ Third-party material
 The IBM Plex Mono font embedded in sfondo/index.html and app/assets/ and
 included in firefox/fonts/ is (c) IBM Corp. and is licensed separately under
 the SIL Open Font License 1.1 (see firefox/fonts/OFL.txt).
+
+The JetBrains Mono font (dreams/assets/JetBrainsMono-Regular.ttf), embedded in
+the Windows executable for the screensaver, is Copyright 2020 The JetBrains Mono
+Project Authors and is licensed separately under the SIL Open Font License 1.1
+(see dreams/assets/OFL.txt).
