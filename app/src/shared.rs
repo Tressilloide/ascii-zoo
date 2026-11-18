@@ -124,6 +124,8 @@ pub struct Menus {
     pub schermo: CheckMenuItem,
     pub coperto: CheckMenuItem,
     pub avvio: CheckMenuItem,
+    /// "Usa come screensaver…" (solo Windows)
+    pub salvaschermo: MenuItem,
     pub ricarica: MenuItem,
     pub esci: MenuItem,
 }
@@ -135,6 +137,8 @@ pub enum Esito {
     /// cambiato qualcosa che dipende dallo schermo: a ogni pagina va mandato js_schermo
     Schermi,
     Ricarica,
+    /// installare lo screensaver e aprire le sue impostazioni di Windows
+    Salvaschermo,
     Esci,
     Niente,
 }
@@ -417,6 +421,8 @@ impl Core {
             autostart::set(m.avvio.is_checked());
             m.avvio.set_checked(autostart::enabled());
             return Esito::Niente;
+        } else if id == m.salvaschermo.id().0 {
+            return Esito::Salvaschermo;
         } else if id == m.ricarica.id().0 {
             return Esito::Ricarica;
         } else if id == m.esci.id().0 {
@@ -611,6 +617,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         schermo: CheckMenuItem::new("Pausa con app a schermo intero", true, cfg.pausa_schermo_intero, None),
         coperto: CheckMenuItem::new("Pausa quando le finestre coprono il desktop", true, cfg.pausa_coperto, None),
         avvio: CheckMenuItem::new(avvio_label, true, autostart::enabled(), None),
+        salvaschermo: MenuItem::new("Usa come screensaver…", true, None),
         ricarica: MenuItem::new("Ricarica sfondo", true, None),
         esci: MenuItem::new("Esci", true, None),
     };
@@ -629,6 +636,10 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         let _ = menu.append(&m.coperto);
     }
     let _ = menu.append(&m.avvio);
+    if solo_windows {
+        // lo screensaver per ora c'è solo su Windows
+        let _ = menu.append(&m.salvaschermo);
+    }
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(&m.ricarica);
     let _ = menu.append(&m.esci);

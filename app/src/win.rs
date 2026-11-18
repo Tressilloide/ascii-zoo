@@ -269,6 +269,7 @@ impl App {
                     let _ = s.webview.load_url(URL);
                 }
             }
+            Esito::Salvaschermo => ascii_dreams::installa(),
             Esito::Esci => unsafe {
                 let _ = DestroyWindow(self.ctl);
             },
@@ -551,6 +552,8 @@ pub fn run() {
         }
         // "Avvia con Windows" segue la copia appena avviata
         autostart::aggiorna();
+        // e anche lo screensaver, se è installato: dopo un aggiornamento dell'app è la versione nuova
+        ascii_dreams::aggiorna_se_installato();
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
 

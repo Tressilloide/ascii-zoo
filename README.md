@@ -51,7 +51,19 @@ It's a small example of what two people and an AI can ship together in a short t
 - **Multi-monitor**, with a different animal on each screen if you like.
 - **ASCII widgets**: a sticky note, a countdown, CPU/RAM/battery meters.
 - **Names**: the biggest animal of each species can carry a name. Meet **KARPISA**, the koi from Pisa.
+- **A screensaver too** (Windows): six ASCII scenes, see below.
 - Everything is set from a small koi icon in the tray / menu bar.
+
+### Screensaver (Windows)
+
+| | | |
+|---|---|---|
+| ![Starfield](dreams/docs/stelle.png) **Starfield** | ![Rain and lightning](dreams/docs/pioggia.png) **Rain & lightning** | ![Campfire](dreams/docs/fuoco.png) **Campfire** |
+| ![Aurora](dreams/docs/aurora.png) **Aurora** | ![Game of Life](dreams/docs/vita.png) **Game of Life** | ![Night sea](dreams/docs/mare.png) **Night sea** |
+
+In the tray menu choose **Usa come screensaver…** (use as screensaver): Windows opens its screensaver settings with ASCII Zoo already picked. Choose the wait time, and tick *On resume, display logon screen* if you want the PC to lock. In **Settings** you pick the scene (or all of them in rotation), how often it changes, the character size and the big drifting clock.
+
+The screensaver is the same `ascii-zoo.exe`, copied as `%LOCALAPPDATA%\AsciiZoo\ascii-zoo.scr` and kept up to date by the app. It doesn't use the WebView: a small native renderer in [`dreams/`](dreams/) draws every frame in about 1–2 ms, on every monitor, at 30 fps (15 on battery).
 
 ## Download
 
@@ -89,10 +101,10 @@ cd app
 cargo build --release --locked
 ```
 
-See [`app/README.md`](app/README.md) for platform notes. Issues and pull requests are welcome, and so are new species. 🐸
+See [`app/README.md`](app/README.md) for platform notes. The screensaver also runs on its own while you work on it: `cd dreams` and `cargo run --release -- --finestra --scena aurora` (in a window, Esc closes) or `-- --png aurora.png --scena aurora` (one frame to a PNG, any OS). Issues and pull requests are welcome, and so are new species. 🐸
 
 ## Credits & license
 
-Code: [MIT](LICENSE). Font: [IBM Plex Mono](https://github.com/IBM/plex) © IBM Corp., SIL Open Font License 1.1 (see [NOTICE](NOTICE)).
+Code: [MIT](LICENSE). Fonts: [IBM Plex Mono](https://github.com/IBM/plex) © IBM Corp. for the wallpaper and [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) for the screensaver, both SIL Open Font License 1.1 (see [NOTICE](NOTICE)).
 
 If ASCII Zoo made your desktop a bit nicer, a ⭐ helps others find it.
