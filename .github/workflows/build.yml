@@ -237,6 +237,26 @@ jobs:
           path: prova-linux-binario.png
           if-no-files-found: warn
 
+  # L'estensione di GNOME per il clic sul desktop (linux/gnome), provata in un GNOME Shell
+  # senza schermo con le icone di DING, come su Ubuntu: clic simulati sul desktop, su una
+  # finestra, sulla barra in alto e per chiudere un menu; ad ASCII Zoo (qui un finto, sullo
+  # stesso nome D-Bus) devono arrivare solo quelli sul desktop.
+  linux-gnome-clic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: GNOME Shell e le icone del desktop (DING)
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+            gnome-shell gnome-shell-extension-desktop-icons-ng xwayland zenity python3-gi dbus-x11
+          gnome-shell --version
+
+      - name: Prova - clic simulati
+        run: bash .github/prova-clic-gnome/prova.sh
+
   # La riserva di linux/install.sh: se la Release non ha il programma per Linux (qui un
   # indirizzo dove non c'è niente) compila dal sorgente, cioè questo commit. Lo si esegue
   # per intero (pacchetti, compilazione, file nella cartella dell'utente) e poi si avvia il

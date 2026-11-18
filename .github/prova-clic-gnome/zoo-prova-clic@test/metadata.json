@@ -1,0 +1,6 @@
+{
+  "uuid": "zoo-prova-clic@test",
+  "name": "Prova clic ASCII Zoo",
+  "description": "Solo per la prova automatica: simula clic con un mouse virtuale.",
+  "shell-version": ["45", "46", "47", "48", "49", "50", "51"]
+}
