@@ -1,5 +1,6 @@
-# Compila il programma per Windows e per macOS a ogni push e pull request
-# (exe e DMG si scaricano dagli artifact della run) e prova l'installazione su Linux.
+# Compila il programma per Windows, macOS e Linux (x86_64 e aarch64) a ogni push e pull
+# request (si scaricano dagli artifact della run) e prova l'installazione su Linux, sia
+# con il programma già compilato sia compilando dal sorgente.
 # Con un tag "v*" (es. v0.2.0) pubblica nelle Releases quello che è stato compilato
 # qui, con gli SHA256 e l'attestazione di provenienza di GitHub.
 name: Build
@@ -114,9 +115,132 @@ jobs:
           path: prova-macos.png
           if-no-files-found: warn
 
-  # Su Linux si installa compilando dal sorgente con linux/install.sh: qui lo si
-  # esegue per intero (pacchetti, compilazione, file nella cartella dell'utente) e
-  # poi si avvia il programma su uno schermo virtuale, come prova.
+  # Il programma per Linux già compilato, che va nelle Release e che linux/install.sh
+  # scarica. Si compila in un container Ubuntu 22.04: così va anche sulle distribuzioni
+  # più nuove (glibc 2.35 o successiva). Il pacchetto ha dentro il programma, l'icona e
+  # l'estensione di GNOME per il clic sul desktop.
+  linux-binario:
+    name: linux-binario (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    # se un runner non arriva (es. quello ARM) il job non resta appeso per ore
+    timeout-minutes: 45
+    container: ubuntu:22.04
+    steps:
+      - name: Strumenti e librerie per compilare
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+            ca-certificates curl git build-essential pkg-config \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev libxdo-dev
+
+      - uses: actions/checkout@v4
+
+      - name: Lo sfondo incorporato è uguale a sfondo/index.html
+        run: cmp sfondo/index.html app/assets/ascii-zoo-sfondo.html
+
+      - name: Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y -q --profile minimal --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app
+          key: ${{ matrix.arch }}
+
+      - name: Compila
+        working-directory: app
+        run: cargo build --release --locked
+
+      - name: Pacchetto e SHA256
+        run: |
+          d=ascii-zoo-linux-${{ matrix.arch }}
+          mkdir -p "build/$d" dist
+          cp app/target/release/ascii-zoo linux/ascii-zoo.svg "build/$d/"
+          cp -r linux/gnome "build/$d/gnome"
+          "build/$d/ascii-zoo" --version
+          tar -C build -czf "dist/$d.tar.gz" "$d"
+          cd dist
+          sha256sum "$d.tar.gz" | tee "$d.tar.gz.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ascii-zoo-linux-${{ matrix.arch }}
+          path: dist/
+          if-no-files-found: error
+
+  # Il percorso normale di linux/install.sh, come lo vede chi lo usa: su un Ubuntu 24.04
+  # senza librerie di sviluppo scarica il pacchetto di questa run come se fosse quello della
+  # Release, ne controlla lo SHA256, installa solo le librerie per farlo partire (non
+  # compila niente) e il programma parte.
+  linux-installa-binario:
+    needs: linux-binario
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ascii-zoo-linux-x86_64
+          path: dist
+
+      - name: Installa con linux/install.sh il programma già compilato
+        env:
+          ASCII_ZOO_NON_AVVIARE: "1"
+        run: |
+          set -o pipefail
+          ASCII_ZOO_RELEASE_URL="file://$PWD/dist" bash linux/install.sh 2>&1 | tee install.log
+          grep -q "SHA256 verificato" install.log
+          if grep -q "Compilo ASCII Zoo" install.log; then
+            echo "::error::install.sh ha compilato invece di usare il programma già compilato"
+            exit 1
+          fi
+          ~/.local/bin/ascii-zoo --version
+
+      - name: Prova - avvia l'app sotto Xvfb e fotografa lo schermo
+        run: |
+          sudo apt-get install -y -qq xvfb openbox imagemagick dbus-x11
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1920x1080x24 &
+          sleep 2
+          openbox &
+          cat > prova.sh <<'FINE'
+          ASCII_ZOO_LOG=1 ~/.local/bin/ascii-zoo > app.log 2>&1 &
+          pid=$!
+          sleep 20
+          import -window root prova-linux-binario.png || echo "::warning::screenshot non riuscito"
+          echo "--- log dell'app ---"; cat app.log
+          if ! kill -0 "$pid" 2>/dev/null; then
+            echo "::error::l'app si è chiusa da sola"
+            exit 1
+          fi
+          kill "$pid"
+          FINE
+          dbus-run-session -- bash prova.sh
+
+      - name: Prova - disinstallazione
+        run: |
+          bash linux/install.sh --disinstalla
+          test ! -e ~/.local/bin/ascii-zoo
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prova-linux-binario
+          path: prova-linux-binario.png
+          if-no-files-found: warn
+
+  # La riserva di linux/install.sh: se la Release non ha il programma per Linux (qui un
+  # indirizzo dove non c'è niente) compila dal sorgente, cioè questo commit. Lo si esegue
+  # per intero (pacchetti, compilazione, file nella cartella dell'utente) e poi si avvia il
+  # programma su uno schermo virtuale, come prova.
   linux:
     runs-on: ubuntu-24.04
     steps:
@@ -125,14 +249,25 @@ jobs:
       - name: Lo sfondo incorporato è uguale a sfondo/index.html
         run: cmp sfondo/index.html app/assets/ascii-zoo-sfondo.html
 
+      - name: Estensione di GNOME per il clic sul desktop - sintassi
+        run: |
+          for d in linux/gnome/*/; do
+            node --input-type=module --check < "$d/extension.js"
+            python3 -m json.tool "$d/metadata.json" > /dev/null
+          done
+
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: app
 
-      - name: Installa con linux/install.sh
+      - name: Installa con linux/install.sh, compilando (Release senza programma per Linux)
         env:
           ASCII_ZOO_NON_AVVIARE: "1"
-        run: bash linux/install.sh
+          ASCII_ZOO_RELEASE_URL: file:///nessuna-release
+        run: |
+          set -o pipefail
+          bash linux/install.sh 2>&1 | tee install.log
+          grep -q "Compilo ASCII Zoo" install.log
 
       - name: File installati
         run: |
@@ -190,8 +325,8 @@ jobs:
         run: |
           rm -f ~/.local/bin/ascii-zoo
           curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/linux/install.sh" | bash
-          test -x ~/.local/bin/ascii-zoo
-          test -d ~/.cache/ascii-zoo/sorgente/.git
+          # dall'ultima Release se ha il programma per Linux, se no compilato da main
+          ~/.local/bin/ascii-zoo --version
 
       - name: Prova - disinstallazione
         run: |
@@ -209,7 +344,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, macos, linux]
+    needs: [windows, macos, linux, linux-binario, linux-installa-binario]
     runs-on: ubuntu-latest
     permissions:
       contents: write      # creare la Release
@@ -236,11 +371,19 @@ jobs:
           name: ascii-zoo-macos
           path: dist
 
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ascii-zoo-linux-*
+          path: dist
+          merge-multiple: true
+
       - uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
             dist/ascii-zoo.exe
             dist/ascii-zoo-macos.dmg
+            dist/ascii-zoo-linux-x86_64.tar.gz
+            dist/ascii-zoo-linux-aarch64.tar.gz
 
       - name: Pubblica la Release
         env:
@@ -248,6 +391,8 @@ jobs:
         run: |
           sha_exe=$(cut -d' ' -f1 dist/ascii-zoo.exe.sha256)
           sha_dmg=$(cut -d' ' -f1 dist/ascii-zoo-macos.dmg.sha256)
+          sha_x86=$(cut -d' ' -f1 dist/ascii-zoo-linux-x86_64.tar.gz.sha256)
+          sha_arm=$(cut -d' ' -f1 dist/ascii-zoo-linux-aarch64.tar.gz.sha256)
           cat > notes.md <<EOF
           ## Scarica
 
@@ -255,6 +400,8 @@ jobs:
           |---|---|---|
           | Windows 10/11 (64 bit) | \`ascii-zoo.exe\` | \`$sha_exe\` |
           | macOS 11 o successivo (Apple Silicon e Intel) | \`ascii-zoo-macos.dmg\` | \`$sha_dmg\` |
+          | Linux x86_64 (lo scarica install.sh) | \`ascii-zoo-linux-x86_64.tar.gz\` | \`$sha_x86\` |
+          | Linux aarch64 (lo scarica install.sh) | \`ascii-zoo-linux-aarch64.tar.gz\` | \`$sha_arm\` |
 
           Compilati da GitHub Actions dal sorgente di questo tag: [log della build](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}).
 
@@ -267,7 +414,7 @@ jobs:
           apri **Impostazioni di Sistema → Privacy e sicurezza** e premi **Apri comunque** (poi conferma). L'icona compare nella barra dei menu.
 
           ### Linux
-          Un solo comando nel terminale: scarica il sorgente di \`main\`, lo compila e lo installa nella cartella utente (librerie con apt, dnf o pacman). L'icona compare nella barra in alto.
+          Un solo comando nel terminale: scarica il programma già compilato di questa versione, ne controlla lo SHA256 e lo installa nella cartella utente, con le librerie che mancano (apt, dnf o pacman). Su un processore diverso da x86_64 e aarch64 lo compila dal sorgente. L'icona compare nella barra in alto; su GNOME il clic sul desktop funziona dal prossimo accesso.
 
           \`\`\`
           curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/linux/install.sh | bash
@@ -282,4 +429,6 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             dist/ascii-zoo.exe dist/ascii-zoo.exe.sha256 \
             dist/ascii-zoo-macos.dmg dist/ascii-zoo-macos.dmg.sha256 \
+            dist/ascii-zoo-linux-x86_64.tar.gz dist/ascii-zoo-linux-x86_64.tar.gz.sha256 \
+            dist/ascii-zoo-linux-aarch64.tar.gz dist/ascii-zoo-linux-aarch64.tar.gz.sha256 \
             --repo "$GITHUB_REPOSITORY" --title "ASCII Zoo $GITHUB_REF_NAME" --notes-file notes.md

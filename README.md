@@ -59,7 +59,7 @@ It's a small example of what two people and an AI can ship together in a short t
 |---|---|
 | **Windows 10/11** | [`ascii-zoo.exe`](https://github.com/Tressilloide/ascii-zoo/releases/latest/download/ascii-zoo.exe): no installer, put it in a folder (e.g. `%LOCALAPPDATA%\AsciiZoo`) and run it |
 | **macOS 11+** (Apple Silicon & Intel) | [`ascii-zoo-macos.dmg`](https://github.com/Tressilloide/ascii-zoo/releases/latest/download/ascii-zoo-macos.dmg): drag **ASCII Zoo** into Applications |
-| **Linux** (Ubuntu, Debian, Fedora, Arch…) | one command: `curl -fsSL https://raw.githubusercontent.com/Tressilloide/ascii-zoo/main/linux/install.sh \| bash` |
+| **Linux** (Ubuntu, Debian, Fedora, Arch…) | one command: `curl -fsSL https://raw.githubusercontent.com/Tressilloide/ascii-zoo/main/linux/install.sh \| bash` (downloads the prebuilt x86_64/aarch64 binary, checks its SHA256 and installs only the missing runtime libraries; builds from source as a fallback) |
 
 **First launch.** The apps aren't code-signed (yet), so:
 on Windows SmartScreen says *"Windows protected your PC"* → **More info → Run anyway**;

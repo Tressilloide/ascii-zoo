@@ -6,27 +6,35 @@
 # oppure, da un clone della repo:
 #
 #   bash linux/install.sh                installa (o aggiorna) e avvia
-#   bash linux/install.sh --disinstalla  toglie programma, icona, voce del menu, avvio automatico
-#                                        e le versioni vecchie fatte come estensione di GNOME
+#   bash linux/install.sh --compila      come sopra, ma compila dal sorgente (questo clone, se
+#                                        lo script viene da un clone) invece di scaricare
+#   bash linux/install.sh --disinstalla  toglie programma, icona, voce del menu, avvio automatico,
+#                                        l'estensione per il clic sul desktop e le versioni
+#                                        vecchie fatte come estensione di GNOME
 #
 # (con curl: ... | bash -s -- --disinstalla)
 #
 # Cosa fa:
-#   1. installa le librerie per compilarlo (apt, dnf o pacman: chiede la password di sudo)
-#   2. installa Rust con rustup se manca (in ~/.cargo, senza toccare il PATH)
-#   3. compila il programma (qualche minuto la prima volta, poi molto meno)
-#   4. lo copia in ~/.local/bin (al posto della versione di prima, che ferma), mette icona e
+#   1. scarica il programma già compilato dall'ultima Release (lo compila GitHub Actions su
+#      Ubuntu 22.04, per x86_64 e aarch64) e ne controlla lo SHA256; installa le librerie per
+#      farlo partire, solo se mancano (apt, dnf o pacman: chiede la password di sudo)
+#   2. se la Release non ha il programma per Linux (le versioni fino alla 0.4.0) o per questo
+#      processore, o se non parte, lo compila dal sorgente: installa le librerie per
+#      compilarlo, Rust con rustup se manca (in ~/.cargo, senza toccare il PATH), e compila
+#      (qualche minuto la prima volta, poi molto meno)
+#   3. lo copia in ~/.local/bin (al posto della versione di prima, che ferma), mette icona e
 #      voce nel menu delle applicazioni, lo fa partire all'accesso e lo avvia: l'icona a forma
 #      di koi compare nella barra in alto
-#   5. su GNOME 45 o successivo mette la piccola estensione zoo-clic@tressilloide.github.io
+#   4. su GNOME 45 o successivo mette la piccola estensione zoo-clic@tressilloide.github.io
 #      (linux/gnome), che passa ad ASCII Zoo i clic sul desktop: sotto Wayland un programma
 #      non li vede. GNOME la carica dal prossimo accesso
-#   6. se trova una versione vecchia fatta come estensione di GNOME Shell (uuid ascii-zoo…@…),
+#   5. se trova una versione vecchia fatta come estensione di GNOME Shell (uuid ascii-zoo…@…),
 #      la spegne e la toglie, così non girano due sfondi insieme
 #
 # Tutto resta nella cartella dell'utente; con sudo si installano solo i pacchetti di sistema
 # e si toglie l'eventuale copia di sistema di una versione vecchia (schermata di accesso).
-# Variabile ASCII_ZOO_NON_AVVIARE=1: installa senza avviarlo (es. per le prove automatiche).
+# Variabili per le prove automatiche: ASCII_ZOO_NON_AVVIARE=1 installa senza avviarlo;
+# ASCII_ZOO_RELEASE_URL cambia da dove si scarica il programma (es. file:///cartella).
 #
 # Tutto è dentro main(), chiamata all'ultima riga: con "curl | bash" bash legge lo script
 # per intero prima di eseguire qualcosa, e un download interrotto non esegue mezzo script.
@@ -35,6 +43,7 @@ set -euo pipefail
 
 main() {
   local REPO="https://github.com/Tressilloide/ascii-zoo.git"
+  local RELEASE="${ASCII_ZOO_RELEASE_URL:-https://github.com/Tressilloide/ascii-zoo/releases/latest/download}"
   local DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
   local CONF="${XDG_CONFIG_HOME:-$HOME/.config}"
   local BIN="$HOME/.local/bin/ascii-zoo"
@@ -48,75 +57,35 @@ main() {
   # il percorso finisce nei file .desktop: niente caratteri che lì hanno un significato speciale
   case "$BIN" in *[\"\\\`\$%]*) errore "il percorso $BIN contiene caratteri speciali (\" \\ \` \$ %)" ;; esac
 
-  if [ "${1:-}" = "--disinstalla" ]; then
-    ferma
-    rm -f "$BIN" "$MENU" "$ICONA" "$AUTOSTART"
-    if command -v update-desktop-database >/dev/null; then update-desktop-database "$DATA/applications" 2>/dev/null || true; fi
-    togli_estensione "$DATA"
-    togli_vecchie "$DATA"
-    say "ASCII Zoo disinstallato. Le impostazioni restano in $CONF/AsciiZoo: cancellala a mano se non servono più."
-    say "Rust (in ~/.cargo) non l'ho toccato: se l'aveva installato questo script e non ti serve, 'rustup self uninstall'."
-    return 0
-  fi
-  [ -z "${1:-}" ] || errore "opzione sconosciuta: $1 (l'unica è --disinstalla)"
+  local COMPILA=0
+  case "${1:-}" in
+    --disinstalla)
+      ferma
+      rm -f "$BIN" "$MENU" "$ICONA" "$AUTOSTART"
+      if command -v update-desktop-database >/dev/null; then update-desktop-database "$DATA/applications" 2>/dev/null || true; fi
+      togli_estensione "$DATA"
+      togli_vecchie "$DATA"
+      say "ASCII Zoo disinstallato. Le impostazioni restano in $CONF/AsciiZoo: cancellala a mano se non servono più."
+      say "Rust (in ~/.cargo), se c'è, non l'ho toccato: se l'aveva installato questo script e non ti serve, 'rustup self uninstall'."
+      return 0
+      ;;
+    --compila) COMPILA=1 ;;
+    "") ;;
+    *) errore "opzione sconosciuta: $1 (ci sono solo --compila e --disinstalla)" ;;
+  esac
 
-  # 1. librerie di sistema (stdin staccato: con "curl | bash" è lo script stesso)
-  local PKG
-  if command -v apt-get >/dev/null; then
-    PKG="build-essential pkg-config curl git libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev libxdo-dev zenity"
-    say "Installo le librerie necessarie con apt (può chiedere la password)"
-    sudo apt-get update -qq </dev/null
-    # shellcheck disable=SC2086
-    if ! sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $PKG </dev/null; then
-      # shellcheck disable=SC2086
-      spiega_apt $PKG
-      errore "apt non è riuscito a installare le librerie (vedi sopra)"
-    fi
-  elif command -v dnf >/dev/null; then
-    PKG="gcc gcc-c++ make pkgconf-pkg-config curl git webkit2gtk4.1-devel gtk3-devel libayatana-appindicator-gtk3-devel libxdo-devel zenity"
-    say "Installo le librerie necessarie con dnf (può chiedere la password)"
-    # shellcheck disable=SC2086
-    sudo dnf install -y -q $PKG </dev/null
-  elif command -v pacman >/dev/null; then
-    PKG="base-devel curl git webkit2gtk-4.1 gtk3 libayatana-appindicator xdotool zenity"
-    say "Installo le librerie necessarie con pacman (può chiedere la password)"
-    # shellcheck disable=SC2086
-    sudo pacman -S --needed --noconfirm $PKG </dev/null
-  else
-    avviso "Non riconosco il gestore di pacchetti: servono WebKitGTK 4.1, GTK 3, libayatana-appindicator3, libxdo, git, curl e un compilatore C. Provo comunque."
+  # 1-2. il programma, l'icona e l'estensione per GNOME: dalla Release o compilati qui
+  local PROG SVG GNOME
+  SCARICATO=$(mktemp -d)
+  trap 'rm -rf "$SCARICATO"' EXIT
+  if [ "$COMPILA" = 1 ] || ! scarica "$SCARICATO"; then
+    compila
   fi
 
-  # 2. il codice: questa cartella, se lo script viene da un clone della repo, se no un clone in ~/.cache
-  local DIR SCRIPT="${BASH_SOURCE[0]:-}"
-  if [ -n "$SCRIPT" ] && [ -f "$(dirname "$SCRIPT")/../app/Cargo.toml" ]; then
-    DIR="$(cd "$(dirname "$SCRIPT")/.." && pwd)"
-  elif [ -d "$CACHE/.git" ]; then
-    say "Aggiorno il codice in $CACHE"
-    git -C "$CACHE" pull --ff-only -q </dev/null
-    DIR="$CACHE"
-  else
-    say "Scarico il codice da $REPO"
-    mkdir -p "$(dirname "$CACHE")"
-    git clone --depth 1 -q "$REPO" "$CACHE" </dev/null
-    DIR="$CACHE"
-  fi
-
-  # 3. Rust e compilazione
-  if [ ! -x "$HOME/.cargo/bin/rustup" ]; then
-    say "Installo Rust con rustup (in ~/.cargo, serve solo per compilare)"
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y -q --profile minimal --default-toolchain stable --no-modify-path
-  fi
-  "$HOME/.cargo/bin/rustup" toolchain install stable --profile minimal </dev/null >/dev/null 2>&1 || true
-  say "Compilo ASCII Zoo (la prima volta ci vuole qualche minuto)"
-  (cd "$DIR/app" && "$HOME/.cargo/bin/cargo" +stable build --release --locked </dev/null)
-  # se CARGO_TARGET_DIR è impostata, cargo mette lì il programma compilato
-  local TARGET="${CARGO_TARGET_DIR:-$DIR/app/target}"
-  case "$TARGET" in /*) ;; *) TARGET="$DIR/app/$TARGET" ;; esac
-
-  # 4. installazione nella cartella dell'utente
+  # 3. installazione nella cartella dell'utente
   ferma
-  install -Dm755 "$TARGET/release/ascii-zoo" "$BIN"
-  install -Dm644 "$DIR/linux/ascii-zoo.svg" "$ICONA"
+  install -Dm755 "$PROG" "$BIN"
+  install -Dm644 "$SVG" "$ICONA"
   mkdir -p "$(dirname "$MENU")" "$(dirname "$AUTOSTART")"
   { voce "$BIN"; printf 'Categories=Utility;\nStartupNotify=false\n'; } > "$MENU"
   # lo stesso file che scrive il programma con "Apri al login" (si toglie dallo stesso menu)
@@ -125,10 +94,10 @@ main() {
   if command -v gtk-update-icon-cache >/dev/null; then gtk-update-icon-cache -q -t "$DATA/icons/hicolor" 2>/dev/null || true; fi
   say "Installato in $BIN (parte da solo all'accesso; si toglie dal menu: 'Apri al login')"
 
-  # 5. clic sul desktop su GNOME
-  installa_estensione "$DIR/linux/gnome" "$DATA"
+  # 4. clic sul desktop su GNOME
+  installa_estensione "$GNOME" "$DATA"
 
-  # 6. solo ora che la versione nuova è al suo posto si toglie quella vecchia
+  # 5. solo ora che la versione nuova è al suo posto si toglie quella vecchia
   togli_vecchie "$DATA"
 
   # GNOME mostra le icone nella barra solo con l'estensione AppIndicator (su Ubuntu c'è di serie)
@@ -148,6 +117,138 @@ main() {
   else
     say "Non vedo una sessione grafica: partirà al prossimo accesso, o dal menu delle applicazioni ('ASCII Zoo')."
   fi
+}
+
+# Scarica nella cartella $1 il programma già compilato dall'ultima Release: un .tar.gz con
+# il programma, l'icona e l'estensione per GNOME, più il suo SHA256. Lo compila GitHub
+# Actions su Ubuntu 22.04, quindi va anche sulle distribuzioni più nuove. Imposta PROG, SVG
+# e GNOME (variabili di main). Falso se non c'è (le Release fino alla 0.4.0 non l'hanno),
+# se non c'è per questo processore o se non parte: allora si compila.
+scarica() {
+  local dir="$1" arch nome
+  case "$(uname -m)" in
+    x86_64 | amd64) arch=x86_64 ;;
+    aarch64 | arm64) arch=aarch64 ;;
+    *) say "Per questo processore ($(uname -m)) non c'è il programma già compilato: lo compilo"; return 1 ;;
+  esac
+  nome="ascii-zoo-linux-$arch"
+  say "Scarico il programma già compilato ($nome.tar.gz)"
+  if ! curl -fsSL --proto '=https,file' -o "$dir/$nome.tar.gz" "$RELEASE/$nome.tar.gz" </dev/null 2>/dev/null ||
+    ! curl -fsSL --proto '=https,file' -o "$dir/$nome.tar.gz.sha256" "$RELEASE/$nome.tar.gz.sha256" </dev/null 2>/dev/null; then
+    say "L'ultima versione pubblicata non ha ancora il programma per Linux: lo compilo dal sorgente"
+    return 1
+  fi
+  if ! (cd "$dir" && sha256sum -c --quiet "$nome.tar.gz.sha256" >/dev/null 2>&1); then
+    avviso "Lo SHA256 di $nome.tar.gz non corrisponde a quello pubblicato: non lo uso, lo compilo dal sorgente"
+    return 1
+  fi
+  tar -xzf "$dir/$nome.tar.gz" -C "$dir"
+  PROG="$dir/$nome/ascii-zoo" SVG="$dir/$nome/ascii-zoo.svg" GNOME="$dir/$nome/gnome"
+  if [ ! -x "$PROG" ] || [ ! -f "$SVG" ]; then
+    avviso "Il pacchetto scaricato è incompleto: lo compilo dal sorgente"
+    return 1
+  fi
+  librerie "$PROG"
+  if ! "$PROG" --version >/dev/null 2>&1; then
+    avviso "Il programma scaricato non parte su questo sistema: lo compilo dal sorgente"
+    return 1
+  fi
+  say "Scaricato: $("$PROG" --version), SHA256 verificato"
+}
+
+# Le librerie per far partire il programma (non quelle per compilarlo), solo se mancano:
+# quelle collegate le dice ldd; AppIndicator il programma la carica da sé all'avvio; per le
+# finestrelle dei nomi serve zenity (o kdialog).
+librerie() {
+  local prog="$1" PKG
+  local ldc
+  ldc=$(command -v ldconfig || echo /sbin/ldconfig)
+  if ! ldd "$prog" 2>/dev/null | grep -q "not found" &&
+    "$ldc" -p 2>/dev/null | grep -qE 'lib(ayatana-)?appindicator3\.so\.1' &&
+    { command -v zenity >/dev/null || command -v kdialog >/dev/null; }; then
+    return 0
+  fi
+  if command -v apt-get >/dev/null; then
+    PKG="libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-1 libxdo3 zenity"
+    say "Installo le librerie che servono con apt (può chiedere la password)"
+    sudo apt-get update -qq </dev/null
+    # shellcheck disable=SC2086
+    if ! sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $PKG </dev/null; then
+      # shellcheck disable=SC2086
+      spiega_apt $PKG
+      errore "apt non è riuscito a installare le librerie (vedi sopra)"
+    fi
+  elif command -v dnf >/dev/null; then
+    PKG="webkit2gtk4.1 gtk3 libayatana-appindicator-gtk3 libxdo zenity"
+    say "Installo le librerie che servono con dnf (può chiedere la password)"
+    # shellcheck disable=SC2086
+    sudo dnf install -y -q $PKG </dev/null || errore "dnf non è riuscito a installare le librerie"
+  elif command -v pacman >/dev/null; then
+    PKG="webkit2gtk-4.1 gtk3 libayatana-appindicator xdotool zenity"
+    say "Installo le librerie che servono con pacman (può chiedere la password)"
+    # shellcheck disable=SC2086
+    sudo pacman -S --needed --noconfirm $PKG </dev/null || errore "pacman non è riuscito a installare le librerie"
+  else
+    avviso "Non riconosco il gestore di pacchetti: servono WebKitGTK 4.1, GTK 3, libayatana-appindicator3, libxdo e zenity. Provo comunque."
+  fi
+}
+
+# Compila dal sorgente: le librerie per compilarlo, il codice (questo clone o uno in ~/.cache),
+# Rust e cargo. Imposta PROG, SVG e GNOME (variabili di main).
+compila() {
+  # librerie di sistema (stdin staccato: con "curl | bash" è lo script stesso)
+  local PKG
+  if command -v apt-get >/dev/null; then
+    PKG="build-essential pkg-config curl git libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev libxdo-dev zenity"
+    say "Installo le librerie per compilarlo con apt (può chiedere la password)"
+    sudo apt-get update -qq </dev/null
+    # shellcheck disable=SC2086
+    if ! sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $PKG </dev/null; then
+      # shellcheck disable=SC2086
+      spiega_apt $PKG
+      errore "apt non è riuscito a installare le librerie (vedi sopra)"
+    fi
+  elif command -v dnf >/dev/null; then
+    PKG="gcc gcc-c++ make pkgconf-pkg-config curl git webkit2gtk4.1-devel gtk3-devel libayatana-appindicator-gtk3-devel libxdo-devel zenity"
+    say "Installo le librerie per compilarlo con dnf (può chiedere la password)"
+    # shellcheck disable=SC2086
+    sudo dnf install -y -q $PKG </dev/null
+  elif command -v pacman >/dev/null; then
+    PKG="base-devel curl git webkit2gtk-4.1 gtk3 libayatana-appindicator xdotool zenity"
+    say "Installo le librerie per compilarlo con pacman (può chiedere la password)"
+    # shellcheck disable=SC2086
+    sudo pacman -S --needed --noconfirm $PKG </dev/null
+  else
+    avviso "Non riconosco il gestore di pacchetti: servono WebKitGTK 4.1, GTK 3, libayatana-appindicator3, libxdo, git, curl e un compilatore C. Provo comunque."
+  fi
+
+  # il codice: questa cartella, se lo script viene da un clone della repo, se no un clone in ~/.cache
+  local DIR SCRIPT="${BASH_SOURCE[0]:-}"
+  if [ -n "$SCRIPT" ] && [ -f "$(dirname "$SCRIPT")/../app/Cargo.toml" ]; then
+    DIR="$(cd "$(dirname "$SCRIPT")/.." && pwd)"
+  elif [ -d "$CACHE/.git" ]; then
+    say "Aggiorno il codice in $CACHE"
+    git -C "$CACHE" pull --ff-only -q </dev/null
+    DIR="$CACHE"
+  else
+    say "Scarico il codice da $REPO"
+    mkdir -p "$(dirname "$CACHE")"
+    git clone --depth 1 -q "$REPO" "$CACHE" </dev/null
+    DIR="$CACHE"
+  fi
+
+  # Rust e compilazione
+  if [ ! -x "$HOME/.cargo/bin/rustup" ]; then
+    say "Installo Rust con rustup (in ~/.cargo, serve solo per compilare)"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y -q --profile minimal --default-toolchain stable --no-modify-path
+  fi
+  "$HOME/.cargo/bin/rustup" toolchain install stable --profile minimal </dev/null >/dev/null 2>&1 || true
+  say "Compilo ASCII Zoo (la prima volta ci vuole qualche minuto)"
+  (cd "$DIR/app" && "$HOME/.cargo/bin/cargo" +stable build --release --locked </dev/null)
+  # se CARGO_TARGET_DIR è impostata, cargo mette lì il programma compilato
+  local TARGET="${CARGO_TARGET_DIR:-$DIR/app/target}"
+  case "$TARGET" in /*) ;; *) TARGET="$DIR/app/$TARGET" ;; esac
+  PROG="$TARGET/release/ascii-zoo" SVG="$DIR/linux/ascii-zoo.svg" GNOME="$DIR/linux/gnome"
 }
 
 say() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
@@ -176,7 +277,7 @@ spiega_apt() {
     pkg=${dip%% *}; pkg=${pkg%%:*}; ver=${dip#*"(= "}; ver=${ver%)}
     stato=; inst=
     IFS=' ' read -r stato inst < <(dpkg-query -W -f='${db:Status-Abbrev} ${Version}\n' "$pkg" 2>/dev/null | head -n1) || true
-    [ "${stato:-}" = ii ] && [ "${inst:-}" != "$ver" ] || continue
+    if [ "${stato:-}" != ii ] || [ "${inst:-}" = "$ver" ]; then continue; fi
     case " ${vecchi[*]} " in *" $pkg "*) continue ;; esac
     vecchi+=("$pkg")
     avviso "$pkg è installato alla versione $inst, ma le librerie da installare chiedono $ver"

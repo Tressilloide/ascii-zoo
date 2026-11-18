@@ -195,21 +195,22 @@ Se preferisci leggere lo script prima di eseguirlo, lo stesso da un clone della 
 git clone https://github.com/Tressilloide/ascii-zoo.git && bash ascii-zoo/linux/install.sh
 ```
 
-Lo script ([`linux/install.sh`](linux/install.sh)) compila il programma dal sorgente e lo mette nella tua cartella utente:
+Lo script ([`linux/install.sh`](linux/install.sh)) mette il programma nella tua cartella utente:
 
-1. installa le librerie per compilarlo con **apt** (Ubuntu, Debian, Mint), **dnf** (Fedora) o **pacman** (Arch); chiede la password di `sudo` solo per questo;
-2. installa Rust con rustup se manca, in `~/.cargo`, senza toccare il `PATH`;
-3. compila il programma (la prima volta qualche minuto);
+1. scarica il programma già compilato dall'ultima [Release](https://github.com/Tressilloide/ascii-zoo/releases/latest), per processori x86_64 o aarch64, e ne controlla lo SHA256. Lo compila GitHub Actions su Ubuntu 22.04, quindi va anche sulle distribuzioni più nuove;
+2. installa con **apt** (Ubuntu, Debian, Mint), **dnf** (Fedora) o **pacman** (Arch) le librerie per farlo partire (WebKitGTK 4.1, GTK 3, AppIndicator, libxdo, zenity), solo se mancano; chiede la password di `sudo` solo per questo;
+3. come riserva lo compila dal sorgente: se l'ultima Release non ha ancora il programma per Linux (fino alla 0.4.0 non c'era), per un altro processore, o se quello scaricato non parte. Installa allora le librerie per compilarlo, Rust con rustup se manca (in `~/.cargo`, senza toccare il `PATH`) e compila (la prima volta qualche minuto). Con `bash linux/install.sh --compila` compila sempre, dal clone in cui si trova lo script;
 4. lo copia in `~/.local/bin/ascii-zoo` al posto della versione di prima (che ferma), aggiunge icona e voce **ASCII Zoo** nel menu delle applicazioni, lo fa partire all'accesso e lo avvia;
 5. su GNOME 45 o successivo mette la piccola estensione per il clic sul desktop (vedi sotto);
 6. se trova una versione vecchia fatta come estensione di GNOME Shell (uuid `ascii-zoo…@…`), la spegne e la toglie, così non girano due sfondi uno sopra l'altro. Se ce n'è anche una copia di sistema per la schermata di accesso (in `/usr/share/gnome-shell/extensions`, attivata da un file in `/usr/share/gdm/dconf`), la toglie con `sudo`. Lo fa solo dopo che la versione nuova è compilata e installata.
 
-L'icona a forma di koi compare **nella barra in alto**, con lo stesso menu delle altre versioni (al posto di "Avvia con Windows" c'è **Apri al login**). Per aggiornare si rilancia lo stesso comando (il codice scaricato resta in `~/.cache/ascii-zoo`, quindi la volta dopo si compila molto più in fretta). Anche avviando a mano una copia nuova, quella che sta girando si chiude e la nuova prende il suo posto (e **Apri al login**, se attivo, passa alla nuova). Per togliere tutto:
+L'icona a forma di koi compare **nella barra in alto**, con lo stesso menu delle altre versioni (al posto di "Avvia con Windows" c'è **Apri al login**). Per aggiornare si rilancia lo stesso comando (se ha compilato, il codice resta in `~/.cache/ascii-zoo` e la volta dopo si compila molto più in fretta). Anche avviando a mano una copia nuova, quella che sta girando si chiude e la nuova prende il suo posto (e **Apri al login**, se attivo, passa alla nuova). Per togliere tutto:
 
 ```
 curl -fsSL https://raw.githubusercontent.com/Tressilloide/ascii-zoo/main/linux/install.sh | bash -s -- --disinstalla
 ```
 
+- **Da dove viene il programma.** Come per Windows e macOS lo compila GitHub Actions dal sorgente del tag della versione, con il log pubblico; ogni Release riporta lo SHA256 del pacchetto (lo script lo controlla da sé) e ha l'attestazione di provenienza: `gh attestation verify ascii-zoo-linux-x86_64.tar.gz --repo Tressilloide/ascii-zoo`. Il pacchetto contiene il programma, l'icona e l'estensione per il clic sul desktop.
 - **Se apt si ferma** con `unmet dependencies`: su Ubuntu capita dopo un aggiornamento di versione, quando un pacchetto resta a una build poi ritirata dall'archivio (per esempio `libbz2-1.0 1.0.8-6ubuntu0.1`) e il suo `-dev` chiede la versione dell'archivio. Lo script lo riconosce, simula il downgrade dei pacchetti interessati e, se non toglie niente, stampa il comando da lanciare; il downgrade non lo fa da solo, perché se trascinasse via altri pacchetti potrebbe togliere il desktop.
 - **Ubuntu** mostra le icone nella barra in alto di serie (estensione *Ubuntu AppIndicators*). Su GNOME senza Ubuntu (Fedora, Debian…) serve l'estensione *AppIndicator and KStatusNotifierItem Support*: lo script avvisa se manca.
 - **Wayland.** Wayland non permette a un programma normale di mettersi al posto dello sfondo, quindi ASCII Zoo passa da XWayland (`GDK_BACKEND=x11`) e usa una finestra di tipo "desktop", sotto tutte le altre e su tutti gli spazi di lavoro. I clic la attraversano e arrivano alle icone del desktop.

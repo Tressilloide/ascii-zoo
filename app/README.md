@@ -93,8 +93,9 @@ L'eseguibile è `target/release/ascii-zoo` e si può avviare così. Per avere l'
 con `app/macos/Info.plist` e crea il DMG con `hdiutil`.
 
 ### Linux
-Il modo semplice è [`../linux/install.sh`](../linux/install.sh), che installa anche le
-librerie. A mano servono Rust e i pacchetti di sviluppo di WebKitGTK 4.1, GTK 3,
+Il modo semplice è [`../linux/install.sh`](../linux/install.sh): scarica il programma già
+compilato dalla Release e, come riserva, lo compila (`--compila` per compilare sempre),
+installando anche le librerie. A mano servono Rust e i pacchetti di sviluppo di WebKitGTK 4.1, GTK 3,
 libayatana-appindicator3 e libxdo (su Ubuntu: `libwebkit2gtk-4.1-dev libgtk-3-dev
 libayatana-appindicator3-dev libxdo-dev build-essential pkg-config`). Nella cartella `app`:
 
@@ -102,8 +103,17 @@ libayatana-appindicator3-dev libxdo-dev build-essential pkg-config`). Nella cart
 cargo build --release --locked
 ```
 
-L'eseguibile è `target/release/ascii-zoo`. Il job `linux` del workflow esegue
-`install.sh` per intero su Ubuntu 24.04 e avvia il programma sotto Xvfb come prova.
+L'eseguibile è `target/release/ascii-zoo` (`ascii-zoo --version` scrive la versione ed esce).
+Nel workflow:
+- `linux-binario` compila il programma per x86_64 e aarch64 in un container Ubuntu 22.04
+  (glibc 2.35: va anche sulle distribuzioni più nuove) e fa il pacchetto
+  `ascii-zoo-linux-<arch>.tar.gz` (programma, icona, estensione di GNOME) con il suo `.sha256`;
+- `linux-installa-binario` esegue `install.sh` su un Ubuntu 24.04 senza librerie di sviluppo,
+  facendogli scaricare quel pacchetto come se fosse la Release (`ASCII_ZOO_RELEASE_URL`), e
+  avvia il programma sotto Xvfb;
+- `linux` prova la riserva: con una Release senza programma per Linux, `install.sh` compila
+  questo commit; poi avvia il programma sotto Xvfb, prova il comando da una riga e la
+  disinstallazione.
 
 > Lo sfondo è una copia in `assets/`: dopo aver modificato `sfondo/index.html`
 > (nella radice della repo) copialo in `assets/ascii-zoo-sfondo.html` e ricompila.
@@ -125,7 +135,8 @@ ma pubblica solo con un tag:
 
 Il workflow controlla che tag e versione coincidano, compila, calcola gli SHA256, crea
 l'attestazione di provenienza e pubblica la Release con `ascii-zoo.exe`,
-`ascii-zoo-macos.dmg` e i loro `.sha256`.
+`ascii-zoo-macos.dmg`, `ascii-zoo-linux-x86_64.tar.gz`, `ascii-zoo-linux-aarch64.tar.gz` e i
+loro `.sha256`. Da quella Release in poi `install.sh` scarica il programma invece di compilarlo.
 
 ## File
 | File | Cosa contiene |
