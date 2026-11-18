@@ -148,8 +148,9 @@ pub struct Core {
 }
 
 impl Core {
-    /// `solo_windows`: se mostrare le voci che esistono solo su Windows
-    /// ("Pausa con app a schermo intero", "Clic sul desktop agli animali")
+    /// `solo_windows`: se mostrare le voci che esistono solo su Windows ("Pausa con app a
+    /// schermo intero", "Pausa quando le finestre coprono il desktop"; su macOS e Linux
+    /// quelle pause sono sempre attive)
     pub fn new(solo_windows: bool) -> (Self, Menu) {
         let cfg = Config::load();
         let (menu, menus) = build_menu(&cfg, solo_windows);
@@ -620,9 +621,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     let _ = menu.append(&m.widget_sub);
     let _ = menu.append(&m.orologio);
     let _ = menu.append(&m.koi);
-    if solo_windows {
-        let _ = menu.append(&m.clic);
-    }
+    let _ = menu.append(&m.clic);
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(&m.batteria);
     if solo_windows {

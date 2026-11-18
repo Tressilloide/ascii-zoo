@@ -34,6 +34,14 @@ Mette lo sfondo animato (`sfondo/index.html`) dietro le icone del desktop, su tu
   - **Orologio al centro** (di serie acceso): senza, la pagina riceve
     `zooSetting('orologio', false)` e gli animali e la scenografia usano anche il centro
   - **Koi nello stagno in carica** (vale con "A rotazione")
+  - **Clic sul desktop agli animali**: un clic sinistro sul desktop arriva alla pagina con
+    `zooPoke(x, y)`. Windows: un hook del mouse (`WH_MOUSE_LL`) che guarda la classe della
+    finestra sotto il punto. macOS: un monitor globale di `NSEvent` e la lista delle finestre
+    sullo schermo (`CGWindowListCopyWindowInfo`): vale se la prima finestra sotto il punto è
+    al livello delle icone del Finder o più giù. Linux: l'estensione di GNOME Shell in
+    [`../linux/gnome`](../linux/gnome) chiama il metodo D-Bus `Clic(x, y, larghezza,
+    altezza)` sul nome `io.github.tressilloide.AsciiZoo`, che il programma tiene solo con
+    l'opzione accesa
   - **Pausa a batteria**; solo su Windows anche **Pausa con app a schermo intero** (solo
     sullo schermo dell'app; su macOS le app a schermo intero stanno in uno Spazio a parte) e
     **Pausa quando le finestre coprono il desktop** (schermo per schermo: ogni mezzo secondo

@@ -18,7 +18,10 @@
 #   4. lo copia in ~/.local/bin (al posto della versione di prima, che ferma), mette icona e
 #      voce nel menu delle applicazioni, lo fa partire all'accesso e lo avvia: l'icona a forma
 #      di koi compare nella barra in alto
-#   5. se trova una versione vecchia fatta come estensione di GNOME Shell (uuid ascii-zoo…@…),
+#   5. su GNOME 45 o successivo mette la piccola estensione zoo-clic@tressilloide.github.io
+#      (linux/gnome), che passa ad ASCII Zoo i clic sul desktop: sotto Wayland un programma
+#      non li vede. GNOME la carica dal prossimo accesso
+#   6. se trova una versione vecchia fatta come estensione di GNOME Shell (uuid ascii-zoo…@…),
 #      la spegne e la toglie, così non girano due sfondi insieme
 #
 # Tutto resta nella cartella dell'utente; con sudo si installano solo i pacchetti di sistema
@@ -49,6 +52,7 @@ main() {
     ferma
     rm -f "$BIN" "$MENU" "$ICONA" "$AUTOSTART"
     if command -v update-desktop-database >/dev/null; then update-desktop-database "$DATA/applications" 2>/dev/null || true; fi
+    togli_estensione "$DATA"
     togli_vecchie "$DATA"
     say "ASCII Zoo disinstallato. Le impostazioni restano in $CONF/AsciiZoo: cancellala a mano se non servono più."
     say "Rust (in ~/.cargo) non l'ho toccato: se l'aveva installato questo script e non ti serve, 'rustup self uninstall'."
@@ -121,7 +125,10 @@ main() {
   if command -v gtk-update-icon-cache >/dev/null; then gtk-update-icon-cache -q -t "$DATA/icons/hicolor" 2>/dev/null || true; fi
   say "Installato in $BIN (parte da solo all'accesso; si toglie dal menu: 'Apri al login')"
 
-  # 5. solo ora che la versione nuova è al suo posto si toglie quella vecchia
+  # 5. clic sul desktop su GNOME
+  installa_estensione "$DIR/linux/gnome" "$DATA"
+
+  # 6. solo ora che la versione nuova è al suo posto si toglie quella vecchia
   togli_vecchie "$DATA"
 
   # GNOME mostra le icone nella barra solo con l'estensione AppIndicator (su Ubuntu c'è di serie)
@@ -237,6 +244,62 @@ togli_vecchie() {
     fi
     if [ -x /usr/share/gdm/generate-config ]; then sudo /usr/share/gdm/generate-config </dev/null || true; fi
   fi
+}
+
+# Clic sul desktop su GNOME: l'estensione zoo-clic@… (vedi linux/gnome) vede i clic sul
+# desktop, anche sopra le icone di DING, e li passa ad ASCII Zoo. L'uuid non comincia per
+# "ascii-zoo", se no togli_vecchie la prenderebbe per una versione vecchia dello sfondo.
+# GNOME carica le estensioni nuove solo all'accesso: la si mette in enabled-extensions e
+# funziona dal prossimo. Se l'utente l'ha spenta (disabled-extensions) resta spenta.
+ESTENSIONE=zoo-clic@tressilloide.github.io
+installa_estensione() {
+  local src="$1/$ESTENSIONE" data="$2" ver dest lista prima=""
+  command -v gnome-shell >/dev/null || return 0
+  [ -f "$src/extension.js" ] || return 0
+  ver=$(gnome-shell --version 2>/dev/null | grep -oE '[0-9]+' | head -n1 || true)
+  if [ -z "$ver" ] || [ "$ver" -lt 45 ]; then
+    avviso "Il clic sul desktop su GNOME richiede GNOME 45 o successivo (qui: ${ver:-?}): lo sfondo funziona lo stesso, senza clic."
+    return 0
+  fi
+  dest="$data/gnome-shell/extensions/$ESTENSIONE"
+  if [ -f "$dest/extension.js" ]; then prima=$(cat "$dest/extension.js"); fi
+  mkdir -p "$dest"
+  cp "$src/extension.js" "$dest/extension.js"
+  # la versione di GNOME in uso va nell'elenco, se no GNOME non la carica
+  if grep -q "\"$ver\"" "$src/metadata.json"; then
+    cp "$src/metadata.json" "$dest/metadata.json"
+  else
+    sed -E "s/(\"shell-version\": *\[)/\1\"$ver\", /" "$src/metadata.json" > "$dest/metadata.json"
+  fi
+  if lista=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null) && [[ "$lista" == *"'$ESTENSIONE'"* ]]; then
+    avviso "L'estensione per il clic sul desktop ($ESTENSIONE) è spenta in Estensioni: riaccendila lì se vuoi i clic."
+    return 0
+  fi
+  if lista=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null) && [[ "$lista" != *"'$ESTENSIONE'"* ]]; then
+    case "$lista" in
+      "@as []" | "[]") lista="['$ESTENSIONE']" ;;
+      *) lista="${lista%]}, '$ESTENSIONE']" ;;
+    esac
+    gsettings set org.gnome.shell enabled-extensions "$lista" 2>/dev/null || true
+  fi
+  if [ "$(gsettings get org.gnome.shell disable-user-extensions 2>/dev/null)" = true ]; then
+    avviso "Le estensioni di GNOME sono spente (Estensioni → Estensioni dell'utente): senza, niente clic sul desktop."
+  elif [ "$prima" != "$(cat "$dest/extension.js")" ]; then
+    say "Clic sul desktop: estensione di GNOME $ESTENSIONE installata. Funziona dal prossimo accesso (esci e rientra)."
+  fi
+}
+
+# Per spegnerla la si toglie da enabled-extensions (GNOME la spegne da sé). Non con
+# "gnome-extensions disable", che la metterebbe anche in disabled-extensions: reinstallando
+# sembrerebbe spenta dall'utente.
+togli_estensione() {
+  local dest="$1/gnome-shell/extensions/$ESTENSIONE" lista nuova
+  [ -d "$dest" ] || return 0
+  if lista=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null) && [[ "$lista" == *"'$ESTENSIONE'"* ]]; then
+    nuova=$(printf '%s' "$lista" | sed -E "s/'${ESTENSIONE//./\\.}'(, )?//; s/, \]/]/")
+    gsettings set org.gnome.shell enabled-extensions "$nuova" 2>/dev/null || true
+  fi
+  rm -rf -- "$dest"
 }
 
 # voce .desktop comune a menu e avvio automatico

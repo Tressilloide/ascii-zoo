@@ -35,6 +35,8 @@ features = [
 tao = "0.34"
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
+objc2 = "0.6"
+block2 = "0.6"
 libc = "0.2"
 
 # Linux: tao e gtk sono gli stessi che usano già wry e tray-icon

@@ -44,6 +44,50 @@ const GIRI_CONTROLLO: u32 = 4;
 enum Evento {
     Menu(String),
     PaginaPronta,
+    /// clic sul desktop dall'estensione di GNOME Shell: x, y, larghezza, altezza
+    Clic(f64, f64, f64, f64),
+}
+
+/// Clic sul desktop. Sotto Wayland un programma non vede i clic fatti sulle altre finestre,
+/// e su Ubuntu le icone del desktop (DING) stanno in una finestra a tutto schermo sopra lo
+/// sfondo: i clic li vede solo GNOME Shell. L'estensione `zoo-clic@tressilloide.github.io`
+/// (linux/gnome) aspetta che questo nome compaia sul bus di sessione e, a ogni clic sinistro
+/// su una zona del desktop, chiama Clic(x, y, larghezza, altezza): il punto e le dimensioni
+/// dello schermo intero di GNOME. Il nome lo si tiene solo con "Clic sul desktop" acceso,
+/// così altrimenti l'estensione non fa niente.
+const DBUS_NOME: &str = "io.github.tressilloide.AsciiZoo";
+const DBUS_PERCORSO: &str = "/io/github/tressilloide/AsciiZoo";
+const DBUS_XML: &str = r#"<node>
+  <interface name="io.github.tressilloide.AsciiZoo">
+    <method name="Clic">
+      <arg type="d" name="x" direction="in"/>
+      <arg type="d" name="y" direction="in"/>
+      <arg type="d" name="larghezza" direction="in"/>
+      <arg type="d" name="altezza" direction="in"/>
+    </method>
+  </interface>
+</node>"#;
+
+/// mette sul bus l'oggetto con il metodo Clic (il nome si prende a parte, vedi `sync_clic`)
+fn registra_clic(bus: &gio::DBusConnection, proxy: &EventLoopProxy<Evento>) -> bool {
+    let Ok(nodo) = gio::DBusNodeInfo::for_xml(DBUS_XML) else { return false };
+    let Some(interfaccia) = nodo.lookup_interface(DBUS_NOME) else { return false };
+    let proxy = std::sync::Mutex::new(proxy.clone());
+    bus.register_object(
+        DBUS_PERCORSO,
+        &interfaccia,
+        move |_, _, _, _, metodo, parametri, risposta| {
+            if metodo == "Clic" {
+                if let (Some((x, y, w, h)), Ok(p)) = (parametri.get::<(f64, f64, f64, f64)>(), proxy.lock()) {
+                    let _ = p.send_event(Evento::Clic(x, y, w, h));
+                }
+            }
+            risposta.return_value(None);
+        },
+        |_, _, _, _, _| glib::Variant::from(()),
+        |_, _, _, _, _, _| false,
+    )
+    .is_ok()
 }
 
 /// lo sfondo di uno schermo (prima la WebView, poi la sua finestra: i campi si
@@ -164,8 +208,10 @@ struct App {
     tray: Option<TrayIcon>,
     last_ac: Option<bool>,
     stats: Stats,
-    /// bus di sessione, per sapere se lo schermo è bloccato
+    /// bus di sessione, per sapere se lo schermo è bloccato e per i clic sul desktop
     bus: Option<gio::DBusConnection>,
+    /// il nome DBUS_NOME, tenuto mentre "Clic sul desktop" è acceso
+    nome_clic: Option<gio::OwnerId>,
 }
 
 impl App {
@@ -274,6 +320,59 @@ impl App {
                 m[0], m[1], m[2], m[3]
             ));
         }
+    }
+
+    /// prende o lascia il nome sul bus secondo l'impostazione "Clic sul desktop"
+    fn sync_clic(&mut self) {
+        let voglio = self.core.cfg.clic_desktop;
+        match (voglio, self.nome_clic.is_some(), self.bus.as_ref()) {
+            (true, false, Some(bus)) => {
+                self.nome_clic = Some(gio::bus_own_name_on_connection(
+                    bus,
+                    DBUS_NOME,
+                    gio::BusNameOwnerFlags::NONE,
+                    |_, _| zoo_log!("clic sul desktop: nome {DBUS_NOME} preso"),
+                    |_, _| zoo_log!("clic sul desktop: nome {DBUS_NOME} non disponibile"),
+                ));
+            }
+            (false, true, _) => {
+                if let Some(id) = self.nome_clic.take() {
+                    gio::bus_unown_name(id);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Clic sul desktop nel punto (x, y) dello schermo intero di GNOME, largo `w` e alto `h`.
+    /// Per XWayland lo stesso schermo intero è il riquadro che contiene tutti gli sfondi
+    /// (a un'altra scala, se GNOME disegna le app X11 più grandi): si passa in proporzione e
+    /// si trova lo sfondo sotto il punto. La pagina ragiona in pixel CSS: si divide per la
+    /// scala dello schermo.
+    fn clic(&self, x: f64, y: f64, w: f64, h: f64) {
+        if !self.core.cfg.clic_desktop || !(w > 0.0 && h > 0.0) || !x.is_finite() || !y.is_finite() {
+            return;
+        }
+        let x0 = self.screens.iter().map(|s| s.pos.x).min().unwrap_or(0) as f64;
+        let y0 = self.screens.iter().map(|s| s.pos.y).min().unwrap_or(0) as f64;
+        let x1 = self.screens.iter().map(|s| s.pos.x + s.size.width as i32).max().unwrap_or(0) as f64;
+        let y1 = self.screens.iter().map(|s| s.pos.y + s.size.height as i32).max().unwrap_or(0) as f64;
+        let (px, py) = (x0 + x / w * (x1 - x0), y0 + y / h * (y1 - y0));
+        let Some(s) = self.screens.iter().find(|s| {
+            px >= s.pos.x as f64
+                && py >= s.pos.y as f64
+                && px < (s.pos.x + s.size.width as i32) as f64
+                && py < (s.pos.y + s.size.height as i32) as f64
+        }) else {
+            return;
+        };
+        if s.paused {
+            return;
+        }
+        let sc = if s.scala > 0.0 { s.scala } else { 1.0 };
+        let (cx, cy) = ((px - s.pos.x as f64) / sc, (py - s.pos.y as f64) / sc);
+        zoo_log!("clic sul desktop: {x:.0},{y:.0} su {w:.0}×{h:.0} → schermo {} ({cx:.0}, {cy:.0})", s.id);
+        let _ = s.webview.evaluate_script(&format!("window.zooPoke && zooPoke({cx:.1}, {cy:.1})"));
     }
 
     /// in fondo alla pila, anche sotto la finestra delle icone del desktop (che su
@@ -458,7 +557,14 @@ pub fn run() {
     let (core, menu) = Core::new(false);
     let mut menu = Some(menu);
     let bus = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE).ok();
-    let mut app = App { core, screens: Vec::new(), tray: None, last_ac: None, stats: Stats::default(), bus };
+    if let Some(bus) = &bus {
+        if !registra_clic(bus, &proxy) {
+            zoo_log!("clic sul desktop: non riesco a registrare l'oggetto D-Bus");
+        }
+    }
+    let mut app =
+        App { core, screens: Vec::new(), tray: None, last_ac: None, stats: Stats::default(), bus, nome_clic: None };
+    app.sync_clic();
     let mut giro: u32 = 0;
 
     event_loop.run(move |event, target, control_flow| match event {
@@ -488,12 +594,14 @@ pub fn run() {
             *control_flow = ControlFlow::WaitUntil(Instant::now() + GIRO);
         }
         Event::UserEvent(Evento::PaginaPronta) => app.push_settings(),
+        Event::UserEvent(Evento::Clic(x, y, w, h)) => app.clic(x, y, w, h),
         Event::UserEvent(Evento::Menu(id)) => match app.core.on_menu(&id) {
             Esito::Cambiato(js) => {
                 if let Some(code) = js {
                     app.js(&code);
                 }
                 app.check_power();
+                app.sync_clic();
             }
             Esito::Schermi => app.push_schermi(),
             Esito::Ricarica => {

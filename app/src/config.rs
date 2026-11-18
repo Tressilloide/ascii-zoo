@@ -39,7 +39,8 @@ pub struct Config {
     pub widget_schermo: String,
     /// animale per schermo (id dello schermo → come "animale"); chi non c'è segue "animale"
     pub animale_schermi: BTreeMap<String, u32>,
-    /// un clic su una zona vuota del desktop arriva agli animali (solo Windows)
+    /// un clic su una zona vuota del desktop arriva agli animali (su Linux serve l'estensione
+    /// di GNOME Shell in linux/gnome)
     pub clic_desktop: bool,
     /// l'orologio con la data al centro dello schermo (spento: gli animali e la scenografia
     /// usano anche il centro)
