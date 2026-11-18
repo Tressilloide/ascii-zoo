@@ -34,6 +34,14 @@ pub struct Config {
     pub conto_etichetta: String,
     /// widget: CPU, RAM e batteria
     pub widget_statistiche: bool,
+    /// widget "sistema": le statistiche per nerd accese (id di nerd::VOCI)
+    pub widget_nerd: Vec<String>,
+    /// aspetto dei widget: "piccoli", "normali", "grandi"
+    pub widget_dimensione: String,
+    /// cornice dei riquadri: "ascii" (+-|), "linee" (┌─┐), "arrotondata" (╭─╮)
+    pub widget_cornice: String,
+    /// riquadri con lo sfondo pieno (se no trasparenti, con gli animali che passano dietro)
+    pub widget_sfondo_pieno: bool,
     /// angolo dei widget: "basso-destra", "basso-sinistra", "alto-destra", "alto-sinistra"
     pub widget_angolo: String,
     /// su quale schermo stanno i widget: "" = il principale, "*" = tutti, se no l'id dello schermo
@@ -65,6 +73,10 @@ impl Default for Config {
             conto_data: String::new(),
             conto_etichetta: String::new(),
             widget_statistiche: false,
+            widget_nerd: Vec::new(),
+            widget_dimensione: "normali".into(),
+            widget_cornice: "ascii".into(),
+            widget_sfondo_pieno: false,
             widget_angolo: "basso-destra".into(),
             widget_schermo: String::new(),
             animale_schermi: BTreeMap::new(),

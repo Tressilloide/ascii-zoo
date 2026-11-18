@@ -1,4 +1,4 @@
-//! CPU e RAM per il widget "pc" (macOS, chiamate mach del kernel).
+//! CPU, RAM e batteria per il widget "pc" (macOS: chiamate mach del kernel e IOKit).
 
 use std::ffi::{c_char, c_void};
 
@@ -66,6 +66,10 @@ impl Stats {
                 let perc = (usate * pagina as u64) as f64 * 100.0 / totale as f64;
                 v.insert("ram".into(), perc.round().min(100.0).into());
             }
+        }
+        if let Some(b) = crate::power::batteria() {
+            v.insert("batteria".into(), b.into());
+            v.insert("carica".into(), crate::power::on_ac().into());
         }
         v.into()
     }

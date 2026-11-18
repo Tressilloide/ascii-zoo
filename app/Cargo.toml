@@ -10,6 +10,8 @@ wry = "0.53"
 tray-icon = "0.21"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# statistiche per nerd (core, frequenza, memoria, uptime, carico): solo le parti che servono
+sysinfo = { version = "0.37.2", default-features = false, features = ["system"] }
 
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"
@@ -26,9 +28,11 @@ features = [
   "Win32_Foundation",
   "Win32_Graphics_Gdi",
   "Win32_Security",
+  "Win32_Storage_FileSystem",
   "Win32_System_Com",
   "Win32_System_LibraryLoader",
   "Win32_System_Power",
+  "Win32_System_ProcessStatus",
   "Win32_System_SystemInformation",
   "Win32_System_Threading",
   "Win32_UI_HiDpi",
@@ -44,6 +48,25 @@ objc2-foundation = "0.3"
 objc2 = "0.6"
 block2 = "0.6"
 libc = "0.2"
+# batteria (IOPowerSources): gli stessi crate che usa già sysinfo
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFArray", "CFDictionary", "CFNumber", "CFString"] }
+objc2-io-kit = { version = "0.3", default-features = false, features = ["std", "ps"] }
+
+# sysinfo, le parti che dipendono dal sistema: la rete su Windows e macOS (su Linux si
+# legge da /sys, più leggero), la temperatura su macOS e Linux (su Windows la darebbe
+# solo WMI, con i permessi di amministratore)
+[target.'cfg(windows)'.dependencies.sysinfo]
+version = "0.37.2"
+default-features = false
+features = ["network"]
+[target.'cfg(target_os = "macos")'.dependencies.sysinfo]
+version = "0.37.2"
+default-features = false
+features = ["component", "network"]
+[target.'cfg(target_os = "linux")'.dependencies.sysinfo]
+version = "0.37.2"
+default-features = false
+features = ["component"]
 
 # Linux: tao e gtk sono gli stessi che usano già wry e tray-icon
 [target.'cfg(target_os = "linux")'.dependencies]

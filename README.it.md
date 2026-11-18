@@ -42,27 +42,37 @@ Ogni animale è una forma calcolata cella per cella: ogni cella accesa diventa u
 Riquadri di solo testo, nello stesso stile degli animali, in un angolo dello schermo (sopra la barra delle applicazioni). Si accendono dal menu del programma, **Widget**:
 
 ```
-+- nota -----------------------+
-| comprare il mangime per      |
-| KARPISA                      |
-+------------------------------+
-+- conto alla rovescia --------+
-| esame di analisi             |
-| mancano 12 giorni            |
-+------------------------------+
-+- pc -------------------------+
-| cpu  [##........]  18%       |
-| ram  [######....]  57%       |
-| bat+ [########..]  83%       |
++- nota -----------------------+   ┌─ sistema ────────────────────┐
+| comprare il mangime per      |   │ core   [_.:_*@.:]            │
+| KARPISA                      |   │ temp   54°C                  │
++------------------------------+   │ freq   3,20 GHz              │
++- conto alla rovescia --------+   │ ram    9,1 / 16 GB           │
+| esame di analisi             |   │ swap   0,2 / 2,0 GB          │
+| mancano 12 giorni            |   │ rete   ↓1,2 MB/s ↑33 KB/s    │
++------------------------------+   │ disco  212 / 476 GB          │
++- pc -------------------------+   │ acceso 3 g 4 h               │
+| cpu  [##........]  18%       |   │ proc   312                   │
+| ram  [######....]  57%       |   │ carico 0,52 0,61 0,70        │
+| bat+ [########..]  83%       |   └──────────────────────────────┘
 +------------------------------+
 ```
 
 - **Nota**: una frase che resta sul desktop.
 - **Conto alla rovescia**: per cosa e che giorno (`25/12/2026`); il giorno prima dice "domani!", il giorno stesso "è oggi!".
-- **CPU, RAM e batteria**, aggiornati ogni 2 secondi (`bat+` = in carica). Su macOS CPU e RAM.
+- **CPU, RAM e batteria**, aggiornati ogni 2 secondi (`bat+` = in carica). La batteria c'è solo sui portatili; su macOS la legge IOKit (`IOPSCopyPowerSourcesInfo`).
+- **Statistiche per nerd**: un riquadro **sistema** con le righe che spunti. Ogni riga che un sistema non sa dare semplicemente non c'è:
+  - **CPU per core**: un carattere per core, più denso quanto più è occupato (`_ . : - = + * # % @`);
+  - **Temperatura della CPU** (Linux e macOS; su Windows la darebbe solo WMI con i permessi di amministratore, quindi la voce non c'è) e **frequenza** media dei core;
+  - **RAM e swap in GB**, usati su totali;
+  - **Rete**: velocità in arrivo e in uscita delle schede vere (Ethernet, Wi-Fi), senza loopback, VPN e interfacce dei container, che conterebbero due volte lo stesso traffico;
+  - **Disco di sistema** (`/` oppure `C:`), usato su totale;
+  - **Acceso da** (uptime), numero di **processi** e **carico medio** a 1, 5 e 15 minuti (Linux e macOS: Windows non ce l'ha).
+
+  I valori li legge il crate [sysinfo](https://crates.io/crates/sysinfo), più qualche lettura diretta e leggera (rete su Linux da `/sys`, disco, numero dei processi); solo le voci accese e solo quando almeno uno schermo con lo sfondo non è in pausa. Con tutto acceso costa circa 2 ms di CPU ogni 2 secondi.
+- **Aspetto**: dimensione (piccoli, normali, grandi), cornice (`+--+` ASCII, `┌──┐` a linee, `╭──╮` arrotondata) e **sfondo pieno** dietro i riquadri, utile quando gli animali passano sotto il testo. Le linee delle cornici non ci sono nel carattere incorporato e le disegna un carattere del sistema, ognuna in una casella larga un carattere: i riquadri restano allineati anche dove quel carattere è più stretto (Consolas su Windows).
 - **Posizione**: uno dei quattro angoli; **Schermo**: il principale, uno a scelta o tutti.
 
-Nel browser si vedono con dati di prova aprendo `wallpaper/index.html?widget=demo`.
+Nel browser si vedono con dati di prova aprendo `wallpaper/index.html?widget=demo` (anche con `&cornice=linee`, `&cornice=arrotondata`, `&dimensione=grandi`, `&sfondo=pieno`).
 
 ## L'orologio
 
@@ -133,7 +143,7 @@ La cartella `app/` contiene un programma che mette lo sfondo dietro le icone su 
 - **Rotazione**: ogni quanto cambia animale e quali animali far girare;
 - **Animale per schermo**: con più monitor, un animale diverso su ognuno (koi sul portatile, meduse sull'altro…);
 - **Nomi degli animali**: il nome dell'animale più grande di ogni specie;
-- **Widget**: nota, conto alla rovescia, CPU/RAM/batteria (vedi [I widget](#i-widget));
+- **Widget**: nota, conto alla rovescia, CPU/RAM/batteria, statistiche per nerd, aspetto dei riquadri (vedi [I widget](#i-widget));
 - **Tema**: scuro, chiaro oppure come il sistema (vedi [Tema chiaro e scuro](#tema-chiaro-e-scuro));
 - **Salva una foto dello sfondo**: un PNG per schermo nella cartella Immagini (vedi [Foto dello sfondo](#foto-dello-sfondo));
 - **Orologio al centro**: togliendo la spunta l'orologio sparisce e lo schermo è tutto per gli animali;

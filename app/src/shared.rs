@@ -8,6 +8,8 @@ use crate::config::{
     autostart, data_italiana, leggi_data, pulisci_nome, pulisci_testo, Config, ETICHETTA_MAX, NOME_MAX, NOTA_MAX,
 };
 use crate::{dialog, tema};
+use crate::nerd::{self, Nerd};
+use crate::stats::Stats;
 
 pub static HTML: &str = include_str!("../assets/ascii-zoo-wallpaper.html");
 
@@ -51,6 +53,14 @@ pub const ANGOLI: [(&str, &str); 4] = [
 /// il tema dello sfondo: (valore in Config, nome nel menu)
 pub const TEMI: [(&str, &str); 3] = [("scuro", "Scuro"), ("chiaro", "Chiaro"), ("sistema", "Come il sistema")];
 
+/// aspetto dei widget: (valore per la pagina, nome nel menu)
+pub const DIMENSIONI: [(&str, &str); 3] = [("piccoli", "Piccoli"), ("normali", "Normali"), ("grandi", "Grandi")];
+pub const CORNICI: [(&str, &str); 3] = [
+    ("ascii", "+-- ASCII --+"),
+    ("linee", "┌── Linee ──┐"),
+    ("arrotondata", "╭── Arrotondata ──╮"),
+];
+
 /// ASCII_ZOO_LOG=1: scrive su stderr cosa succede (pause, schermi, clic), per le prove e la CI
 pub fn log_attivo() -> bool {
     static ATTIVO: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
@@ -82,7 +92,7 @@ pub fn js_in_carica(ac: bool) -> String {
     format!("window.zooSetting && zooSetting('inCarica', {ac})")
 }
 
-/// valori di CPU, RAM e batteria per il widget "pc"
+/// valori di CPU, RAM e batteria per il widget "pc" e delle statistiche per nerd
 pub fn js_statistiche(v: &serde_json::Value) -> String {
     format!("window.zooSetting && zooSetting('statistiche', {v})")
 }
@@ -113,6 +123,12 @@ pub struct Menus {
     pub nota: MenuItem,
     pub conto: MenuItem,
     pub statistiche: CheckMenuItem,
+    /// "Statistiche per nerd": (id della voce, voce)
+    pub nerd: Vec<(&'static str, CheckMenuItem)>,
+    /// "Aspetto": dimensione, cornice, sfondo pieno
+    pub dimensioni: Vec<CheckMenuItem>,
+    pub cornici: Vec<CheckMenuItem>,
+    pub sfondo_pieno: CheckMenuItem,
     pub angoli: Vec<CheckMenuItem>,
     pub temi: Vec<CheckMenuItem>,
     pub widget_sub: Submenu,
@@ -161,6 +177,8 @@ pub struct Core {
     /// il tema mandato alle pagine: "scuro", "chiaro" o "auto" (sistema non riconosciuto:
     /// decide la pagina con prefers-color-scheme)
     tema_pagina: &'static str,
+    /// le statistiche per nerd (sysinfo), lette solo quando servono
+    nerd: Nerd,
 }
 
 impl Core {
@@ -168,7 +186,7 @@ impl Core {
     pub fn new(solo_windows: bool) -> (Self, Menu) {
         let cfg = Config::load();
         let (menu, menus) = build_menu(&cfg, solo_windows);
-        let mut core = Self { cfg, menus, schermi: Vec::new(), tema_pagina: "scuro" };
+        let mut core = Self { cfg, menus, schermi: Vec::new(), tema_pagina: "scuro", nerd: Nerd::default() };
         core.tema_pagina = core.tema_ora();
         zoo_log!("tema: {} (alla pagina: {})", core.cfg.tema, core.tema_pagina);
         (core, menu)
@@ -249,13 +267,43 @@ impl Core {
         let qui = self.widget_qui(schermo);
         let conto = (qui && !c.conto_data.is_empty())
             .then(|| serde_json::json!({ "data": c.conto_data, "etichetta": c.conto_etichetta }));
+        let nerd: Vec<&str> =
+            if qui { c.widget_nerd.iter().map(String::as_str).filter(|id| nerd::disponibile(id)).collect() } else { Vec::new() };
         let w = serde_json::json!({
+            "qui": qui,
             "nota": if qui { c.nota.as_str() } else { "" },
             "conto": conto,
             "statistiche": qui && c.widget_statistiche,
+            "nerd": nerd,
             "angolo": c.widget_angolo,
+            "dimensione": c.widget_dimensione,
+            "cornice": c.widget_cornice,
+            "sfondo": if c.widget_sfondo_pieno { "pieno" } else { "trasparente" },
         });
         format!("window.zooSetting && zooSetting('widget', {w})")
+    }
+
+    /// Il giro periodico dei widget (ogni ~2 secondi, dal controllo delle pause di ogni
+    /// piattaforma): restituisce gli script da mandare a tutte le pagine. `visibile`: c'è
+    /// almeno uno schermo non in pausa; se no non si legge niente.
+    pub fn giro(&mut self, stats: &mut Stats, visibile: bool) -> Vec<String> {
+        let mut js = Vec::new();
+        let c = &self.cfg;
+        let nerd_su = c.widget_nerd.iter().any(|id| nerd::disponibile(id));
+        if visibile && (c.widget_statistiche || nerd_su) {
+            let mut v = serde_json::Map::new();
+            if c.widget_statistiche {
+                if let serde_json::Value::Object(m) = stats.leggi() {
+                    v = m;
+                }
+            }
+            self.nerd.leggi(&c.widget_nerd, &mut v);
+            js.push(js_statistiche(&v.into()));
+        } else if !nerd_su {
+            // spente: sysinfo libera quello che aveva
+            self.nerd.leggi(&[], &mut serde_json::Map::new());
+        }
+        js
     }
 
     /// l'animale di uno schermo: il suo, se scelto, se no quello di "Animale"
@@ -433,6 +481,37 @@ impl Core {
             }
         } else if id == m.statistiche.id().0 {
             self.cfg.widget_statistiche = m.statistiche.is_checked();
+            {
+                widget = true;
+                None
+            }
+        } else if m.nerd.iter().any(|(_, item)| item.id().0 == id) {
+            self.cfg.widget_nerd =
+                m.nerd.iter().filter(|(_, item)| item.is_checked()).map(|(nid, _)| nid.to_string()).collect();
+            {
+                widget = true;
+                None
+            }
+        } else if let Some(i) = m.dimensioni.iter().position(|x| x.id().0 == id) {
+            self.cfg.widget_dimensione = DIMENSIONI[i].0.to_string();
+            for (k, item) in self.menus.dimensioni.iter().enumerate() {
+                item.set_checked(k == i);
+            }
+            {
+                widget = true;
+                None
+            }
+        } else if let Some(i) = m.cornici.iter().position(|x| x.id().0 == id) {
+            self.cfg.widget_cornice = CORNICI[i].0.to_string();
+            for (k, item) in self.menus.cornici.iter().enumerate() {
+                item.set_checked(k == i);
+            }
+            {
+                widget = true;
+                None
+            }
+        } else if id == m.sfondo_pieno.id().0 {
+            self.cfg.widget_sfondo_pieno = m.sfondo_pieno.is_checked();
             {
                 widget = true;
                 None
@@ -622,8 +701,37 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     let widget = Submenu::new("Widget", true);
     let nota = MenuItem::new(etichetta_nota(&cfg.nota), true, None);
     let conto = MenuItem::new(etichetta_conto(cfg), true, None);
-    let stat_label = if cfg!(windows) { "CPU, RAM e batteria" } else { "CPU e RAM" };
-    let statistiche = CheckMenuItem::new(stat_label, true, cfg.widget_statistiche, None);
+    let statistiche = CheckMenuItem::new("CPU, RAM e batteria", true, cfg.widget_statistiche, None);
+    let nerd_sub = Submenu::new("Statistiche per nerd", true);
+    let nerd: Vec<(&'static str, CheckMenuItem)> = nerd::VOCI
+        .iter()
+        .filter(|(id, _)| nerd::disponibile(id))
+        .map(|(id, name)| (*id, CheckMenuItem::new(*name, true, cfg.widget_nerd.iter().any(|x| x == id), None)))
+        .collect();
+    for (_, item) in &nerd {
+        let _ = nerd_sub.append(item);
+    }
+    let aspetto = Submenu::new("Aspetto", true);
+    let _ = aspetto.append(&MenuItem::new("Dimensione:", false, None));
+    let dimensioni: Vec<CheckMenuItem> = DIMENSIONI
+        .iter()
+        .map(|(id, name)| CheckMenuItem::new(*name, true, cfg.widget_dimensione == *id, None))
+        .collect();
+    for item in &dimensioni {
+        let _ = aspetto.append(item);
+    }
+    let _ = aspetto.append(&PredefinedMenuItem::separator());
+    let _ = aspetto.append(&MenuItem::new("Cornice:", false, None));
+    let cornici: Vec<CheckMenuItem> = CORNICI
+        .iter()
+        .map(|(id, name)| CheckMenuItem::new(*name, true, cfg.widget_cornice == *id, None))
+        .collect();
+    for item in &cornici {
+        let _ = aspetto.append(item);
+    }
+    let _ = aspetto.append(&PredefinedMenuItem::separator());
+    let sfondo_pieno = CheckMenuItem::new("Sfondo pieno dietro i riquadri", true, cfg.widget_sfondo_pieno, None);
+    let _ = aspetto.append(&sfondo_pieno);
     let angoli: Vec<CheckMenuItem> = ANGOLI
         .iter()
         .map(|(id, name)| CheckMenuItem::new(*name, true, cfg.widget_angolo == *id, None))
@@ -631,6 +739,9 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     let _ = widget.append(&nota);
     let _ = widget.append(&conto);
     let _ = widget.append(&statistiche);
+    let _ = widget.append(&nerd_sub);
+    let _ = widget.append(&PredefinedMenuItem::separator());
+    let _ = widget.append(&aspetto);
     let _ = widget.append(&PredefinedMenuItem::separator());
     let _ = widget.append(&MenuItem::new("Posizione:", false, None));
     for item in &angoli {
@@ -667,6 +778,10 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         nota,
         conto,
         statistiche,
+        nerd,
+        dimensioni,
+        cornici,
+        sfondo_pieno,
         angoli,
         temi,
         widget_sub: widget,

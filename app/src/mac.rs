@@ -292,10 +292,9 @@ impl App {
             self.js(&shared::js_in_carica(ac));
         }
         self.check_pause();
-        // widget "pc": nuovi valori ogni 2 secondi, solo se si vede
-        if self.core.cfg.widget_statistiche && self.screens.iter().any(|s| !s.paused) {
-            let v = self.stats.leggi();
-            self.js(&shared::js_statistiche(&v));
+        // widget: nuovi valori ogni 2 secondi (statistiche solo se si vedono)
+        for code in self.core.giro(&mut self.stats, self.screens.iter().any(|s| !s.paused)) {
+            self.js(&code);
         }
     }
 

@@ -12,6 +12,7 @@
 
 mod config;
 mod foto;
+mod nerd;
 mod shared;
 
 #[cfg_attr(target_os = "macos", path = "dialog_mac.rs")]

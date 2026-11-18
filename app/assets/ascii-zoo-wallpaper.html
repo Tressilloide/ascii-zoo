@@ -37,6 +37,9 @@
   --accent: #5aa7ff;
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --cell: 11px;
+  /* widget: fondo dei riquadri con "Sfondo pieno" */
+  --widget-fondo: rgba(9, 10, 15, 0.84);
+  --widget-ombra: rgba(0, 0, 0, 0.35);
   color-scheme: dark;
 }
 :root[data-tema="chiaro"] {
@@ -49,6 +52,8 @@
   --line: rgba(70, 50, 25, 0.14);
   --tinta: 70, 50, 25;
   --grana: rgba(90, 64, 30, 0.14);
+  --widget-fondo: rgba(252, 249, 243, 0.9);
+  --widget-ombra: rgba(70, 50, 25, 0.16);
   color-scheme: light;
 }
 
@@ -222,6 +227,14 @@ h1 {
 .widgets pre { margin: 0; font: inherit; white-space: pre; }
 .widgets b { color: var(--ink); font-weight: 500; }
 .widgets i { color: var(--accent); font-style: normal; }
+/* un carattere che il font incorporato non ha: casella larga un carattere (vedi g() nello script) */
+.widgets .g { display: inline-block; width: 1ch; text-align: center; }
+.widgets[data-dimensione="piccoli"] { font-size: 10px; }
+.widgets[data-dimensione="grandi"] { font-size: 15px; }
+/* cornici a linee: righe più fitte, così le linee verticali si toccano quasi */
+.widgets[data-cornice="linee"], .widgets[data-cornice="arrotondata"] { line-height: 1.2; }
+.widgets[data-sfondo="pieno"] pre { background: var(--widget-fondo); box-shadow: 0 6px 24px var(--widget-ombra); border-radius: 2px; }
+.widgets[data-sfondo="pieno"][data-cornice="arrotondata"] pre { border-radius: 0.6em; }
 
 @media (max-width: 760px) {
   .modes button { padding: 7px 9px; }
@@ -2969,28 +2982,49 @@ h1 {
   }
 
   /* ---- widget ----
-     Riquadri di solo testo: nota, conto alla rovescia, statistiche del PC.
-     Li accende il programma: zooSetting('widget', {nota, conto, statistiche, angolo})
-     e ogni pochi secondi zooSetting('statistiche', {cpu, ram, batteria, carica}).
-     Nel browser: ?widget=demo per vederli con dati di prova. */
-  var W = { nota: '', conto: null, statistiche: false, angolo: 'basso-destra' }, stats = {};
+     Riquadri di solo testo: nota, conto alla rovescia, statistiche del PC e per nerd.
+     Li accende il programma: zooSetting('widget', {qui, nota, conto, statistiche, nerd,
+     angolo, dimensione, cornice, sfondo}) e ogni pochi secondi zooSetting('statistiche',
+     {cpu, ram, batteria, carica, core, temp, freq, mem, swap, rete, disco, acceso,
+     processi, carico}): i valori che un sistema non ha non arrivano e la loro riga non c'è.
+     Nel browser: ?widget=demo per vederli con dati di prova (anche &cornice=linee,
+     &dimensione=grandi, &sfondo=pieno). */
+  var W = {
+    qui: true, nota: '', conto: null, statistiche: false, nerd: [],
+    angolo: 'basso-destra', dimensione: 'normali', cornice: 'ascii', sfondo: 'trasparente'
+  }, stats = {};
   var wbox = $('widgets'), LARGO = 30;
+  // angoli in alto (sinistra, destra), in basso (sinistra, destra), orizzontale, verticale
+  var CORNICI = { ascii: '++++-|', linee: '┌┐└┘─│', arrotondata: '╭╮╰╯─│' };
   function esc(t) { return String(t).replace(/[&<>]/g, function (c) { return c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;'; }); }
   function pad(t, n) { t = String(t); return t.length > n ? t.slice(0, n - 1) + '~' : t + new Array(n - t.length + 1).join(' '); }
-  // riquadro +-- titolo --+ con righe già formattate (testo semplice, poi colorato)
-  function riquadro(titolo, righe) {
-    var top = '+- ' + titolo + ' ' + new Array(LARGO - titolo.length - 2).join('-') + '+';
-    var out = [esc(top)];
-    righe.forEach(function (r) { out.push('| ' + r.html + new Array(LARGO - r.len - 1).join(' ') + ' |'); });
-    out.push('+' + new Array(LARGO + 1).join('-') + '+');
-    return '<pre>' + out.join('\n') + '</pre>';
+  function ripeti(c, n) { return n > 0 ? new Array(n + 1).join(c) : ''; }
+  /* Caratteri che IBM Plex Mono incorporato non ha (linee delle cornici, ▶, ❚): li
+     disegna un carattere di riserva del sistema, che può essere più stretto (Consolas su
+     Windows) o più largo. Ognuno sta in una casella larga esattamente un carattere, così
+     i riquadri restano allineati. */
+  function g(t) { return String(t).replace(/[\s\S]/g, function (c) { return '<span class="g">' + esc(c) + '</span>'; }); }
+  // riquadro con il titolo nella cornice e righe già formattate (testo semplice, poi colorato)
+  function riquadro(titolo, righe, classe) {
+    var c = CORNICI[W.cornice] || CORNICI.ascii, k = c === CORNICI.ascii ? esc : g;
+    titolo = pad(titolo, LARGO - 4).replace(/\s+$/, '');
+    var out = [k(c[0] + c[4]) + ' ' + esc(titolo) + ' ' + k(ripeti(c[4], LARGO - titolo.length - 3) + c[1])];
+    righe.forEach(function (r) { out.push(k(c[5]) + ' ' + r.html + ripeti(' ', LARGO - r.len - 1) + k(c[5])); });
+    out.push(k(c[2] + ripeti(c[4], LARGO) + c[3]));
+    return '<pre' + (classe ? ' class="' + classe + '"' : '') + '>' + out.join('\n') + '</pre>';
   }
   function riga(t, cls) { t = pad(t, LARGO - 3).replace(/\s+$/, ''); return { len: t.length, html: cls ? '<' + cls + '>' + esc(t) + '</' + cls + '>' : esc(t) }; }
+  // "nome   valore", con il valore in evidenza
+  var ETICHETTA = 7;
+  function coppia(nome, valore) {
+    valore = pad(valore, LARGO - 3 - ETICHETTA).replace(/\s+$/, '');
+    return { len: ETICHETTA + valore.length, html: esc(pad(nome, ETICHETTA)) + '<b>' + esc(valore) + '</b>' };
+  }
   function barra(nome, v) {
     v = Math.max(0, Math.min(100, Math.round(v)));
-    var n = Math.round(v / 10), b = new Array(n + 1).join('#') + new Array(11 - n).join('.');
+    var n = Math.round(v / 10), b = ripeti('#', n) + ripeti('.', 10 - n);
     var t = pad(nome, 5) + '[' + b + '] ' + (v < 10 ? '  ' : v < 100 ? ' ' : '') + v + '%';
-    return { len: t.length, html: esc(pad(nome, 5)) + '[<i>' + new Array(n + 1).join('#') + '</i>' + new Array(11 - n).join('.') + '] <b>' + (v < 10 ? '  ' : v < 100 ? ' ' : '') + v + '%</b>' };
+    return { len: t.length, html: esc(pad(nome, 5)) + '[<i>' + ripeti('#', n) + '</i>' + ripeti('.', 10 - n) + '] <b>' + (v < 10 ? '  ' : v < 100 ? ' ' : '') + v + '%</b>' };
   }
   function a_capo(testo, max) {
     var out = [];
@@ -3011,13 +3045,58 @@ h1 {
     var oggi = new Date(); oggi.setHours(0, 0, 0, 0);
     return Math.round((new Date(+m[1], m[2] - 1, +m[3]) - oggi) / 86400000);
   }
+
+  /* statistiche per nerd: numeri all'italiana (virgola), byte in multipli di 1024 */
+  function num(x, dec) { return x.toFixed(dec).replace('.', ','); }
+  function gb(b) {
+    var x = b / 1073741824;
+    return x >= 1000 ? num(x / 1024, 1) + ' TB' : x < 10 ? num(x, 1) + ' GB' : Math.round(x) + ' GB';
+  }
+  function coppiaGb(nome, v) {
+    // "2,7 / 7,6 GB": l'unità una volta sola se è la stessa
+    var u = gb(v[0]), t = gb(v[1]), su = u.slice(-2) === t.slice(-2);
+    return coppia(nome, (su ? u.slice(0, -3) : u) + ' / ' + t);
+  }
+  function velocita(b) {
+    var u = ['B/s', 'KB/s', 'MB/s', 'GB/s'], i = 0;
+    while (b >= 1000 && i < u.length - 1) { b /= 1024; i++; }
+    return (i && b < 9.95 ? num(b, 1) : Math.round(b)) + ' ' + u[i];
+  }
+  function durata(s) {
+    var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+    return d ? d + ' g ' + h + ' h' : h ? h + ' h ' + m + ' min' : m + ' min';
+  }
+  var RAMPA = '_.:-=+*#%@', CORE_RIGA = LARGO - 5 - ETICHETTA;
+  function righeNerd() {
+    var r = [], s = stats, su = function (id) { return W.nerd.indexOf(id) >= 0; };
+    if (su('core') && s.core && s.core.length) {
+      // un carattere per core, più denso quanto più è occupato
+      for (var i = 0; i < s.core.length; i += CORE_RIGA) {
+        var pezzo = s.core.slice(i, i + CORE_RIGA).map(function (v) {
+          return RAMPA.charAt(v <= 0 ? 0 : Math.min(9, Math.ceil(v / 100 * 9)));
+        }).join('');
+        r.push({ len: ETICHETTA + pezzo.length + 2, html: esc(pad(i ? '' : 'core', ETICHETTA)) + '[<i>' + esc(pezzo) + '</i>]' });
+      }
+    }
+    if (su('temperatura') && s.temp != null) r.push(coppia('temp', Math.round(s.temp) + '°C'));
+    if (su('frequenza') && s.freq) r.push(coppia('freq', num(s.freq / 1000, 2) + ' GHz'));
+    if (su('memoria') && s.mem) r.push(coppiaGb('ram', s.mem));
+    if (su('memoria') && s.swap) r.push(coppiaGb('swap', s.swap));
+    if (su('rete') && s.rete) r.push(coppia('rete', '↓' + velocita(s.rete[0]) + ' ↑' + velocita(s.rete[1])));
+    if (su('disco') && s.disco) r.push(coppiaGb('disco', s.disco));
+    if (su('acceso') && s.acceso != null) r.push(coppia('acceso', durata(s.acceso)));
+    if (su('processi') && s.processi) r.push(coppia('proc', String(s.processi)));
+    if (su('carico') && s.carico) r.push(coppia('carico', s.carico.map(function (x) { return num(x, 2); }).join(' ')));
+    return r;
+  }
+
   function disegnaWidget() {
     var html = '';
     if (W.nota) html += riquadro('nota', a_capo(W.nota, LARGO - 3).map(function (t) { return riga(t, 'b'); }));
     if (W.conto && W.conto.data) {
-      var g = giorniA(W.conto.data), et = W.conto.etichetta || 'conto alla rovescia';
-      var quando = g === null ? 'data non valida' : g > 1 ? 'mancano ' + g + ' giorni' : g === 1 ? 'manca 1 giorno: domani!' : g === 0 ? 'è oggi!' : 'passato da ' + -g + (g === -1 ? ' giorno' : ' giorni');
-      html += riquadro('conto alla rovescia', [riga(et, 'b'), riga(quando, g !== null && g >= 0 && g <= 1 ? 'i' : '')]);
+      var gg = giorniA(W.conto.data), et = W.conto.etichetta || 'conto alla rovescia';
+      var quando = gg === null ? 'data non valida' : gg > 1 ? 'mancano ' + gg + ' giorni' : gg === 1 ? 'manca 1 giorno: domani!' : gg === 0 ? 'è oggi!' : 'passato da ' + -gg + (gg === -1 ? ' giorno' : ' giorni');
+      html += riquadro('conto alla rovescia', [riga(et, 'b'), riga(quando, gg !== null && gg >= 0 && gg <= 1 ? 'i' : '')]);
     }
     if (W.statistiche) {
       var r = [];
@@ -3027,23 +3106,46 @@ h1 {
       if (!r.length) r.push(riga('in attesa dei dati...'));
       html += riquadro('pc', r);
     }
+    if (W.nerd.length) {
+      var n = righeNerd();
+      html += riquadro('sistema', n.length ? n : [riga('in attesa dei dati...')]);
+    }
     wbox.setAttribute('data-angolo', W.angolo);
+    wbox.setAttribute('data-dimensione', W.dimensione);
+    wbox.setAttribute('data-cornice', W.cornice);
+    wbox.setAttribute('data-sfondo', W.sfondo);
     wbox.innerHTML = html;
     wbox.hidden = !html;
   }
+  function scelta(v, ammessi, base) { return ammessi.indexOf(v) >= 0 ? v : base; }
   function impostaWidget(v) {
     v = asObject(v);
+    W.qui = v.qui !== false;
     W.nota = typeof v.nota === 'string' ? v.nota.slice(0, 200) : '';
     W.conto = v.conto && typeof v.conto === 'object' ? { data: String(v.conto.data || ''), etichetta: String(v.conto.etichetta || '').slice(0, 40) } : null;
     W.statistiche = !!v.statistiche;
+    W.nerd = Array.isArray(v.nerd) ? v.nerd.filter(function (x) { return typeof x === 'string'; }) : [];
     W.angolo = /^(alto|basso)-(destra|sinistra)$/.test(v.angolo) ? v.angolo : 'basso-destra';
+    W.dimensione = scelta(v.dimensione, ['piccoli', 'normali', 'grandi'], 'normali');
+    W.cornice = scelta(v.cornice, Object.keys(CORNICI), 'ascii');
+    W.sfondo = scelta(v.sfondo, ['trasparente', 'pieno'], 'trasparente');
     disegnaWidget();
   }
   function impostaStats(v) {
     v = asObject(v);
     ['cpu', 'ram', 'batteria'].forEach(function (k) { if (v[k] != null && isFinite(v[k])) stats[k] = +v[k]; });
     if ('carica' in v) stats.carica = !!v.carica;
-    if (W.statistiche) disegnaWidget();
+    // statistiche per nerd: ogni invio le contiene tutte, quelle che mancano non ci sono più
+    ['temp', 'freq', 'acceso', 'processi'].forEach(function (k) { stats[k] = v[k] != null && isFinite(v[k]) ? +v[k] : null; });
+    ['core', 'mem', 'swap', 'rete', 'disco', 'carico'].forEach(function (k) {
+      var ok = Array.isArray(v[k]) && v[k].length && v[k].every(function (x) { return typeof x === 'number' && isFinite(x) && x >= 0; });
+      stats[k] = ok ? v[k] : null;
+    });
+    if (stats.mem && stats.mem.length !== 2) stats.mem = null;
+    if (stats.swap && stats.swap.length !== 2) stats.swap = null;
+    if (stats.disco && stats.disco.length !== 2) stats.disco = null;
+    if (stats.rete && stats.rete.length !== 2) stats.rete = null;
+    if (W.statistiche || W.nerd.length) disegnaWidget();
   }
   setInterval(disegnaWidget, 60000); // il conto alla rovescia cambia a mezzanotte
   disegnaWidget();
@@ -3125,6 +3227,16 @@ h1 {
     // i widget: ogni pezzo di testo, riga per riga, dove lo mette il browser
     var box = $('widgets');
     if (box && !box.hidden) {
+      // prima il fondo dei riquadri, con "Sfondo pieno"
+      Array.prototype.forEach.call(box.querySelectorAll('pre'), function (pre) {
+        var sp = getComputedStyle(pre), r = pre.getBoundingClientRect(), raggio = parseFloat(sp.borderTopLeftRadius) || 0;
+        if (/^(transparent|rgba\(0, 0, 0, 0\))$/.test(sp.backgroundColor)) return;
+        g.fillStyle = sp.backgroundColor;
+        g.beginPath();
+        if (g.roundRect && raggio) g.roundRect(r.left * s, r.top * s, r.width * s, r.height * s, raggio * s);
+        else g.rect(r.left * s, r.top * s, r.width * s, r.height * s);
+        g.fill();
+      });
       var it = document.createTreeWalker(box, NodeFilter.SHOW_TEXT, null, false), range = document.createRange(), n;
       while ((n = it.nextNode())) {
         var el = n.parentElement, st = getComputedStyle(el);
@@ -3216,10 +3328,22 @@ h1 {
     if (name === 'tema') setTema(['scuro', 'chiaro', 'auto'][+val] || val);
   };
   if (/[?&]widget=demo/.test(location.search)) {
-    var tra = new Date(Date.now() + 12 * 86400000);
-    impostaWidget({ nota: 'comprare il mangime per KARPISA', conto: { etichetta: 'esame di analisi', data: tra.toISOString().slice(0, 10) }, statistiche: true });
-    setInterval(function () { impostaStats({ cpu: 8 + Math.random() * 30, ram: 55 + Math.random() * 5, batteria: 83, carica: true }); }, 2000);
-    impostaStats({ cpu: 18, ram: 57, batteria: 83, carica: true });
+    var tra = new Date(Date.now() + 12 * 86400000), q = function (k) { var m = new RegExp('[?&]' + k + '=([\\w-]+)').exec(location.search); return m && m[1]; };
+    impostaWidget({
+      nota: 'comprare il mangime per KARPISA', conto: { etichetta: 'esame di analisi', data: tra.toISOString().slice(0, 10) }, statistiche: true,
+      nerd: ['core', 'temperatura', 'frequenza', 'memoria', 'rete', 'disco', 'acceso', 'processi', 'carico'],
+      angolo: q('angolo'), dimensione: q('dimensione'), cornice: q('cornice'), sfondo: q('sfondo')
+    });
+    var finte = function (cpu) {
+      var c = [3, 0, 41, 12, 88, 7, 0, 23].map(function (x) { return Math.min(100, Math.round(x * (0.6 + Math.random() * 0.8))); });
+      return {
+        cpu: cpu, ram: 55 + Math.random() * 5, batteria: 83, carica: true, core: c, temp: 52 + Math.random() * 6, freq: 3100 + Math.random() * 400,
+        mem: [9.1 * 1073741824, 15.5 * 1073741824], swap: [0.2 * 1073741824, 2 * 1073741824], rete: [1.2 * 1048576 * Math.random(), 34000],
+        disco: [212 * 1073741824, 476 * 1073741824], acceso: 3 * 86400 + 4 * 3600 + 720, processi: 312, carico: [0.52, 0.61, 0.7]
+      };
+    };
+    setInterval(function () { impostaStats(finte(8 + Math.random() * 30)); }, 2000);
+    impostaStats(finte(18));
   }
 
   zoo.start();
