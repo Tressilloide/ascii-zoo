@@ -75,6 +75,26 @@ gh attestation verify ascii-zoo.exe --repo Tressilloide/ascii-zoo
 
 The app only writes its settings file (and an autostart entry, if you enable it). Full details, file locations and the Linux script steps are in the [Italian README](README.it.md).
 
+### Uninstall
+
+1. In the tray / menu bar icon untick **Avvia con Windows** / **Apri al login** (it removes the autostart entry), then choose **Esci** (quit): the normal wallpaper comes back.
+2. Delete the app: `ascii-zoo.exe` on Windows, **ASCII Zoo** from Applications on macOS. On Linux run the install command with `--disinstalla`:
+   `curl -fsSL https://raw.githubusercontent.com/Tressilloide/ascii-zoo/main/linux/install.sh | bash -s -- --disinstalla`
+3. Optionally delete the settings: `%APPDATA%\AsciiZoo` (Windows), `~/Library/Application Support/AsciiZoo` (macOS), `~/.config/AsciiZoo` (Linux).
+
+### Privacy
+
+This program will not transfer any information to other networked systems unless specifically requested by the user. It has no telemetry, no accounts and no update checks; the only network request is the web search you type yourself in the browser version of the page.
+
+### Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+- **Committers and reviewers:** [Tressilloide](https://github.com/Tressilloide), [dani3lfrenc](https://github.com/dani3lfrenc)
+- **Approvers:** [Tressilloide](https://github.com/Tressilloide), [dani3lfrenc](https://github.com/dani3lfrenc)
+
+Only the Windows executable built by GitHub Actions from a tagged release is signed, and every signing request is approved by hand.
+
 ## Try it in your browser
 
 No install needed: open [`sfondo/index.html`](sfondo/index.html) in any browser. Add a species after `#` to keep it fixed:
