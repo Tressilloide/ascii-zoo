@@ -247,11 +247,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Senza -qq, così se si blocca si vede dove; man-db spento perché il suo trigger
+      # sui runner può durare minuti. Il limite di tempo evita i 20 minuti appesi.
       - name: GNOME Shell e le icone del desktop (DING)
+        timeout-minutes: 12
         run: |
-          sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
-            gnome-shell gnome-shell-extension-desktop-icons-ng xwayland zenity python3-gi dbus-x11
+          echo "set man-db/auto-update false" | sudo debconf-communicate >/dev/null || true
+          sudo rm -f /var/lib/man-db/auto-update
+          sudo apt-get update -q
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
+            -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold \
+            gnome-shell gnome-shell-extension-desktop-icons-ng xwayland zenity python3-gi dbus-x11 </dev/null
           gnome-shell --version
 
       - name: Prova - clic simulati
