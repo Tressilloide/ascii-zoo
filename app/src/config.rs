@@ -64,6 +64,8 @@ pub struct Config {
     pub orologio: bool,
     /// tema dello sfondo: "scuro", "chiaro" o "sistema" (segue il tema chiaro o scuro del sistema)
     pub tema: String,
+    /// fotogrammi al secondo dello sfondo: 30, 20 o 15 (vedi shared::FOTOGRAMMI)
+    pub fotogrammi: u32,
     /// solo Linux: minuti senza toccare mouse e tastiera prima che parta lo screensaver
     /// (0 = spento, di serie: un aggiornamento non lo accende a chi non l'ha chiesto). Su
     /// Windows l'attesa la decide Windows.
@@ -102,6 +104,7 @@ impl Default for Config {
             clic_desktop: true,
             orologio: true,
             tema: "scuro".into(),
+            fotogrammi: 30,
             salvaschermo_minuti: 0,
             salvaschermo_scena: "rotazione".into(),
         }

@@ -54,6 +54,10 @@ pub const ANGOLI: [(&str, &str); 4] = [
 
 /// il tema dello sfondo: (valore in Config, nome nel menu)
 pub const TEMI: [(&str, &str); 3] = [("scuro", "Scuro"), ("chiaro", "Chiaro"), ("sistema", "Come il sistema")];
+/// fotogrammi al secondo dello sfondo: (valore in Config, nome nel menu). Meno fotogrammi,
+/// meno lavoro per CPU e GPU: conta sui portatili e con la scala frazionaria di GNOME, dove
+/// lo sfondo si disegna più grande dello schermo
+pub const FOTOGRAMMI: [(u32, &str); 3] = [(30, "30 (più fluido)"), (20, "20"), (15, "15 (più leggero)")];
 
 /// aspetto dei widget: (valore per la pagina, nome nel menu)
 pub const DIMENSIONI: [(&str, &str); 3] = [("piccoli", "Piccoli"), ("normali", "Normali"), ("grandi", "Grandi")];
@@ -138,6 +142,8 @@ pub struct Menus {
     pub sfondo_pieno: CheckMenuItem,
     pub angoli: Vec<CheckMenuItem>,
     pub temi: Vec<CheckMenuItem>,
+    /// "Fotogrammi al secondo", stesso ordine di FOTOGRAMMI
+    pub fotogrammi: Vec<CheckMenuItem>,
     /// "Pomodoro": il titolo (Windows, macOS) e la prima voce, non cliccabile, mostrano fase e
     /// minuti rimasti; poi Avvia/Pausa/Riprendi
     pub pomodoro_sub: Submenu,
@@ -262,6 +268,10 @@ impl Core {
     pub fn js_nomi(&self) -> String {
         let nomi = serde_json::to_string(&self.cfg.nomi).unwrap_or_else(|_| "{}".into());
         format!("window.zooSetting && zooSetting('nomi', {nomi})")
+    }
+
+    pub fn js_fotogrammi(&self) -> String {
+        format!("window.zooSetting && zooSetting('fps', {})", self.cfg.fotogrammi)
     }
 
     pub fn js_orologio(&self) -> String {
@@ -399,6 +409,7 @@ impl Core {
     pub fn js_tutto(&self, ac: bool, schermo: &str) -> Vec<String> {
         let mut v = vec![
             self.js_tema(),
+            self.js_fotogrammi(),
             self.js_nomi(),
             self.js_rotazione(),
             self.js_orologio(),
@@ -641,6 +652,12 @@ impl Core {
             }
             self.tema_pagina = self.tema_ora();
             Some(self.js_tema())
+        } else if let Some(i) = m.fotogrammi.iter().position(|x| x.id().0 == id) {
+            self.cfg.fotogrammi = FOTOGRAMMI[i].0;
+            for (k, item) in self.menus.fotogrammi.iter().enumerate() {
+                item.set_checked(k == i);
+            }
+            Some(self.js_fotogrammi())
         } else if id == m.clic.id().0 {
             self.cfg.clic_desktop = m.clic.is_checked();
             None
@@ -914,6 +931,15 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         let _ = tema_sub.append(item);
     }
 
+    let fotogrammi_sub = Submenu::new("Fotogrammi al secondo", true);
+    // un valore che non è nel menu vale come 30
+    let fps_cfg = if FOTOGRAMMI.iter().any(|f| f.0 == cfg.fotogrammi) { cfg.fotogrammi } else { 30 };
+    let fotogrammi: Vec<CheckMenuItem> =
+        FOTOGRAMMI.iter().map(|(n, name)| CheckMenuItem::new(*name, true, fps_cfg == *n, None)).collect();
+    for item in &fotogrammi {
+        let _ = fotogrammi_sub.append(item);
+    }
+
     let animali_sub = Submenu::new("Animale per schermo", true);
     let animali_un_solo = MenuItem::new("(c'è un solo schermo)", false, None);
     let _ = animali_sub.append(&animali_un_solo);
@@ -934,6 +960,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         sfondo_pieno,
         angoli,
         temi,
+        fotogrammi,
         pomodoro_sub,
         pomodoro_stato,
         pomodoro_avvia,
@@ -966,6 +993,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     let _ = menu.append(&m.widget_sub);
     let _ = menu.append(&m.pomodoro_sub);
     let _ = menu.append(&tema_sub);
+    let _ = menu.append(&fotogrammi_sub);
     let _ = menu.append(&m.orologio);
     let _ = menu.append(&m.koi);
     let _ = menu.append(&m.clic);

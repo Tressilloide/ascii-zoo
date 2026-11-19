@@ -2840,6 +2840,13 @@ h1 {
     }
   };
 
+  // fotogrammi al secondo dello sfondo (dal menu dell'app): 15-60. Nel browser, senza
+  // limite, non cambia niente
+  Zoo.prototype.setFps = function (n) {
+    n = parseInt(n, 10);
+    if (this.fps && n >= 15 && n <= 60) this.fps = n;
+  };
+
   // senza limite di fotogrammi (la pagina nel browser): requestAnimationFrame
   Zoo.prototype._tick = function (now) {
     if (!this.running) return;
@@ -3026,6 +3033,7 @@ h1 {
     if (name === 'pomodoro') { impostaPomodoro(val); return; }
     if (name === 'orologio') { zoo.setClock(val === true || val === 'true'); return; }
     if (name === 'tema') { setTema(val); return; }
+    if (name === 'fps') { zoo.setFps(val); return; }
     if (name === 'nomi') { zoo.setNames(asObject(val)); return; }
     if (name === 'rotazione') {
       var r = asObject(val);

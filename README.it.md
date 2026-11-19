@@ -114,6 +114,10 @@ Di serie lo sfondo è scuro: gli animali sono luce su fondo nero. Il tema **chia
 - **Nel browser:** `index.html?tema=chiaro`, `?tema=scuro` oppure `?tema=auto`, che segue il tema del sistema (`prefers-color-scheme`).
 - **In Lively:** la tendina **Tema** tra le impostazioni dello sfondo.
 
+## Fotogrammi al secondo
+
+Lo sfondo si muove a **30** fotogrammi al secondo. Dal menu **Fotogrammi al secondo** si può scendere a **20** o **15**: le scene sono lente e si vede poco, mentre CPU e GPU lavorano circa in proporzione meno (a 1920×1080, da 30 a 15: un terzo di CPU in meno). Serve sui portatili e soprattutto su Linux con la **scala frazionaria** di GNOME (125%, 150%…): lì le app che passano da XWayland, come ASCII Zoo, si disegnano più grandi dello schermo (su uno schermo 1920×1080 al 125%, 3072×1728) e GNOME poi le rimpicciolisce, quindi ogni fotogramma costa più del doppio. Per capire quanto pesa su un PC Linux c'è [`linux/prestazioni.sh`](linux/prestazioni.sh) (vedi la sezione Linux).
+
 ## Foto dello sfondo
 
 Voce **Salva una foto dello sfondo** nel menu del programma (Windows, macOS e Linux): ogni schermo salva un PNG di come appare in quel momento, alla sua risoluzione, con animali, scenografia, orologio e widget. Le foto vanno nella cartella Immagini, sottocartella **ASCII Zoo**, con data e ora nel nome (`ascii-zoo-2026-11-19-031500.png`; con più schermi `…-schermo-1.png`, `…-schermo-2.png`); un file che c'è già non viene mai sovrascritto. Poi il programma la mostra in Esplora risorse, nel Finder o nel gestore dei file di Linux. Uno schermo in pausa dà l'ultimo fotogramma, cioè quello che si vede.
