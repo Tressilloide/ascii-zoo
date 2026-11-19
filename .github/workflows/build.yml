@@ -103,10 +103,20 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: app
+          workspaces: |
+            app
+            dreams/macos
 
       - name: Compila
         working-directory: app
+        run: |
+          cargo build --release --locked --target aarch64-apple-darwin
+          cargo build --release --locked --target x86_64-apple-darwin
+
+      # lo screensaver, "ASCII Zoo.saver": una libreria che macOS carica nel suo processo
+      # dei salvaschermo (dreams/macos)
+      - name: Compila lo screensaver
+        working-directory: dreams/macos
         run: |
           cargo build --release --locked --target aarch64-apple-darwin
           cargo build --release --locked --target x86_64-apple-darwin
@@ -120,9 +130,21 @@ jobs:
             app/target/aarch64-apple-darwin/release/ascii-zoo \
             app/target/x86_64-apple-darwin/release/ascii-zoo
           sed "s/@VERSION@/$version/g" app/macos/Info.plist > "$app/Contents/Info.plist"
+          # il modulo dello screensaver, con la versione dell'app, dentro l'app: è lei che lo
+          # installa in ~/Library/Screen Savers
+          saver="build/ASCII Zoo.saver"
+          mkdir -p "$saver/Contents/MacOS"
+          lipo -create -output "$saver/Contents/MacOS/AsciiZoo" \
+            dreams/macos/target/aarch64-apple-darwin/release/libascii_dreams_macos.dylib \
+            dreams/macos/target/x86_64-apple-darwin/release/libascii_dreams_macos.dylib
+          sed "s/@VERSION@/$version/g" dreams/macos/Info.plist > "$saver/Contents/Info.plist"
           # firma "ad hoc": non è un certificato Apple, ma i Mac con Apple Silicon
-          # non avviano codice senza nessuna firma
+          # non avviano codice senza nessuna firma. Prima il modulo, poi l'app che lo contiene
+          codesign --force --sign - "$saver"
+          cp -R "$saver" "$app/Contents/Resources/"
           codesign --force --deep --sign - "$app"
+          codesign --verify --strict --verbose=2 "$app"
+          codesign --verify --strict --verbose=2 "$app/Contents/Resources/ASCII Zoo.saver"
           mkdir build/dmg
           cp -R "$app" build/dmg/
           ln -s /Applications build/dmg/Applications
@@ -132,6 +154,44 @@ jobs:
 
       - name: Prova - statistiche per nerd
         run: '"build/ASCII Zoo.app/Contents/MacOS/ascii-zoo" --statistiche'
+
+      # il modulo come lo carica macOS: NSBundle, NSPrincipalClass, una vista grande e
+      # un'anteprima nello stesso processo; le immagini non devono essere vuote e alla
+      # notifica di fine salvaschermo il processo deve uscire da solo
+      - name: Prova - lo screensaver si carica e disegna
+        run: |
+          xcrun swiftc -O -o prova-saver .github/macos-saver-test/saver.swift
+          ./prova-saver "build/ASCII Zoo.app/Contents/Resources/ASCII Zoo.saver" prova-screensaver/dentro-app --willstop
+          echo "uscito con 0 dopo com.apple.screensaver.willstop"
+
+      # l'installazione che fa la voce "Usa come screensaver…" (senza aprire le impostazioni):
+      # un modulo di altri con lo stesso nome non si tocca; il nostro arriva senza la
+      # quarantena anche se l'originale ce l'ha, e da lì si carica
+      - name: Prova - installazione dello screensaver
+        run: |
+          app="build/ASCII Zoo.app"
+          mod="$HOME/Library/Screen Savers/ASCII Zoo.saver"
+          mkdir -p "$mod/Contents"
+          printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' '<plist version="1.0"><dict>' \
+            '<key>CFBundleIdentifier</key><string>com.example.altro</string></dict></plist>' > "$mod/Contents/Info.plist"
+          if "$app/Contents/MacOS/ascii-zoo" --installa-salvaschermo; then
+            echo "::error::l'installazione ha sostituito un modulo di altri"; exit 1
+          fi
+          grep -q com.example.altro "$mod/Contents/Info.plist" || { echo "::error::il modulo di altri è cambiato"; exit 1; }
+          rm -rf "$mod"
+          find "$app/Contents/Resources/ASCII Zoo.saver" -type f -exec xattr -w com.apple.quarantine "0081;00000000;Safari;" {} \;
+          "$app/Contents/MacOS/ascii-zoo" --installa-salvaschermo
+          ls -lR "$mod"
+          if xattr -r "$mod" | grep -q quarantine; then
+            echo "::error::il modulo installato ha la quarantena"; exit 1
+          fi
+          diff -r "$app/Contents/Resources/ASCII Zoo.saver" "$mod"
+          codesign --verify --strict --verbose=2 "$mod"
+          ./prova-saver "$mod" prova-screensaver/installato
+          # per la prova dell'aggiornamento all'avvio (passo dopo): una versione diversa
+          version=$(grep -m1 '^version' app/Cargo.toml | cut -d'"' -f2)
+          sed -i '' "s#<string>$version</string>#<string>0.0.1</string>#" "$mod/Contents/Info.plist"
+          grep -q 0.0.1 "$mod/Contents/Info.plist"
 
       - name: Prova - avvia l'app e fotografa lo schermo
         run: |
@@ -167,6 +227,23 @@ jobs:
           fi
           kill "$pid"
 
+      # all'avvio l'app ha rimesso la sua versione dello screensaver al posto di quella vecchia
+      - name: Prova - l'app aggiorna lo screensaver installato
+        run: |
+          diff -r "build/ASCII Zoo.app/Contents/Resources/ASCII Zoo.saver" "$HOME/Library/Screen Savers/ASCII Zoo.saver"
+          grep -i "screensaver" app-macos.log || true
+
+      # come la voce del menu: installa e apre le impostazioni del salvaschermo. Solo una
+      # foto da guardare (il pannello vero non si comanda da qui), non fa fallire il job
+      - name: Prova - apre le impostazioni del salvaschermo (foto)
+        continue-on-error: true
+        run: |
+          sw_vers
+          "build/ASCII Zoo.app/Contents/MacOS/ascii-zoo" --installa-salvaschermo --apri-impostazioni
+          sleep 10
+          screencapture -x prova-screensaver/impostazioni.png
+          osascript -e 'tell application "System Settings" to quit' || true
+
       - uses: actions/upload-artifact@v4
         with:
           name: ascii-zoo-macos
@@ -177,6 +254,13 @@ jobs:
         with:
           name: prova-macos
           path: prova-macos.png
+          if-no-files-found: warn
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prova-macos-screensaver
+          path: prova-screensaver/
           if-no-files-found: warn
 
   # Il programma per Linux già compilato, che va nelle Release e che linux/install.sh
