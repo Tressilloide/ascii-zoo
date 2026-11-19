@@ -411,6 +411,7 @@ impl Salvaschermo {
                 self.prova_a_partire(cfg, bus, bloccato, coperto);
             }
             Segnale::Mutter(id) if Some(id) == self.id_attivo => {
+                zoo_log!("screensaver: mutter dice che qualcuno ha usato il PC");
                 self.id_attivo = None;
                 self.inattivo = false;
                 self.ferma(bus, "mouse o tastiera");

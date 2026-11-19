@@ -50,6 +50,15 @@ pub fn salvaschermo(args: &[String]) {
 
 /// ogni quanto si ricontrollano le pause: quando lo sfondo torna visibile riparte subito
 const GIRO: Duration = Duration::from_millis(500);
+/// Quando fare il prossimo giro. Con ControlFlow::WaitUntil tao su Linux non mette nessun
+/// timer: guarda l'ora solo quando GTK si sveglia per qualcos'altro. Di solito lo sveglia la
+/// pagina, ma con lo sfondo in pausa (screensaver, batteria) può dormire per secondi: lo
+/// sveglia allora un timer di GLib ogni GIRO (in `run`). La scadenza sta un po' prima di
+/// quel risveglio: se cadesse appena dopo, il giro salterebbe al risveglio seguente (provato:
+/// un giro al secondo invece che ogni mezzo secondo).
+fn prossimo_giro() -> Instant {
+    Instant::now() + GIRO - Duration::from_millis(40)
+}
 /// ogni quanti giri si controllano batteria, schermi e margini (2 secondi)
 const GIRI_CONTROLLO: u32 = 4;
 
@@ -626,10 +635,7 @@ pub fn run() {
     };
     app.sync_clic();
     let mut giro: u32 = 0;
-    // Con ControlFlow::WaitUntil tao su Linux non mette nessun timer: controlla l'ora solo
-    // quando GTK si sveglia per qualcos'altro. Di solito lo sveglia la pagina, ma con lo
-    // sfondo in pausa (screensaver, batteria) può dormire per secondi: un timer di GLib
-    // lo sveglia ogni mezzo secondo, così i controlli arrivano quando devono.
+    // sveglia il ciclo ogni mezzo secondo anche con lo sfondo in pausa (vedi prossimo_giro)
     glib::timeout_add_local(GIRO, || glib::ControlFlow::Continue);
 
     event_loop.run(move |event, target, control_flow| match event {
@@ -644,7 +650,7 @@ pub fn run() {
                     .map_err(|e| eprintln!("ascii-zoo: icona nella barra non disponibile: {e}"))
                     .ok();
             }
-            *control_flow = ControlFlow::WaitUntil(Instant::now() + GIRO);
+            *control_flow = ControlFlow::WaitUntil(prossimo_giro());
         }
         Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
             giro = giro.wrapping_add(1);
@@ -658,7 +664,7 @@ pub fn run() {
             } else {
                 app.check_pause();
             }
-            *control_flow = ControlFlow::WaitUntil(Instant::now() + GIRO);
+            *control_flow = ControlFlow::WaitUntil(prossimo_giro());
         }
         Event::UserEvent(Evento::PaginaPronta) => app.push_settings(),
         Event::UserEvent(Evento::Clic(x, y, w, h)) => app.clic(x, y, w, h),
