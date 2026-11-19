@@ -177,15 +177,23 @@ struct Sonda {
     visto_veloce: bool,
 }
 
-/// quanto dura una misura, e ogni quanto se ne fa una
+/// Quanto dura una misura, e ogni quanto se ne fa una: con lo sfondo visibile di rado (ogni
+/// misura sono 30 ridisegni della finestra intera, e su un portatile con la scala di GNOME
+/// al 125% anche ogni 2 secondi Xwayland restava a ~0,5 core con 15 o 30 fotogrammi); dopo
+/// una misura lenta, o con lo sfondo coperto, spesso, per confermare e per ripartire presto.
+/// Un'app a schermo intero la si vede così entro ~20 secondi, e quando si chiude lo sfondo
+/// riparte entro ~2.
 const MISURA: Duration = Duration::from_millis(500);
-const OGNI_MISURA: Duration = Duration::from_secs(2);
+const OGNI_MISURA: Duration = Duration::from_secs(10);
+const OGNI_MISURA_DUBBIO: Duration = Duration::from_secs(2);
 
 impl Sonda {
     /// true se la finestra è nascosta del tutto da più di una misura
     fn coperto(&mut self, gw: &gtk::ApplicationWindow, refresh_hz: f64) -> bool {
+        // coperta, mutter la fa andare a un sesto della frequenza dello schermo (~10 giri al
+        // secondo a 60 Hz); visibile, anche con la GPU carica, ne fa ben più di un quarto
         if let Some(al_secondo) = self.misura.take() {
-            if al_secondo < refresh_hz / 3.0 {
+            if al_secondo < refresh_hz / 4.0 {
                 self.lenti += 1;
             } else {
                 self.lenti = 0;
@@ -194,7 +202,7 @@ impl Sonda {
         }
         let ora = Instant::now();
         if self.id.borrow().is_none() && self.prossima.is_none_or(|p| ora >= p) {
-            self.prossima = Some(ora + OGNI_MISURA);
+            self.prossima = Some(ora + if self.lenti > 0 { OGNI_MISURA_DUBBIO } else { OGNI_MISURA });
             self.giri.set((0, None, None));
             let giri = self.giri.clone();
             *self.id.borrow_mut() = Some(gw.add_tick_callback(move |w, _| {
