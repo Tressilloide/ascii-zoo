@@ -530,6 +530,11 @@ fn make_screen(
     gw.set_focus_on_map(false);
     gw.set_keep_below(true);
     gw.stick();
+    // la WebView copre tutta la finestra: GTK non deve ridipingere a ogni fotogramma lo
+    // sfondo della finestra sotto di lei (in software, una superficie grande quanto lo
+    // schermo: con la scala di GNOME al 125%, 3072×1728). Misurato con GNOME Shell 51 e
+    // una GPU Intel: il processo dell'app da 0,26 a 0,13 core
+    gw.set_app_paintable(true);
 
     let pronta = proxy.clone();
     let webview = WebViewBuilder::new()
