@@ -2992,7 +2992,7 @@ h1 {
      riproduzione. Li accende il programma: zooSetting('widget', {qui, nota, conto,
      statistiche, nerd, musica, angolo, dimensione, cornice, sfondo}) e ogni pochi secondi
      zooSetting('statistiche', {cpu, ram, batteria, carica, core, temp, freq, mem, swap,
-     rete, disco, acceso, processi, carico}): i valori che un sistema non ha non arrivano e
+     gpu, vram, gputemp, rete, disco, acceso, processi, carico}): i valori che un sistema non ha non arrivano e
      la loro riga non c'è. Cosa suona: zooSetting('musica', {titolo, artista, stato, pos,
      durata, quando} oppure null). Il pomodoro: zooSetting('pomodoro', {fase, fine,
      rimasto, durata, fatti, ogni, scatti} oppure null), uno solo per tutti gli schermi, si
@@ -3030,11 +3030,17 @@ h1 {
     valore = pad(valore, LARGO - 3 - ETICHETTA).replace(/\s+$/, '');
     return { len: ETICHETTA + valore.length, html: esc(pad(nome, ETICHETTA)) + '<b>' + esc(valore) + '</b>' };
   }
-  function barra(nome, v) {
+  /* "cpu  [###.......]  31%"; dopo la percentuale un'aggiunta facoltativa (" 61°C").
+     `etichetta`: larghezza del nome, 5 (di serie) oppure ETICHETTA come le righe per
+     nerd, e allora la barra è più corta (8 caselle) per starci comunque */
+  function barra(nome, v, dopo, etichetta) {
     v = Math.max(0, Math.min(100, Math.round(v)));
-    var n = Math.round(v / 10), b = ripeti('#', n) + ripeti('.', 10 - n);
-    var t = pad(nome, 5) + '[' + b + '] ' + (v < 10 ? '  ' : v < 100 ? ' ' : '') + v + '%';
-    return { len: t.length, html: esc(pad(nome, 5)) + '[<i>' + ripeti('#', n) + '</i>' + ripeti('.', 10 - n) + '] <b>' + (v < 10 ? '  ' : v < 100 ? ' ' : '') + v + '%</b>' };
+    dopo = dopo || '';
+    etichetta = etichetta || 5;
+    var caselle = etichetta > 5 ? 8 : 10, n = Math.round(v / 100 * caselle);
+    var perc = (v < 10 ? '  ' : v < 100 ? ' ' : '') + v + '%';
+    var t = pad(nome, etichetta) + '[' + ripeti('#', caselle) + '] ' + perc + dopo;
+    return { len: t.length, html: esc(pad(nome, etichetta)) + '[<i>' + ripeti('#', n) + '</i>' + ripeti('.', caselle - n) + '] <b>' + perc + '</b>' + esc(dopo) };
   }
   function a_capo(testo, max) {
     var out = [];
@@ -3092,6 +3098,13 @@ h1 {
     if (su('frequenza') && s.freq) r.push(coppia('freq', num(s.freq / 1000, 2) + ' GHz'));
     if (su('memoria') && s.mem) r.push(coppiaGb('ram', s.mem));
     if (su('memoria') && s.swap) r.push(coppiaGb('swap', s.swap));
+    // GPU: la barra con la temperatura in fondo, sotto la sua memoria (se il sistema le dà)
+    if (su('gpu')) {
+      var tg = s.gputemp != null ? ' ' + Math.round(s.gputemp) + '°C' : '';
+      if (s.gpu != null) r.push(barra('gpu', s.gpu, tg, ETICHETTA));
+      else if (tg) r.push(coppia('gpu', tg.slice(1)));
+      if (s.vram) r.push(coppiaGb('vram', s.vram));
+    }
     if (su('rete') && s.rete) r.push(coppia('rete', '↓' + velocita(s.rete[0]) + ' ↑' + velocita(s.rete[1])));
     if (su('disco') && s.disco) r.push(coppiaGb('disco', s.disco));
     if (su('acceso') && s.acceso != null) r.push(coppia('acceso', durata(s.acceso)));
@@ -3232,13 +3245,14 @@ h1 {
     ['cpu', 'ram', 'batteria'].forEach(function (k) { if (v[k] != null && isFinite(v[k])) stats[k] = +v[k]; });
     if ('carica' in v) stats.carica = !!v.carica;
     // statistiche per nerd: ogni invio le contiene tutte, quelle che mancano non ci sono più
-    ['temp', 'freq', 'acceso', 'processi'].forEach(function (k) { stats[k] = v[k] != null && isFinite(v[k]) ? +v[k] : null; });
-    ['core', 'mem', 'swap', 'rete', 'disco', 'carico'].forEach(function (k) {
+    ['temp', 'freq', 'gpu', 'gputemp', 'acceso', 'processi'].forEach(function (k) { stats[k] = v[k] != null && isFinite(v[k]) ? +v[k] : null; });
+    ['core', 'mem', 'swap', 'vram', 'rete', 'disco', 'carico'].forEach(function (k) {
       var ok = Array.isArray(v[k]) && v[k].length && v[k].every(function (x) { return typeof x === 'number' && isFinite(x) && x >= 0; });
       stats[k] = ok ? v[k] : null;
     });
     if (stats.mem && stats.mem.length !== 2) stats.mem = null;
     if (stats.swap && stats.swap.length !== 2) stats.swap = null;
+    if (stats.vram && stats.vram.length !== 2) stats.vram = null;
     if (stats.disco && stats.disco.length !== 2) stats.disco = null;
     if (stats.rete && stats.rete.length !== 2) stats.rete = null;
     if (W.statistiche || W.nerd.length) disegnaWidget();
@@ -3449,14 +3463,15 @@ h1 {
     var tra = new Date(Date.now() + 12 * 86400000), q = function (k) { var m = new RegExp('[?&]' + k + '=([\\w-]+)').exec(location.search); return m && m[1]; };
     impostaWidget({
       nota: 'comprare il mangime per KARPISA', conto: { etichetta: 'esame di analisi', data: tra.toISOString().slice(0, 10) }, statistiche: true,
-      nerd: ['core', 'temperatura', 'frequenza', 'memoria', 'rete', 'disco', 'acceso', 'processi', 'carico'], musica: true,
+      nerd: ['core', 'temperatura', 'frequenza', 'memoria', 'gpu', 'rete', 'disco', 'acceso', 'processi', 'carico'], musica: true,
       angolo: q('angolo'), dimensione: q('dimensione'), cornice: q('cornice'), sfondo: q('sfondo')
     });
     var finte = function (cpu) {
       var c = [3, 0, 41, 12, 88, 7, 0, 23].map(function (x) { return Math.min(100, Math.round(x * (0.6 + Math.random() * 0.8))); });
       return {
         cpu: cpu, ram: 55 + Math.random() * 5, batteria: 83, carica: true, core: c, temp: 52 + Math.random() * 6, freq: 3100 + Math.random() * 400,
-        mem: [9.1 * 1073741824, 15.5 * 1073741824], swap: [0.2 * 1073741824, 2 * 1073741824], rete: [1.2 * 1048576 * Math.random(), 34000],
+        mem: [9.1 * 1073741824, 15.5 * 1073741824], swap: [0.2 * 1073741824, 2 * 1073741824],
+        gpu: 17 + Math.random() * 25, vram: [2.3 * 1073741824, 8 * 1073741824], gputemp: 58 + Math.random() * 4, rete: [1.2 * 1048576 * Math.random(), 34000],
         disco: [212 * 1073741824, 476 * 1073741824], acceso: 3 * 86400 + 4 * 3600 + 720, processi: 312, carico: [0.52, 0.61, 0.7]
       };
     };

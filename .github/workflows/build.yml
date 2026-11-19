@@ -35,6 +35,10 @@ jobs:
         working-directory: app
         run: cargo build --release --locked
 
+      # le statistiche per nerd lette davvero (la GPU dai contatori di sistema)
+      - name: Prova - statistiche per nerd
+        run: app/target/release/ascii-zoo.exe --statistiche
+
       - name: Prova lo screensaver - un fotogramma per scena, senza finestra
         working-directory: dreams
         run: |
@@ -125,6 +129,9 @@ jobs:
           hdiutil create -volname "ASCII Zoo" -srcfolder build/dmg -ov -format UDZO dist/ascii-zoo-macos.dmg
           cd dist
           shasum -a 256 ascii-zoo-macos.dmg | tee ascii-zoo-macos.dmg.sha256
+
+      - name: Prova - statistiche per nerd
+        run: '"build/ASCII Zoo.app/Contents/MacOS/ascii-zoo" --statistiche'
 
       - name: Prova - avvia l'app e fotografa lo schermo
         run: |
@@ -224,6 +231,7 @@ jobs:
           cp app/target/release/ascii-zoo linux/ascii-zoo.svg "build/$d/"
           cp -r linux/gnome "build/$d/gnome"
           "build/$d/ascii-zoo" --version
+          "build/$d/ascii-zoo" --statistiche
           tar -C build -czf "dist/$d.tar.gz" "$d"
           cd dist
           sha256sum "$d.tar.gz" | tee "$d.tar.gz.sha256"

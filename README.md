@@ -51,7 +51,7 @@ It's a small example of what two people and an AI can ship together in a short t
 - **Dark or light.** Dark by default; the light theme draws the animals as ink on cream paper, or it can follow the system's light/dark setting. Menu **Tema**, or `index.html?tema=chiaro` in the browser.
 - **Snapshots**: save a PNG of the wallpaper exactly as it looks right now, widgets included, into Pictures/ASCII Zoo (menu **Salva una foto dello sfondo**, or `P` in the browser).
 - **Multi-monitor**, with a different animal on each screen if you like.
-- **ASCII widgets**: a sticky note, a countdown, CPU/RAM/battery meters, and stats for nerds (per-core CPU, temperature, frequency, RAM and swap, network speed, disk, uptime, processes, load average), a "now playing" box (MPRIS on Linux, system media controls on Windows, Music and Spotify via AppleScript on macOS), a pomodoro timer run from the tray menu, in three frame styles (`+--+`, `┌──┐`, `╭──╮`) and three sizes.
+- **ASCII widgets**: a sticky note, a countdown, CPU/RAM/battery meters, and stats for nerds (per-core CPU, temperature, frequency, RAM and swap, GPU usage, VRAM and temperature, network speed, disk, uptime, processes, load average), a "now playing" box (MPRIS on Linux, system media controls on Windows, Music and Spotify via AppleScript on macOS), a pomodoro timer run from the tray menu, in three frame styles (`+--+`, `┌──┐`, `╭──╮`) and three sizes.
 - **Names**: the biggest animal of each species can carry a name. Meet **KARPISA**, the koi from Pisa.
 - **A screensaver too** (Windows): six ASCII scenes, see below.
 - Everything is set from a small koi icon in the tray / menu bar.

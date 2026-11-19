@@ -1,5 +1,5 @@
 //! Statistiche per nerd del widget "sistema": CPU per core, temperatura, frequenza,
-//! memoria e swap in GB, velocità della rete, disco di sistema, da quanto è acceso,
+//! memoria e swap in GB, GPU, velocità della rete, disco di sistema, da quanto è acceso,
 //! processi, carico medio.
 //!
 //! Le legge il crate sysinfo, una parte per volta e solo quelle accese dal menu: gira
@@ -11,12 +11,15 @@ use serde_json::{json, Map, Value};
 use std::time::{Duration, Instant};
 use sysinfo::System;
 
+use crate::gpu::Gpu;
+
 /// le voci di "Statistiche per nerd": (id per la pagina e la config, nome nel menu)
-pub const VOCI: [(&str, &str); 9] = [
+pub const VOCI: [(&str, &str); 10] = [
     ("core", "CPU per core"),
     ("temperatura", "Temperatura della CPU"),
     ("frequenza", "Frequenza della CPU"),
     ("memoria", "RAM e swap in GB"),
+    ("gpu", "GPU (uso, memoria, temperatura)"),
     ("rete", "Rete (velocità ↓ ↑)"),
     ("disco", "Disco di sistema"),
     ("acceso", "Acceso da"),
@@ -41,6 +44,19 @@ pub struct Nerd {
     #[cfg(not(windows))]
     sensori: Option<Sensori>,
     disco: Option<(Instant, Option<(u64, u64)>)>,
+    gpu: Option<Gpu>,
+}
+
+/// Una lettura della GPU (moduli gpu_*.rs): quello che il sistema non dà resta None e la
+/// sua parte di riga non compare
+#[derive(Default, Debug)]
+pub struct LetturaGpu {
+    /// percentuale di utilizzo
+    pub uso: Option<f32>,
+    /// memoria della scheda video: (usata, totale) in byte
+    pub vram: Option<(u64, u64)>,
+    /// °C
+    pub temp: Option<f32>,
 }
 
 impl Nerd {
@@ -75,6 +91,20 @@ impl Nerd {
             if sys.total_swap() > 0 {
                 v.insert("swap".into(), json!([sys.used_swap(), sys.total_swap()]));
             }
+        }
+        if su("gpu") {
+            let l = self.gpu.get_or_insert_with(Gpu::new).leggi();
+            if let Some(u) = l.uso {
+                v.insert("gpu".into(), json!(u.round() as u32));
+            }
+            if let Some((usata, totale)) = l.vram {
+                v.insert("vram".into(), json!([usata, totale]));
+            }
+            if let Some(t) = l.temp {
+                v.insert("gputemp".into(), json!((t * 10.0).round() / 10.0));
+            }
+        } else {
+            self.gpu = None;
         }
         if su("rete") {
             match &mut self.rete {
@@ -121,6 +151,20 @@ impl Nerd {
             }
         }
     }
+}
+
+/// "ascii-zoo --statistiche": scrive tutte le statistiche per nerd che questo sistema dà
+/// (due letture a un secondo l'una dall'altra, perché CPU, rete e GPU sono differenze tra
+/// due letture). Serve per capire cosa vede il programma, e alla CI per provarle davvero
+/// su Windows e macOS.
+pub fn stampa() {
+    let voci: Vec<String> = VOCI.iter().map(|(id, _)| id.to_string()).collect();
+    let (mut n, mut v) = (Nerd::default(), Map::new());
+    n.leggi(&voci, &mut v);
+    std::thread::sleep(Duration::from_millis(1100));
+    v.clear();
+    n.leggi(&voci, &mut v);
+    println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
 }
 
 /// Velocità della rete: byte ricevuti e inviati tra una lettura e l'altra, contando solo

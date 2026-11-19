@@ -26,6 +26,9 @@ mod power;
 #[cfg_attr(target_os = "macos", path = "musica_mac.rs")]
 #[cfg_attr(target_os = "linux", path = "musica_linux.rs")]
 mod musica;
+#[cfg_attr(target_os = "macos", path = "gpu_mac.rs")]
+#[cfg_attr(target_os = "linux", path = "gpu_linux.rs")]
+mod gpu;
 #[cfg_attr(target_os = "macos", path = "stats_mac.rs")]
 #[cfg_attr(target_os = "linux", path = "stats_linux.rs")]
 mod stats;
@@ -52,6 +55,10 @@ fn main() {
     // controllare che il programma scaricato parta su quel sistema, librerie comprese
     if std::env::args().nth(1).as_deref() == Some("--version") {
         println!("ascii-zoo {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
+    if std::env::args().nth(1).as_deref() == Some("--statistiche") {
+        nerd::stampa();
         return;
     }
     // Windows lancia lo screensaver (ascii-zoo.scr, cioè questo stesso programma)

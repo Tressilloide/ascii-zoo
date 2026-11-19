@@ -26,11 +26,13 @@ ascii-dreams = { path = "../dreams" }
 version = "0.61"
 features = [
   "Win32_Foundation",
+  "Win32_Graphics_Dxgi",
   "Win32_Graphics_Gdi",
   "Win32_Security",
   "Win32_Storage_FileSystem",
   "Win32_System_Com",
   "Win32_System_LibraryLoader",
+  "Win32_System_Performance",
   "Win32_System_Power",
   "Win32_System_ProcessStatus",
   "Win32_System_SystemInformation",

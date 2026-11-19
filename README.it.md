@@ -64,6 +64,12 @@ Riquadri di solo testo, nello stesso stile degli animali, in un angolo dello sch
   - **CPU per core**: un carattere per core, più denso quanto più è occupato (`_ . : - = + * # % @`);
   - **Temperatura della CPU** (Linux e macOS; su Windows la darebbe solo WMI con i permessi di amministratore, quindi la voce non c'è) e **frequenza** media dei core;
   - **RAM e swap in GB**, usati su totali;
+  - **GPU**: una barra con quanto è occupata, la temperatura e la memoria della scheda video, quando il sistema le dà senza permessi speciali:
+    - su **Linux**, NVIDIA con la sua libreria NVML (driver proprietario), AMD con `gpu_busy_percent`, memoria e temperatura da `/sys`, Intel dal tempo che la GPU passa a riposo (RC6). Una GPU dedicata che dorme non si sveglia per leggerla e vale 0%;
+    - su **Windows**, gli stessi contatori del Task Manager: si conta il motore più occupato, e la memoria dedicata; la temperatura Windows non la dà;
+    - su **macOS**, la percentuale di utilizzo da IOKit (`IOAccelerator`).
+
+    `ascii-zoo --statistiche` scrive tutto quello che il programma legge su quel computer.
   - **Rete**: velocità in arrivo e in uscita delle schede vere (Ethernet, Wi-Fi), senza loopback, VPN e interfacce dei container, che conterebbero due volte lo stesso traffico;
   - **Disco di sistema** (`/` oppure `C:`), usato su totale;
   - **Acceso da** (uptime), numero di **processi** e **carico medio** a 1, 5 e 15 minuti (Linux e macOS: Windows non ce l'ha).
