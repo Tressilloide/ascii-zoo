@@ -79,6 +79,8 @@ gtk = "0.18"
 libc = "0.2"
 # lo screensaver, che qui fa partire l'app quando non si usa il PC
 ascii-dreams = { path = "../dreams" }
+# l'ora del server X, per attivare la finestra dello screensaver (c'è già, la usa wry)
+gdkx11 = "0.18"
 
 # lo screensaver disegna ogni fotogramma in software: qui conta la velocità, non la grandezza
 [profile.release.package.ascii-dreams]

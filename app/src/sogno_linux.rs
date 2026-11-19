@@ -7,7 +7,9 @@
 //! - una finestra senza bordi a schermo intero per ogni monitor, "sempre in primo piano":
 //!   GNOME può non darle il focus (prevenzione del furto del focus) e allora, senza, la
 //!   metterebbe sotto la finestra attiva. Provato in GNOME Shell 46: così resta sopra e
-//!   la barra in alto sparisce anche senza focus
+//!   la barra in alto sparisce anche senza focus. In più la si attiva con l'ora del server X
+//!   di adesso (vedi `porta_davanti`), e si riprova nel primo secondo e mezzo: in CI a volte
+//!   GNOME la lasciava sotto, senza focus
 //! - sotto Wayland passa da XWayland, come lo sfondo: Wayland non permette a un programma
 //!   di stare "sempre in primo piano"
 //! - nasconde il cursore ed esce al primo movimento del mouse (più di 12 pixel), tasto o
@@ -29,6 +31,18 @@ use gtk::{cairo, gdk, glib};
 
 use crate::power;
 use crate::shared::zoo_log;
+
+/// Attiva la finestra e la mette in cima. GNOME attiva una finestra nuova solo con un'ora
+/// più recente dell'ultimo input dell'utente (prevenzione del furto del focus); `present()`
+/// di GTK non ne passa nessuna. L'ora del server X di adesso lo è sempre: lo screensaver
+/// parte proprio perché da minuti non c'è input.
+fn porta_davanti(w: &gtk::Window) {
+    if let Some(x) = w.window().and_then(|gw| gw.downcast::<gdkx11::X11Window>().ok()) {
+        w.present_with_time(gdkx11::functions::x11_get_server_time(&x));
+    } else {
+        w.present();
+    }
+}
 
 /// all'inizio non si esce: il mouse che si muove ancora dopo aver chiuso un menu
 const GRAZIA: Duration = Duration::from_millis(600);
@@ -126,10 +140,20 @@ pub fn avvia(args: &[String]) {
             w.move_(g.x(), g.y());
             w.set_default_size(g.width(), g.height());
             aggiungi_schermo(&st, &w, seme.wrapping_add(i as u64 * 7919));
-            w.show_all();
+            // a schermo intero già quando compare, non un attimo dopo
             w.fullscreen_on_monitor(&WidgetExt::screen(&w).unwrap_or_else(|| display.default_screen()), i);
+            w.show_all();
             if let Some(gw) = w.window() {
                 gw.set_cursor(vuoto.as_ref());
+            }
+            porta_davanti(&w);
+            for ms in [300, 800, 1500] {
+                let w = w.clone();
+                glib::timeout_add_local_once(Duration::from_millis(ms), move || {
+                    if !w.is_active() {
+                        porta_davanti(&w);
+                    }
+                });
             }
             zoo_log!("screensaver: schermo {i}: {}×{} a {},{}", g.width(), g.height(), g.x(), g.y());
         }
