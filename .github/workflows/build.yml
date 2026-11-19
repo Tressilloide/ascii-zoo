@@ -282,9 +282,21 @@ jobs:
     timeout-minutes: 45
     container: ubuntu:22.04
     steps:
+      # archive.ubuntu.com dai runner x86_64 a volte non risponde per ore (19/11: tre run
+      # ferme 45 minuti su apt-get update): apt prova più mirror in fila (metodo mirror+file),
+      # passa al successivo dopo 20 secondi senza risposta, e il passo ha un limite di tempo.
+      # ports.ubuntu.com (aarch64) non si tocca.
       - name: Strumenti e librerie per compilare
+        timeout-minutes: 15
         run: |
-          apt-get update -qq
+          if grep -q 'archive.ubuntu.com' /etc/apt/sources.list; then
+            # senza "priority" apt li proverebbe in un ordine a caso
+            printf '%s\tpriority:%s\n' http://azure.archive.ubuntu.com/ubuntu/ 1 \
+              http://mirrors.edge.kernel.org/ubuntu/ 2 http://archive.ubuntu.com/ubuntu/ 3 > /etc/apt/mirrors.txt
+            sed -i -E 's#http://(archive|security)\.ubuntu\.com/ubuntu/?#mirror+file:/etc/apt/mirrors.txt#' /etc/apt/sources.list
+          fi
+          printf 'Acquire::http::Timeout "20";\nAcquire::Retries "3";\n' > /etc/apt/apt.conf.d/99rete
+          apt-get update -q
           DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
             ca-certificates curl git build-essential pkg-config \
             libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev libxdo-dev
