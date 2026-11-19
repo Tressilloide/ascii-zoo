@@ -40,6 +40,8 @@
   /* widget: fondo dei riquadri con "Sfondo pieno" */
   --widget-fondo: rgba(9, 10, 15, 0.84);
   --widget-ombra: rgba(0, 0, 0, 0.35);
+  /* pomodoro: il riquadro lampeggia di questo colore quando cambia fase */
+  --widget-lampo: #ffd166;
   color-scheme: dark;
 }
 :root[data-tema="chiaro"] {
@@ -54,6 +56,7 @@
   --grana: rgba(90, 64, 30, 0.14);
   --widget-fondo: rgba(252, 249, 243, 0.9);
   --widget-ombra: rgba(70, 50, 25, 0.16);
+  --widget-lampo: #b45f06;
   color-scheme: light;
 }
 
@@ -235,6 +238,7 @@ h1 {
 .widgets[data-cornice="linee"], .widgets[data-cornice="arrotondata"] { line-height: 1.2; }
 .widgets[data-sfondo="pieno"] pre { background: var(--widget-fondo); box-shadow: 0 6px 24px var(--widget-ombra); border-radius: 2px; }
 .widgets[data-sfondo="pieno"][data-cornice="arrotondata"] pre { border-radius: 0.6em; }
+.widgets pre.lampo, .widgets pre.lampo b, .widgets pre.lampo i { color: var(--widget-lampo); }
 
 @media (max-width: 760px) {
   .modes button { padding: 7px 9px; }
@@ -2958,6 +2962,7 @@ h1 {
     }
     if (name === 'statistiche') { impostaStats(val); return; }
     if (name === 'musica') { impostaMusica(val); return; }
+    if (name === 'pomodoro') { impostaPomodoro(val); return; }
     if (name === 'orologio') { zoo.setClock(val === true || val === 'true'); return; }
     if (name === 'tema') { setTema(val); return; }
     if (name === 'nomi') { zoo.setNames(asObject(val)); return; }
@@ -2989,13 +2994,15 @@ h1 {
      zooSetting('statistiche', {cpu, ram, batteria, carica, core, temp, freq, mem, swap,
      rete, disco, acceso, processi, carico}): i valori che un sistema non ha non arrivano e
      la loro riga non c'è. Cosa suona: zooSetting('musica', {titolo, artista, stato, pos,
-     durata, quando} oppure null).
+     durata, quando} oppure null). Il pomodoro: zooSetting('pomodoro', {fase, fine,
+     rimasto, durata, fatti, ogni, scatti} oppure null), uno solo per tutti gli schermi, si
+     vede dove ci sono i widget.
      Nel browser: ?widget=demo per vederli con dati di prova (anche &cornice=linee,
      &dimensione=grandi, &sfondo=pieno). */
   var W = {
     qui: true, nota: '', conto: null, statistiche: false, nerd: [], musica: false,
     angolo: 'basso-destra', dimensione: 'normali', cornice: 'ascii', sfondo: 'trasparente'
-  }, stats = {}, M = null;
+  }, stats = {}, M = null, P = null;
   var wbox = $('widgets'), LARGO = 30;
   // angoli in alto (sinistra, destra), in basso (sinistra, destra), orizzontale, verticale
   var CORNICI = { ascii: '++++-|', linee: '┌┐└┘─│', arrotondata: '╭╮╰╯─│' };
@@ -3123,6 +3130,55 @@ h1 {
     return r;
   }
 
+  /* pomodoro: il programma manda l'istante in cui finisce la fase (o il tempo rimasto, se
+     è in pausa); qui si conta alla rovescia. Quando cambia fase da solo, "scatti" cresce:
+     il riquadro lampeggia qualche secondo e dagli animali parte un'onda. */
+  var FASI = { lavoro: 'lavoro', pausa: 'pausa', lunga: 'pausa lunga' }, scattiVisti = null, lampoFino = 0;
+  function rimastoPomodoro() { return P.fine != null ? Math.max(0, P.fine - Date.now()) : P.rimasto || 0; }
+  function righePomodoro() {
+    var resto = rimastoPomodoro(), tempo = minuti(resto + 999), nome = FASI[P.fase];
+    var r = [{ len: LARGO - 3, html: '<b>' + esc(nome) + '</b>' + ripeti(' ', LARGO - 3 - nome.length - tempo.length) + '<b>' + esc(tempo) + '</b>' }];
+    var n = LARGO - 5, pieni = Math.round(Math.max(0, Math.min(1, 1 - resto / (P.durata || 1))) * n);
+    r.push({ len: n + 2, html: '[<i>' + ripeti('#', pieni) + '</i>' + ripeti('.', n - pieni) + ']' });
+    if (P.fine == null) r.push({ len: 11, html: '<i>' + g('❚❚') + '</i> in pausa' });
+    else if (P.fase === 'lavoro') r.push(riga(P.ogni ? 'pomodoro ' + (P.fatti % P.ogni + 1) + ' di ' + P.ogni : 'pomodoro ' + (P.fatti + 1)));
+    else r.push(riga(P.fatti === 1 ? '1 pomodoro fatto' : P.fatti + ' pomodori fatti'));
+    return r;
+  }
+  function onda() {
+    // dal riquadro e da qualche animale
+    var c = zoo.cell || 11, pre = wbox.querySelector('pre.pomodoro');
+    if (pre) {
+      var b = pre.getBoundingClientRect();
+      zoo.ripple((b.left + b.width / 2) / c, (b.top + b.height / 2) / c, 18, 2.4, 0);
+    }
+    zoo.creatures.filter(function (k) { return !k.dying; }).slice(0, 8).forEach(function (k, i) {
+      setTimeout(function () { zoo.ripple(k.x, k.y, 5 + Math.random() * 4, 1.6, 0); }, i * 120);
+    });
+  }
+  function lampeggia() {
+    disegnaWidget();
+    if (Date.now() < lampoFino) setTimeout(lampeggia, 250);
+  }
+  function impostaPomodoro(v) {
+    v = asObject(v);
+    var ms = function (x) { return typeof x === 'number' && isFinite(x) && x >= 0 ? x : null; };
+    if (!v || !FASI[v.fase]) { P = null; disegnaWidget(); return; }
+    P = {
+      fase: v.fase, fine: ms(v.fine), rimasto: ms(v.rimasto), durata: ms(v.durata),
+      fatti: Math.max(0, parseInt(v.fatti, 10) || 0), ogni: Math.max(0, parseInt(v.ogni, 10) || 0)
+    };
+    var sc = Math.max(0, parseInt(v.scatti, 10) || 0);
+    // il primo valore dopo il caricamento non è un cambio di fase: niente lampo
+    var scatto = scattiVisti !== null && sc > scattiVisti;
+    scattiVisti = sc;
+    if (scatto && W.qui) {
+      lampoFino = Date.now() + 4000;
+      lampeggia();
+      if (zoo.running) onda();
+    } else disegnaWidget();
+  }
+
   function disegnaWidget() {
     var html = '';
     if (W.nota) html += riquadro('nota', a_capo(W.nota, LARGO - 3).map(function (t) { return riga(t, 'b'); }));
@@ -3130,6 +3186,10 @@ h1 {
       var gg = giorniA(W.conto.data), et = W.conto.etichetta || 'conto alla rovescia';
       var quando = gg === null ? 'data non valida' : gg > 1 ? 'mancano ' + gg + ' giorni' : gg === 1 ? 'manca 1 giorno: domani!' : gg === 0 ? 'è oggi!' : 'passato da ' + -gg + (gg === -1 ? ' giorno' : ' giorni');
       html += riquadro('conto alla rovescia', [riga(et, 'b'), riga(quando, gg !== null && gg >= 0 && gg <= 1 ? 'i' : '')]);
+    }
+    if (W.qui && P) {
+      var lampo = Date.now() < lampoFino && Math.floor(Date.now() / 400) % 2 === 0;
+      html += riquadro('pomodoro', righePomodoro(), lampo ? 'pomodoro lampo' : 'pomodoro');
     }
     if (W.statistiche) {
       var r = [];
@@ -3196,11 +3256,15 @@ h1 {
     } else M = null;
     if (W.musica) disegnaWidget();
   }
+  var minutoDisegnato = Math.floor(Date.now() / 60000);
   setInterval(function () {
-    // il conto alla rovescia cambia a mezzanotte; quello che suona va avanti ogni secondo
-    var ora = new Date();
-    if (W.musica && M && M.stato === 'play' && zoo.running) disegnaWidget();
-    else if (ora.getSeconds() === 0) disegnaWidget();
+    // quello che suona e il pomodoro ogni secondo; il resto (il conto alla rovescia cambia a
+    // mezzanotte) a ogni minuto nuovo, anche se il timer salta qualche giro
+    var minuto = Math.floor(Date.now() / 60000);
+    if ((zoo.running && ((W.musica && M && M.stato === 'play') || (W.qui && P && P.fine != null))) || minuto !== minutoDisegnato) {
+      minutoDisegnato = minuto;
+      disegnaWidget();
+    }
   }, 1000);
   disegnaWidget();
 
@@ -3397,6 +3461,10 @@ h1 {
       };
     };
     setInterval(function () { impostaStats(finte(8 + Math.random() * 30)); }, 2000);
+    impostaPomodoro({ fase: 'lavoro', fine: Date.now() + 23 * 60000 + 41000, durata: 25 * 60000, fatti: 1, ogni: 4, scatti: 0 });
+    // &pomodoro=scatto: dopo 3 secondi finisce il lavoro e comincia la pausa (lampo e onda)
+    if (q('pomodoro') === 'scatto') setTimeout(function () { impostaPomodoro({ fase: 'pausa', fine: Date.now() + 5 * 60000, durata: 5 * 60000, fatti: 2, ogni: 4, scatti: 1 }); }, 3000);
+    if (q('pomodoro') === 'pausa') impostaPomodoro({ fase: 'lavoro', rimasto: 12 * 60000 + 5000, durata: 25 * 60000, fatti: 1, ogni: 4, scatti: 0 });
     impostaMusica({ titolo: 'Ninna nanna per carpe', artista: 'KARPISA e i Ninfei', stato: q('musica') === 'pausa' ? 'pausa' : 'play', pos: 83000, durata: 225000, quando: Date.now() });
     impostaStats(finte(18));
   }

@@ -13,6 +13,7 @@
 mod config;
 mod foto;
 mod nerd;
+mod pomodoro;
 mod riproduzione;
 mod shared;
 

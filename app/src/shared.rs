@@ -9,6 +9,7 @@ use crate::config::{
 };
 use crate::{dialog, tema};
 use crate::nerd::{self, Nerd};
+use crate::pomodoro::{Durate, Pomodoro, Stato};
 use crate::riproduzione::Riproduzione;
 use crate::stats::Stats;
 
@@ -61,6 +62,10 @@ pub const CORNICI: [(&str, &str); 3] = [
     ("linee", "┌── Linee ──┐"),
     ("arrotondata", "╭── Arrotondata ──╮"),
 ];
+
+/// durate del pomodoro: (minuti di lavoro, di pausa, di pausa lunga, nome nel menu)
+pub const POMODORI: [(u32, u32, u32, &str); 2] =
+    [(25, 5, 15, "25 min di lavoro, 5 di pausa"), (50, 10, 30, "50 min di lavoro, 10 di pausa")];
 
 /// ASCII_ZOO_LOG=1: scrive su stderr cosa succede (pause, schermi, clic), per le prove e la CI
 pub fn log_attivo() -> bool {
@@ -133,6 +138,15 @@ pub struct Menus {
     pub sfondo_pieno: CheckMenuItem,
     pub angoli: Vec<CheckMenuItem>,
     pub temi: Vec<CheckMenuItem>,
+    /// "Pomodoro": il titolo (Windows, macOS) e la prima voce, non cliccabile, mostrano fase e
+    /// minuti rimasti; poi Avvia/Pausa/Riprendi
+    pub pomodoro_sub: Submenu,
+    pub pomodoro_stato: MenuItem,
+    pub pomodoro_avvia: MenuItem,
+    pub pomodoro_salta: MenuItem,
+    pub pomodoro_ferma: MenuItem,
+    pub pomodoro_durate: Vec<CheckMenuItem>,
+    pub pomodoro_lunga: CheckMenuItem,
     pub widget_sub: Submenu,
     /// "Widget > Schermo": (valore, voce); i primi due sono principale e tutti
     pub widget_schermi: Vec<(String, CheckMenuItem)>,
@@ -183,6 +197,10 @@ pub struct Core {
     nerd: Nerd,
     /// widget "In riproduzione": il thread che chiede ai lettori cosa suona
     musica: Riproduzione,
+    /// il pomodoro, uno solo per tutti gli schermi
+    pomodoro: Pomodoro,
+    /// ultimo titolo del sottomenu "Pomodoro" (si cambia solo quando cambia)
+    pomodoro_titolo: String,
 }
 
 impl Core {
@@ -190,7 +208,17 @@ impl Core {
     pub fn new(solo_windows: bool) -> (Self, Menu) {
         let cfg = Config::load();
         let (menu, menus) = build_menu(&cfg, solo_windows);
-        let mut core = Self { cfg, menus, schermi: Vec::new(), tema_pagina: "scuro", nerd: Nerd::default(), musica: Riproduzione::default() };
+        let pomodoro = Pomodoro::new(durate(&cfg));
+        let mut core = Self {
+            cfg,
+            menus,
+            schermi: Vec::new(),
+            tema_pagina: "scuro",
+            nerd: Nerd::default(),
+            musica: Riproduzione::default(),
+            pomodoro,
+            pomodoro_titolo: String::new(),
+        };
         core.tema_pagina = core.tema_ora();
         zoo_log!("tema: {} (alla pagina: {})", core.cfg.tema, core.tema_pagina);
         (core, menu)
@@ -309,7 +337,49 @@ impl Core {
             self.nerd.leggi(&[], &mut serde_json::Map::new());
         }
         js.extend(self.musica.giro(self.cfg.widget_musica, visibile));
+        // il pomodoro va avanti anche con lo sfondo in pausa: il tempo passa lo stesso
+        if self.pomodoro.controlla(adesso_ms()) {
+            js.push(self.js_pomodoro());
+        }
+        self.aggiorna_menu_pomodoro();
         js
+    }
+
+    /// zooSetting('pomodoro', …): a tutte le pagine; lo mostrano quelle con i widget
+    pub fn js_pomodoro(&self) -> String {
+        format!("window.zooSetting && zooSetting('pomodoro', {})", self.pomodoro.json())
+    }
+
+    /// Testi delle voci del pomodoro, aggiornati al minuto: "Pomodoro: lavoro, 23 min" nel
+    /// titolo del sottomenu, "Lavoro: ancora 23 min" nella prima voce (su Linux il titolo di
+    /// un sottomenu non si può cambiare: muda mette l'etichetta dentro un contenitore GTK) e
+    /// Avvia, Pausa o Riprendi nella seconda.
+    fn aggiorna_menu_pomodoro(&mut self) {
+        let p = &self.pomodoro;
+        let minuti = p.rimasto(adesso_ms()).map(|ms| ms.div_ceil(60_000));
+        let fase = p.fase.nome();
+        let (titolo, stato, voce) = match (p.stato, minuti) {
+            (Stato::InCorso { .. }, Some(m)) => {
+                (format!("Pomodoro: {fase}, {m} min"), format!("{}: ancora {m} min", maiuscola(fase)), "Pausa")
+            }
+            (Stato::InPausa { .. }, Some(m)) => (
+                format!("Pomodoro: {fase} in pausa, {m} min"),
+                format!("{} in pausa: mancano {m} min", maiuscola(fase)),
+                "Riprendi",
+            ),
+            _ => ("Pomodoro".to_string(), "Fermo".to_string(), "Avvia"),
+        };
+        if titolo == self.pomodoro_titolo {
+            return;
+        }
+        let m = &self.menus;
+        m.pomodoro_sub.set_text(&titolo);
+        m.pomodoro_stato.set_text(&stato);
+        m.pomodoro_avvia.set_text(voce);
+        let attivo = p.stato != Stato::Fermo;
+        m.pomodoro_salta.set_enabled(attivo);
+        m.pomodoro_ferma.set_enabled(attivo);
+        self.pomodoro_titolo = titolo;
     }
 
     /// l'animale di uno schermo: il suo, se scelto, se no quello di "Animale"
@@ -340,6 +410,7 @@ impl Core {
         v.extend(self.js_schermo(schermo));
         // quello che vive nel programma e non nella pagina: torna dopo "Ricarica sfondo"
         v.push(self.musica.js_attuale());
+        v.push(self.js_pomodoro());
         v
     }
 
@@ -493,6 +564,30 @@ impl Core {
                 widget = true;
                 None
             }
+        } else if [&m.pomodoro_avvia, &m.pomodoro_salta, &m.pomodoro_ferma].iter().any(|x| x.id().0 == id) {
+            let ora = adesso_ms();
+            if id == m.pomodoro_avvia.id().0 {
+                self.pomodoro.avvia_pausa_riprendi(ora);
+            } else if id == m.pomodoro_salta.id().0 {
+                self.pomodoro.salta(ora);
+            } else {
+                self.pomodoro.ferma();
+            }
+            self.aggiorna_menu_pomodoro();
+            // niente da salvare: il pomodoro non sopravvive alla chiusura del programma
+            return Esito::Cambiato(Some(self.js_pomodoro()));
+        } else if let Some(i) = m.pomodoro_durate.iter().position(|x| x.id().0 == id) {
+            let (lavoro, pausa, lunga, _) = POMODORI[i];
+            (self.cfg.pomodoro_lavoro, self.cfg.pomodoro_pausa, self.cfg.pomodoro_lunga) = (lavoro, pausa, lunga);
+            for (k, item) in self.menus.pomodoro_durate.iter().enumerate() {
+                item.set_checked(k == i);
+            }
+            self.pomodoro.set_durate(durate(&self.cfg));
+            None
+        } else if id == m.pomodoro_lunga.id().0 {
+            self.cfg.pomodoro_ogni = if m.pomodoro_lunga.is_checked() { 4 } else { 0 };
+            self.pomodoro.set_durate(durate(&self.cfg));
+            None
         } else if id == m.musica.id().0 {
             self.cfg.widget_musica = m.musica.is_checked();
             {
@@ -615,6 +710,22 @@ impl Core {
         self.cfg.conto_etichetta = pulisci_testo(&etichetta, ETICHETTA_MAX);
         true
     }
+}
+
+/// millisecondi dall'epoch, come Date.now() nella pagina
+pub fn adesso_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+}
+
+/// "pausa lunga" → "Pausa lunga"
+fn maiuscola(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map(|p| p.to_uppercase().chain(c).collect()).unwrap_or_default()
+}
+
+/// le durate del pomodoro scelte nella config
+fn durate(cfg: &Config) -> Durate {
+    Durate::minuti(cfg.pomodoro_lavoro, cfg.pomodoro_pausa, cfg.pomodoro_lunga, cfg.pomodoro_ogni)
 }
 
 /// testo scelto dall'utente dentro una voce di menu
@@ -773,6 +884,27 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         let _ = widget.append(item);
     }
     // gli schermi veri si aggiungono con set_schermi
+
+    let pomodoro_sub = Submenu::new("Pomodoro", true);
+    let pomodoro_stato = MenuItem::new("Fermo", false, None);
+    let pomodoro_avvia = MenuItem::new("Avvia", true, None);
+    let pomodoro_salta = MenuItem::new("Salta fase", false, None);
+    let pomodoro_ferma = MenuItem::new("Ferma", false, None);
+    let pomodoro_durate: Vec<CheckMenuItem> = POMODORI
+        .iter()
+        .map(|(l, p, _, name)| CheckMenuItem::new(*name, true, cfg.pomodoro_lavoro == *l && cfg.pomodoro_pausa == *p, None))
+        .collect();
+    let pomodoro_lunga = CheckMenuItem::new("Pausa lunga ogni 4 pomodori", true, cfg.pomodoro_ogni > 0, None);
+    let _ = pomodoro_sub.append(&pomodoro_stato);
+    let _ = pomodoro_sub.append(&pomodoro_avvia);
+    let _ = pomodoro_sub.append(&pomodoro_salta);
+    let _ = pomodoro_sub.append(&pomodoro_ferma);
+    let _ = pomodoro_sub.append(&PredefinedMenuItem::separator());
+    for item in &pomodoro_durate {
+        let _ = pomodoro_sub.append(item);
+    }
+    let _ = pomodoro_sub.append(&pomodoro_lunga);
+
     let tema_sub = Submenu::new("Tema", true);
     // un valore sconosciuto nella config vale come "scuro"
     let tema_cfg = if TEMI.iter().any(|t| t.0 == cfg.tema) { cfg.tema.as_str() } else { "scuro" };
@@ -781,6 +913,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     for item in &temi {
         let _ = tema_sub.append(item);
     }
+
     let animali_sub = Submenu::new("Animale per schermo", true);
     let animali_un_solo = MenuItem::new("(c'è un solo schermo)", false, None);
     let _ = animali_sub.append(&animali_un_solo);
@@ -801,6 +934,13 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         sfondo_pieno,
         angoli,
         temi,
+        pomodoro_sub,
+        pomodoro_stato,
+        pomodoro_avvia,
+        pomodoro_salta,
+        pomodoro_ferma,
+        pomodoro_durate,
+        pomodoro_lunga,
         widget_sub: widget,
         widget_schermi,
         widget_schermi_fissi: Vec::new(),
@@ -824,6 +964,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     let _ = menu.append(&rot);
     let _ = menu.append(&nomi_sub);
     let _ = menu.append(&m.widget_sub);
+    let _ = menu.append(&m.pomodoro_sub);
     let _ = menu.append(&tema_sub);
     let _ = menu.append(&m.orologio);
     let _ = menu.append(&m.koi);

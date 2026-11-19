@@ -10,9 +10,10 @@
 
 use std::sync::mpsc::{sync_channel, SyncSender};
 use std::sync::{Arc, Mutex};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 
 use crate::musica::{Lettore, OGNI};
+use crate::shared::adesso_ms;
 
 /// quello che sta suonando
 #[derive(Clone, Debug, PartialEq)]
@@ -81,10 +82,6 @@ impl Riproduzione {
     pub fn js_attuale(&self) -> String {
         js(self.ultima.lock().ok().as_ref().and_then(|u| u.lettura.as_ref()))
     }
-}
-
-fn adesso_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
 /// il thread che legge, una volta per richiesta e al massimo ogni OGNI

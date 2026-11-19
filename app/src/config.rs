@@ -44,6 +44,12 @@ pub struct Config {
     pub widget_sfondo_pieno: bool,
     /// widget "In riproduzione" (spento di serie: su macOS chiede il permesso Automazione)
     pub widget_musica: bool,
+    /// pomodoro: minuti di lavoro, di pausa e di pausa lunga; pausa lunga ogni quanti
+    /// pomodori (0 = mai)
+    pub pomodoro_lavoro: u32,
+    pub pomodoro_pausa: u32,
+    pub pomodoro_lunga: u32,
+    pub pomodoro_ogni: u32,
     /// angolo dei widget: "basso-destra", "basso-sinistra", "alto-destra", "alto-sinistra"
     pub widget_angolo: String,
     /// su quale schermo stanno i widget: "" = il principale, "*" = tutti, se no l'id dello schermo
@@ -80,6 +86,10 @@ impl Default for Config {
             widget_cornice: "ascii".into(),
             widget_sfondo_pieno: false,
             widget_musica: false,
+            pomodoro_lavoro: 25,
+            pomodoro_pausa: 5,
+            pomodoro_lunga: 15,
+            pomodoro_ogni: 4,
             widget_angolo: "basso-destra".into(),
             widget_schermo: String::new(),
             animale_schermi: BTreeMap::new(),

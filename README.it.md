@@ -75,10 +75,11 @@ Riquadri di solo testo, nello stesso stile degli animali, in un angolo dello sch
   - **macOS**: da macOS 15.4 il "Now Playing" di sistema non risponde più alle app di terze parti, quindi ASCII Zoo chiede ad AppleScript, e solo a **Musica** e **Spotify**, e solo se sono già aperti (non li avvia mai). La prima volta macOS chiede il permesso **Automazione** per controllarli: serve solo per leggere titolo, artista e posizione. Se lo neghi il riquadro lo dice; si ridà in **Impostazioni di Sistema → Privacy e sicurezza → Automazione**. Gli altri lettori (browser, Podcast…) non si vedono.
 
   Si legge ogni 2 secondi (su macOS ogni 4) su un thread a parte, solo con il widget acceso e lo sfondo visibile.
+- **Pomodoro**, dal menu **Pomodoro** del programma: **Avvia** (poi **Pausa** e **Riprendi**), **Salta fase**, **Ferma**; 25 minuti di lavoro e 5 di pausa oppure 50 e 10, con una pausa lunga (15 o 30 minuti) ogni 4 pomodori, che si può togliere. Il riquadro mostra fase, minuti e secondi che mancano, una barra e a che pomodoro sei; il titolo del menu (e la prima voce, su Linux solo quella) dice quanto manca, al minuto. Finita una fase il programma passa da solo alla successiva: il riquadro lampeggia qualche secondo e dagli animali parte un'onda, senza suoni. Il tempo lo tiene il programma, uno solo per tutti gli schermi: **Ricarica sfondo** non lo azzera, chiudere il programma sì. Le durate restano nelle impostazioni (`pomodoro_lavoro`, `pomodoro_pausa`, `pomodoro_lunga` in minuti, `pomodoro_ogni`).
 - **Aspetto**: dimensione (piccoli, normali, grandi), cornice (`+--+` ASCII, `┌──┐` a linee, `╭──╮` arrotondata) e **sfondo pieno** dietro i riquadri, utile quando gli animali passano sotto il testo. Le linee delle cornici non ci sono nel carattere incorporato e le disegna un carattere del sistema, ognuna in una casella larga un carattere: i riquadri restano allineati anche dove quel carattere è più stretto (Consolas su Windows).
 - **Posizione**: uno dei quattro angoli; **Schermo**: il principale, uno a scelta o tutti.
 
-Nel browser si vedono con dati di prova aprendo `wallpaper/index.html?widget=demo` (anche con `&cornice=linee`, `&cornice=arrotondata`, `&dimensione=grandi`, `&sfondo=pieno`).
+Nel browser si vedono con dati di prova aprendo `wallpaper/index.html?widget=demo` (anche con `&cornice=linee`, `&cornice=arrotondata`, `&dimensione=grandi`, `&sfondo=pieno`, `&musica=pausa`, `&pomodoro=pausa`, e `&pomodoro=scatto` per vedere il cambio di fase dopo 3 secondi).
 
 ## L'orologio
 
@@ -150,6 +151,7 @@ La cartella `app/` contiene un programma che mette lo sfondo dietro le icone su 
 - **Animale per schermo**: con più monitor, un animale diverso su ognuno (koi sul portatile, meduse sull'altro…);
 - **Nomi degli animali**: il nome dell'animale più grande di ogni specie;
 - **Widget**: nota, conto alla rovescia, CPU/RAM/batteria, statistiche per nerd, in riproduzione, aspetto dei riquadri (vedi [I widget](#i-widget));
+- **Pomodoro**: lavoro e pause a tempo, con il conto alla rovescia in un riquadro (vedi [I widget](#i-widget));
 - **Tema**: scuro, chiaro oppure come il sistema (vedi [Tema chiaro e scuro](#tema-chiaro-e-scuro));
 - **Salva una foto dello sfondo**: un PNG per schermo nella cartella Immagini (vedi [Foto dello sfondo](#foto-dello-sfondo));
 - **Orologio al centro**: togliendo la spunta l'orologio sparisce e lo schermo è tutto per gli animali;
