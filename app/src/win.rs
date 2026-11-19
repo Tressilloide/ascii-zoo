@@ -8,6 +8,10 @@
 //! - un clic su una zona vuota del desktop arriva agli animali: un hook del mouse
 //!   guarda solo dove si clicca (non blocca e non cambia niente) e, se sotto c'Ã¨ il
 //!   desktop, lo passa allo sfondo
+//! - il menu dell'icona resta aperto quando si sceglie un'impostazione (vedi `menu`)
+
+#[path = "menu_win.rs"]
+mod menu;
 
 use std::cell::RefCell;
 use std::num::NonZeroIsize;
@@ -281,10 +285,15 @@ impl App {
         }
     }
 
-    fn tick(&mut self) {
+    /// applica le voci del menu scelte (dal timer, o subito se il menu resta aperto)
+    fn leggi_menu(&mut self) {
         while let Ok(ev) = MenuEvent::receiver().try_recv() {
             self.on_menu(&ev.id.0);
         }
+    }
+
+    fn tick(&mut self) {
+        self.leggi_menu();
         self.ticks = self.ticks.wrapping_add(1);
         if REBUILD.swap(false, Ordering::SeqCst) {
             // altri cambi in arrivo spostano l'attesa: si rifÃ  tutto una volta sola
@@ -502,6 +511,10 @@ unsafe extern "system" fn control_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPA
             REBUILD.store(true, Ordering::SeqCst);
             LRESULT(0)
         }
+        menu::WM_PROVA_MENU => {
+            menu::apri_per_prova(wp.0 as i32, lp.0 as i32);
+            LRESULT(0)
+        }
         WM_DESTROY => {
             PostQuitMessage(0);
             LRESULT(0)
@@ -617,11 +630,12 @@ pub fn run() {
         let (mut core, menu) = Core::new(true);
         core.set_schermi(mons.into_iter().map(|m| m.1).collect());
         let tray = TrayIconBuilder::new()
-            .with_menu(Box::new(menu))
+            .with_menu(Box::new(menu.clone()))
             .with_tooltip("ASCII Zoo")
             .with_icon(shared::tray_icon_image())
             .build()
             .expect("icona di notifica");
+        menu::prepara(&menu, &tray);
 
         APP.with(|a| {
             *a.borrow_mut() = Some(App {

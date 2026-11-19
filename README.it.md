@@ -165,6 +165,8 @@ La cartella `app/` contiene un programma che mette lo sfondo dietro le icone su 
 - **Clic sul desktop agli animali**: un clic in una zona vuota del desktop dà da mangiare alle koi e alle anatre o fa scappare gli altri animali, come nel browser;
 - le pause (a batteria, con app a schermo intero, quando le finestre coprono il desktop; le stesse voci anche su macOS e Linux), l'avvio con Windows.
 
+Le voci con la spunta si applicano subito e il menu resta aperto, nello stesso sottomenu, così se ne cambiano diverse di fila (lo sfondo cambia già mentre il menu è aperto); si chiude cliccando fuori o con Esc. Le voci con "…", che aprono una finestrella, e **Salva una foto dello sfondo**, **Ricarica sfondo**, **Esci** e **Avvia**, **Salta fase**, **Ferma** del pomodoro lo chiudono.
+
 #### Scaricarlo
 
 Dalla pagina [**Releases**](https://github.com/ascii-things/ascii-zoo/releases/latest) scarica `ascii-zoo.exe` (Windows 10/11, 64 bit). Non si installa: copialo in una cartella fissa, per esempio `%LOCALAPPDATA%\AsciiZoo`, e avvialo da lì, perché **Avvia con Windows** ricorda il percorso. Serve WebView2, già presente su Windows 11 e su Windows 10 aggiornato.
