@@ -520,6 +520,10 @@ jobs:
           gh attestation verify <file> --repo ${GITHUB_REPOSITORY}
           \`\`\`
           EOF
+          # le novità della versione, se ci sono (.github/novita/<tag>.md), vanno in cima
+          if [ -f ".github/novita/$GITHUB_REF_NAME.md" ]; then
+            cat ".github/novita/$GITHUB_REF_NAME.md" notes.md > notes-tutte.md && mv notes-tutte.md notes.md
+          fi
           gh release create "$GITHUB_REF_NAME" \
             dist/ascii-zoo.exe dist/ascii-zoo.exe.sha256 \
             dist/ascii-zoo-macos.dmg dist/ascii-zoo-macos.dmg.sha256 \
