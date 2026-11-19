@@ -4,6 +4,8 @@
 //!
 //! L'app (`app/`) chiama `avvia` quando Windows la lancia come salvaschermo; il
 //! programma `ascii-dreams` di questa cartella fa lo stesso, per provarlo da solo.
+//! Su macOS lo screensaver è il modulo `ASCII Zoo.saver` della cartella `macos/`, che
+//! usa `Motore`.
 //! Su Linux non c'è un sistema che lanci gli screensaver: l'app lancia sé stessa come
 //! `ascii-zoo --salvaschermo` quando non si usa il PC e mette `Motore` in una finestra GTK
 //! per monitor (app/src/sogno_linux.rs).
@@ -159,7 +161,7 @@ pub fn avvia(args: &[String]) {
     }
     #[cfg(not(any(windows, target_os = "linux")))]
     {
-        eprintln!("Per ora il salvaschermo funziona su Windows. Qui si può usare: --png file.png [--scena id]");
+        eprintln!("Da qui il salvaschermo parte solo su Windows (su macOS è il modulo ASCII Zoo.saver, in macos/). Qui si può usare: --png file.png [--scena id]");
     }
 }
 

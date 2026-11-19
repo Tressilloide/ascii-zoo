@@ -162,7 +162,7 @@ pub struct Menus {
     pub schermo: CheckMenuItem,
     pub coperto: CheckMenuItem,
     pub avvio: CheckMenuItem,
-    /// "Usa come screensaver…" (solo Windows)
+    /// "Usa come screensaver…" (Windows e macOS)
     pub salvaschermo: MenuItem,
     pub foto: MenuItem,
     pub ricarica: MenuItem,
@@ -176,7 +176,7 @@ pub enum Esito {
     /// cambiato qualcosa che dipende dallo schermo: a ogni pagina va mandato js_schermo
     Schermi,
     Ricarica,
-    /// installare lo screensaver e aprire le sue impostazioni di Windows
+    /// installare lo screensaver e aprire le sue impostazioni di sistema
     Salvaschermo,
     /// salvare una foto di ogni schermo (vedi `foto::scatta`)
     Foto,
@@ -204,7 +204,7 @@ pub struct Core {
 }
 
 impl Core {
-    /// `solo_windows`: se mostrare le voci che esistono solo su Windows (lo screensaver)
+    /// `solo_windows`: se mostrare la voce dello screensaver (Windows e macOS)
     pub fn new(solo_windows: bool) -> (Self, Menu) {
         let cfg = Config::load();
         let (menu, menus) = build_menu(&cfg, solo_windows);
@@ -975,7 +975,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     let _ = menu.append(&m.coperto);
     let _ = menu.append(&m.avvio);
     if solo_windows {
-        // lo screensaver per ora c'è solo su Windows
+        // lo screensaver c'è su Windows e macOS
         let _ = menu.append(&m.salvaschermo);
     }
     let _ = menu.append(&PredefinedMenuItem::separator());

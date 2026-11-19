@@ -134,8 +134,9 @@ ascii-zoo/
 │   ├── assets/              copia di wallpaper/index.html incorporata nell'eseguibile
 │   ├── macos/               Info.plist dell'app per macOS
 │   └── build.rs, app.manifest   aspetto moderno della finestrella dei nomi
-├── dreams/                  screensaver (Windows; su Linux lo lancia l'app): motore nativo con 6 scene (stelle, pioggia, fuoco…)
-│   └── src/scenes/          una scena per file
+├── dreams/                  screensaver per Windows e macOS (su Linux lo lancia l'app): motore nativo con 6 scene (stelle, pioggia, fuoco…)
+│   ├── src/scenes/          una scena per file
+│   └── macos/               il modulo per macOS (ASCII Zoo.saver)
 ├── linux/                   install.sh (installazione con un comando) e l'icona
 │   └── gnome/               estensione di GNOME Shell per il clic sul desktop
 ├── firefox/                 estensione "nuova scheda" per Firefox
@@ -223,9 +224,11 @@ Lo stesso programma esiste per macOS 11 o successivo, su Mac con Apple Silicon e
 - **Barra dei menu e Dock.** I widget restano fuori dalla barra dei menu e dal Dock, anche se lo sposti o lo nascondi.
 - **Clic sul desktop.** Un clic sul desktop, anche sulle icone del Finder, dà da mangiare alle koi e alle anatre o fa scappare gli altri animali. Usa un monitor globale dei clic di macOS (`NSEvent`): vede solo dove si preme il tasto sinistro nelle altre app, non blocca né cambia il clic, non registra niente e non chiede il permesso Accessibilità (serve solo per i tasti). Il clic vale solo se nel punto non c'è nessuna finestra, il Dock o la barra dei menu. Si spegne togliendo la spunta a **Clic sul desktop agli animali**.
 - **In riproduzione.** Il widget, spento di serie, chiede a Musica e Spotify cosa suonano (solo se sono aperti): la prima volta macOS chiede il permesso **Automazione** (vedi [I widget](#i-widget)). Dato che l'app non è firmata con un certificato Apple, dopo un aggiornamento macOS può chiederlo di nuovo.
+- **Screensaver.** Le sei scene dello screensaver di Windows (stelle, pioggia, falò, aurora, gioco della vita, mare di notte) ci sono anche qui, come modulo di macOS. Nel menu scegli **Usa come screensaver…**: l'app copia `ASCII Zoo.saver` in `~/Library/Screen Savers` e apre le impostazioni del salvaschermo (su macOS 26 sono dentro **Sfondo**), dove scegli **ASCII Zoo** e dopo quanto parte. Le scene girano tutte a rotazione, con l'orologio: macOS fa girare i salvaschermo in una sandbox, dove le impostazioni dello screensaver non arrivano. Dopo un aggiornamento dell'app, al primo avvio si aggiorna anche il modulo, se è installato. Da macOS 14 il processo dei salvaschermo di macOS può restare acceso anche dopo: quando il salvaschermo finisce, il modulo lo chiude.
 - **"Impossibile aprire l'app".** L'app non è firmata con un certificato Apple, quindi al primo avvio macOS la blocca: apri **Impostazioni di Sistema → Privacy e sicurezza** e premi **Apri comunque**, poi conferma.
 - **Aggiornare.** Trascina la versione nuova in **Applicazioni** (sostituendo la vecchia) e aprila: chiude da sola quella che sta girando, anche se veniva da un'altra cartella, e prende il suo posto; se **Apri al login** è attivo, da quel momento all'accesso parte la nuova. Una .app vecchia in un'altra cartella non la cancella: toglila tu. **Apri al login** si attiva solo con l'app in una cartella fissa (non aperta direttamente dal DMG).
-- **Da dove viene il DMG e cosa tocca**: come per Windows, lo compila GitHub Actions, ha SHA256 e attestazione (`gh attestation verify ascii-zoo-macos.dmg --repo ascii-things/ascii-zoo`), scrive solo `~/Library/Application Support/AsciiZoo/config.json`, le foto che chiedi (in `~/Pictures/ASCII Zoo`) e, se attivi **Apri al login**, `~/Library/LaunchAgents/io.github.tressilloide.asciizoo.plist`. Non si collega a internet.
+- **Da dove viene il DMG e cosa tocca**: come per Windows, lo compila GitHub Actions, ha SHA256 e attestazione (`gh attestation verify ascii-zoo-macos.dmg --repo ascii-things/ascii-zoo`), scrive solo `~/Library/Application Support/AsciiZoo/config.json`, le foto che chiedi (in `~/Pictures/ASCII Zoo`), se attivi **Apri al login**, `~/Library/LaunchAgents/io.github.tressilloide.asciizoo.plist` e, se scegli **Usa come screensaver…**, `~/Library/Screen Savers/ASCII Zoo.saver` (lo sostituisce solo se è il suo: un modulo di altri con lo stesso nome non lo tocca). Non si collega a internet.
+- **Toglierla.** Togli la spunta ad **Apri al login**, scegli **Esci** e trascina **ASCII Zoo** dalle Applicazioni nel Cestino. Se usavi lo screensaver, nelle impostazioni del salvaschermo scegline un altro e cancella solo `ASCII Zoo.saver` da `~/Library/Screen Savers` (nel Finder: **Vai → Vai alla cartella…**). Le impostazioni sono in `~/Library/Application Support/AsciiZoo`, se vuoi togliere anche quelle.
 
 ## Sfondo animato per Linux
 

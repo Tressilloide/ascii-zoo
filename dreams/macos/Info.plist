@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Descrizione del modulo "ASCII Zoo.saver". @VERSION@ viene sostituito dalla build con la
+     versione dell'app (app/Cargo.toml): l'app lo porta dentro di sé e lo installa.
+     L'identificativo serve all'app per riconoscere il suo modulo e non toccare quelli di altri. -->
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>
+  <string>ASCII Zoo</string>
+  <key>CFBundleDisplayName</key>
+  <string>ASCII Zoo</string>
+  <key>CFBundleIdentifier</key>
+  <string>io.github.tressilloide.asciizoo.saver</string>
+  <!-- la libreria compilata da dreams/macos -->
+  <key>CFBundleExecutable</key>
+  <string>AsciiZoo</string>
+  <key>CFBundlePackageType</key>
+  <string>BNDL</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleShortVersionString</key>
+  <string>@VERSION@</string>
+  <key>CFBundleVersion</key>
+  <string>@VERSION@</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>11.0</string>
+  <!-- la sottoclasse di ScreenSaverView (src/lib.rs) -->
+  <key>NSPrincipalClass</key>
+  <string>AsciiZooDreamsView</string>
+</dict>
+</plist>

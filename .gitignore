@@ -8,4 +8,5 @@ app/target/
 
 # lo screensaver compilato da solo e le build di prova
 dreams/target/
+dreams/macos/target/
 app/target-*/

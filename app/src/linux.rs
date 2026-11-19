@@ -605,6 +605,7 @@ pub fn run() {
         let _ = menu_proxy.send_event(Evento::Menu(e.id.0));
     }));
 
+    // false: niente "Usa come screensaver…" (Windows e macOS); qui c'è il sottomenu Screensaver
     let (core, menu) = Core::new(false);
     let bus = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE).ok();
     if let Some(bus) = &bus {
