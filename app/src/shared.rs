@@ -18,7 +18,7 @@ pub const URL: &str = "http://zoo.localhost/";
 pub const URL: &str = "zoo://localhost/";
 
 /// le specie, nello stesso ordine della pagina: (id, nome nel menu)
-pub const SPECIE: [(&str, &str); 7] = [
+pub const SPECIE: [(&str, &str); 9] = [
     ("farfalle", "Farfalle"),
     ("meduse", "Meduse"),
     ("libellule", "Libellule"),
@@ -26,6 +26,8 @@ pub const SPECIE: [(&str, &str); 7] = [
     ("rane", "Rane"),
     ("aironi", "Aironi"),
     ("granchi", "Granchi"),
+    ("cavalli", "Cavalli"),
+    ("anatre", "Anatre"),
 ];
 /// ogni quanto cambia animale "a rotazione"
 pub const INTERVALLI: [(u32, &str); 7] = [

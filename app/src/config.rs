@@ -10,7 +10,7 @@ pub const NOME_MAX: usize = 16;
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(default)]
 pub struct Config {
-    /// 0 = a rotazione, 1..=7 = un animale fisso (stesso ordine del menu)
+    /// 0 = a rotazione, 1..=9 = un animale fisso (stesso ordine del menu)
     pub animale: u32,
     /// con "a rotazione": koi nello stagno quando il PC è in carica
     pub koi_in_carica: bool,

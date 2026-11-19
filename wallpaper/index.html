@@ -815,6 +815,457 @@ h1 {
     }
   });
 
+  // Cavalli: visti di profilo, come in una prateria guardata da lontano. Non ruotano
+  // come gli altri: c.face (1 = verso destra, -1 = verso sinistra) dice dove guardano,
+  // c.mv è la pendenza del cammino (vanno quasi in orizzontale) e c.th resta
+  // orizzontale, inclinato solo dal beccheggio del galoppo. Nella forma y va verso il
+  // basso: per chi guarda a sinistra si ribalta, così è allo specchio e non capovolto.
+  // Andature (c.mode): 0 pascola, 1 passo, 2 trotto, 3 galoppo (solo se spaventati).
+  var HORSE_V = [0, 0.3, 0.8, 1.9]; // velocità di ogni andatura, in corpi al secondo
+  // fase di ogni zampa (× π): anteriore vicina, anteriore lontana, posteriore vicina, posteriore lontana
+  var GAIT_WALK = [0.5, 1.5, 0, 1], GAIT_TROT = [0, 1, 1, 0], GAIT_GALLOP = [0.8, 1.05, 0, 0.2];
+  // mantelli (indici di pal): chiaro, base, ombra, crini, parte bassa delle zampe, zoccoli
+  var COATS = [
+    [1, 2, 3, 4, 4, 4], // baio
+    [1, 2, 3, 3, 2, 4], // sauro
+    [0, 5, 1, 0, 5, 4], // palomino
+    [0, 6, 7, 0, 6, 7], // grigio
+    [2, 3, 4, 4, 4, 4], // baio scuro
+    [0, 0, 6, 4, 0, 4]  // pezzato: macchie di baio sul bianco
+  ];
+
+  // La posa, calcolata una volta per fotogramma (la forma la legge per ogni cella):
+  // 0-4 collo (base, direzione, lunghezza), 5-9 testa (nuca, direzione, lunghezza),
+  // 10-11 punta delle orecchie, 12-13 occhio, 14 sobbalzo del corpo, 15-22 coda (4 punti),
+  // 23-46 zampe, 6 numeri l'una (spalla o anca, ginocchio, zoccolo)
+  function horsePose(c, t) {
+    var G = c.G, vr = c.sp / c.S, ph = c.ph, k;
+    var gw = clamp((vr - 0.4) / 0.35, 0, 1), gg = clamp((vr - 1.1) / 0.55, 0, 1), mov = clamp(vr / 0.12, 0, 1);
+    var bob = -(0.012 + 0.02 * gw) * Math.abs(Math.sin(ph)) * mov - 0.04 * gg * Math.max(0, Math.sin(ph + 1));
+    var nod = (0.05 * (1 - gg) * Math.sin(2 * ph) + 0.1 * gg * Math.sin(ph + 0.6)) * mov;
+    var munch = 0.07 * c.gz * Math.sin(t * 3.1 + c.seed * 17); // strappa l'erba
+    var na = lerp(lerp(-1.05, -0.78, gg), 0.8, c.gz) + nod;
+    var ha = lerp(lerp(0.85, 0.55, gg), 1.4, c.gz) + nod * 0.5 + munch;
+    G[0] = 0.23; G[1] = -0.04 + bob; G[2] = Math.cos(na); G[3] = Math.sin(na); G[4] = 0.42;
+    G[5] = G[0] + G[2] * 0.42; G[6] = G[1] + G[3] * 0.42;
+    G[7] = Math.cos(ha); G[8] = Math.sin(ha); G[9] = 0.27;
+    var ea = ha - 1.95 - 0.45 * gg; // al galoppo le orecchie vanno indietro
+    G[10] = G[5] - 0.015 + Math.cos(ea) * 0.1; G[11] = G[6] + Math.sin(ea) * 0.1;
+    G[12] = G[5] + G[7] * 0.08 + G[8] * 0.014; G[13] = G[6] + G[8] * 0.08 - G[7] * 0.014;
+    G[14] = bob;
+    // coda: pende e scaccia le mosche da fermo, si alza al trotto, vola al galoppo
+    var lift = 0.25 * gw + 0.85 * gg;
+    var a = 0.55 + 0.9 * lift + (1 - lift) * 0.3 * Math.sin(t * 1.3 + c.seed * 7) * (0.4 + 0.6 * c.gz);
+    var tx = -0.36, ty = -0.1 + bob;
+    G[15] = tx; G[16] = ty;
+    for (k = 0; k < 3; k++) {
+      tx -= Math.sin(a) * 0.14; ty += Math.cos(a) * 0.14;
+      G[17 + k * 2] = tx; G[18 + k * 2] = ty;
+      a += -0.2 * (1 - lift) + 0.18 * gg * Math.sin(c.mph * 2 - k * 1.3);
+    }
+    // zampe: oscillano avanti e indietro; quella che torna avanti si piega
+    var amp = (0.32 + 0.16 * gw + 0.3 * gg) * mov, flex = (0.6 + 0.25 * gw + 0.5 * gg) * mov;
+    for (k = 0; k < 4; k++) {
+      var fore = k < 2, b = 23 + k * 6;
+      var p = ph + lerp(lerp(GAIT_WALK[k], GAIT_TROT[k], gw), GAIT_GALLOP[k], gg) * Math.PI;
+      var th = amp * Math.sin(p) - (fore ? 0 : 0.22), bend = flex * Math.max(0, Math.cos(p));
+      var lo = fore ? th - bend : th + 0.3 - bend * 0.7; // garretto: la parte bassa torna in avanti
+      var jx = fore ? 0.21 : -0.23, jy = (fore ? 0.05 : 0.03) + bob;
+      var kx = jx + Math.sin(th) * 0.23, ky = jy + Math.cos(th) * 0.23;
+      G[b] = jx; G[b + 1] = jy; G[b + 2] = kx; G[b + 3] = ky;
+      G[b + 4] = kx + Math.sin(lo) * 0.23; G[b + 5] = ky + Math.cos(lo) * 0.23;
+    }
+    c.pitch = 0.07 * gg * Math.sin(ph + 0.3);
+  }
+  function horseLeg(x, y, c, o, k, near) {
+    var G = c.G, b = 23 + k * 6, K = COATS[c.kind2], mt = c.mt;
+    if (segD(x, y, G[b], G[b + 1], G[b + 2], G[b + 3]) < Math.max(0.058 - 0.02 * _t, mt * 0.8)) {
+      o.v = near ? 0.85 : 0.55; o.c = near ? K[1] : K[2]; return true;
+    }
+    if (segD(x, y, G[b + 2], G[b + 3], G[b + 4], G[b + 5]) < Math.max(0.034, mt * 0.8)) {
+      o.v = near ? 0.8 : 0.52;
+      o.c = _t > 0.84 ? K[5] : (c.socks >> k) & 1 ? 0 : K[4];
+      return true;
+    }
+    return false;
+  }
+
+  SPECIES.push({
+    id: 'cavalli', label: 'Cavalli', dot: '#a98bff', // il viola dei fiori della prateria
+    // 0 crema, 1-3 sauro (chiaro, medio, scuro), 4 crini scuri, 5 palomino, 6-7 grigio
+    pal: ['#f4eee2', '#e2a465', '#b8703c', '#844c2a', '#5e4842', '#e7c57f', '#babdc8', '#7d808e'],
+    dens: 1100, min: 4, max: 14, smin: 8.5, smax: 15, off: 0, rad: 0.9,
+    spawn: function (c, w) {
+      c.G = new Float32Array(47);
+      c.face = w.rnd() < 0.5 ? -1 : 1; c.mv = c.mvT = (w.rnd() - 0.5) * 0.4;
+      c.mode = w.rnd() < 0.5 ? 0 : 1; c.timer = 1 + w.rnd() * 6; c.gal = 0;
+      c.gz = c.mode === 0 ? 1 : 0; c.mph = w.rnd() * TAU; c.pitch = 0;
+      var r = w.rnd();
+      c.kind2 = r < 0.28 ? 0 : r < 0.5 ? 1 : r < 0.64 ? 2 : r < 0.78 ? 3 : r < 0.88 ? 4 : 5;
+      c.blaze = w.rnd() < 0.4;
+      c.socks = w.rnd() < 0.35 ? 1 + Math.floor(w.rnd() * 15) : 0; // calzini bianchi: un bit per zampa
+      c.bright = 0.62 + 0.38 * c.z; // anche i lontani si leggono sopra l'erba
+      // non nasce addosso a un altro cavallo (uno sopra l'altro non si leggono) né sull'orologio
+      for (var n = 0; n < 12; n++) {
+        c.y = clamp(c.y, 0.62 * c.S + 1, w.rows - 4.5 - 0.52 * c.S);
+        var ok = !w.clock || w.boxDist(c.x, c.y).d > c.S * 0.8;
+        for (var k = 0; k < w.creatures.length && ok; k++) {
+          var o = w.creatures[k];
+          if (o.kind === this && !o.dying && Math.abs(o.x - c.x) < 0.6 * (o.S + c.S) && Math.abs(o.y - c.y) < 0.35 * (o.S + c.S)) ok = false;
+        }
+        if (ok) break;
+        c.x = w.rnd() * w.cols; c.y = w.rnd() * w.rows;
+      }
+      c.th = c.face > 0 ? 0 : Math.PI;
+      horsePose(c, 0);
+    },
+    // spavento (clic, minuto che scatta): via al galoppo, lontano da a
+    bolt: function (c, a, f) {
+      var ca = Math.cos(a);
+      if (Math.abs(ca) > 0.15) c.face = ca > 0 ? 1 : -1;
+      c.mvT = clamp(Math.sin(a) * 0.7, -0.45, 0.45);
+      c.mode = 3; c.timer = 0;
+      c.gal = Math.max(c.gal, 1.8 + 3 * f);
+    },
+    poke: function (c, x, y, w) {
+      var dx = c.x - x, dy = c.y - y, d = Math.sqrt(dx * dx + dy * dy);
+      if (d <= w.pokeR) c.kind.bolt(c, Math.atan2(dy, dx), 1 - d / w.pokeR);
+    },
+    update: function (c, dt, t, w) {
+      var S = c.S, cs = w.creatures, near = null, nd = 900, k, o, r;
+      // il vicino più prossimo (le distanze in verticale contano doppio): niente
+      // centro di tutto il branco, che col giro dello schermo starebbe chissà dove
+      for (k = 0; k < cs.length; k++) {
+        o = cs[k];
+        if (o === c || o.kind !== c.kind || o.dying) continue;
+        var ox = o.x - c.x, oy = (o.y - c.y) * 2, od = ox * ox + oy * oy;
+        if (od < nd) { nd = od; near = o; }
+      }
+      if (c.gal > 0) {
+        c.mode = 3;
+        if ((c.gal -= dt) <= 0) { c.mode = 2; c.timer = 1.5 + w.rnd() * 2; }
+      } else if ((c.timer -= dt) <= 0) {
+        r = w.rnd();
+        if (c.mode === 0) {
+          c.mode = r < 0.85 ? 1 : 2;
+          if (near && near.mode > 0 && w.rnd() < 0.7) c.face = near.face; // si va dove va il vicino
+          else if (w.rnd() < 0.35) c.face = -c.face;
+          c.mvT = (w.rnd() - 0.5) * 0.5;
+        } else if (c.mode === 1 && r < 0.5) c.mode = 0;
+        else if (c.mode === 1 && r < 0.62) c.mode = 2;
+        else {
+          c.mode = 1; c.mvT = (w.rnd() - 0.5) * 0.5;
+          if (w.rnd() < 0.2) c.face = -c.face;
+        }
+        c.timer = c.mode === 0 ? 3 + w.rnd() * 8 : c.mode === 2 ? 1.5 + w.rnd() * 2.5 : 3 + w.rnd() * 7;
+      }
+      var vt = HORSE_V[c.mode] * S * (0.9 + 0.2 * c.seed), turn = c.mode === 3 ? 1.2 : 0.5;
+      if (near) {
+        var dy = near.y - c.y, ahead = (near.x - c.x) * c.face, room = 0.55 * (S + near.S);
+        // uno sopra l'altro non si leggono: chi pascola si rimette in cammino, e piano si allargano
+        if (Math.abs(near.x - c.x) < room * 1.1 && Math.abs(dy) < room * 0.6) {
+          c.y -= (dy > 0 ? 1 : -1) * 0.05 * S * dt;
+          if (c.mode === 0 && c.timer > 0.6) c.timer = 0.6;
+        }
+        // chi è lontano in verticale si avvicina al vicino; chi se lo trova davanti rallenta e si scosta
+        if ((c.mode === 1 || c.mode === 2) && Math.abs(dy) > S) c.mvT = clamp(c.mvT + (dy > 0 ? 0.3 : -0.3) * dt, -0.4, 0.4);
+        if (c.mode > 0 && ahead > 0 && ahead < room && Math.abs(dy) < room * 0.6) {
+          vt = Math.max(Math.min(vt, near.sp * 0.85), 0.15 * S);
+          c.mvT = dy > 0 ? -0.35 : 0.35;
+        }
+      }
+      // restano nel prato: sotto c'è la staccionata
+      var top = 0.62 * S + 1, bot = w.rows - 4.5 - 0.52 * S;
+      if (c.y < top) c.mvT = 0.3; else if (c.y > bot) c.mvT = -0.3;
+      // l'orologio davanti: se basta salire o scendere un po' lo aggirano, se no tornano indietro
+      if (w.clock && c.sp > 0.05 * S) {
+        var b = w.clock.box, half = 0.8 * S;
+        var gap = c.face > 0 ? b.x0 - (c.x + half) : (c.x - half) - b.x1;
+        var past = c.face > 0 ? b.x1 < c.x - half : b.x0 > c.x + half;
+        var up = c.y + 0.52 * S - b.y0, dn = b.y1 - (c.y - 0.55 * S);
+        if (!past && up > 0 && dn > 0 && gap < 2 + c.sp * 0.5) {
+          var need = Math.min(up, dn);
+          if (gap > need * 2.2 && need < 0.6 * S) c.mvT = up < dn ? -0.45 : 0.45;
+          else if (gap < 1.5) {
+            c.face = -c.face; c.mvT = -c.mvT;
+            if (c.mode === 3) { c.gal = 0; c.mode = 2; c.timer = 1 + w.rnd(); }
+          }
+        }
+      }
+      c.mv += clamp(c.mvT - c.mv, -turn * dt, turn * dt);
+      c.sp += (vt - c.sp) * Math.min(1, (c.mode === 3 ? 2.5 : 1.2) * dt);
+      c.x += c.face * Math.cos(c.mv) * c.sp * dt;
+      c.y += Math.sin(c.mv) * c.sp * dt;
+      var vr = c.sp / S, gw = clamp((vr - 0.4) / 0.35, 0, 1), gg = clamp((vr - 1.1) / 0.55, 0, 1);
+      c.ph += TAU * vr / (0.42 + 0.18 * gw + 0.5 * gg) * dt; // un passo ogni tanto di strada
+      c.gz += ((c.mode === 0 && vr < 0.1 ? 1 : 0) - c.gz) * Math.min(1, 1.5 * dt);
+      c.mph += (1.2 + vr * 5) * dt;
+      horsePose(c, t);
+      c.th = c.face > 0 ? c.pitch : Math.PI - c.pitch;
+    },
+    shape: function (x, y, c, o) {
+      if (c.face < 0) y = -y;
+      if (x < -0.9 || x > 0.84 || y < -0.62 || y > 0.58) return;
+      var G = c.G, K = COATS[c.kind2], mt = c.mt, rx, ry, al, lat, hw, k, b;
+      // testa: orecchie, occhio, lista bianca sulla fronte, muso
+      if (x > 0.12) {
+        if (segD(x, y, G[5], G[6], G[10], G[11]) < Math.max(0.026, mt * 0.6)) { o.v = 0.78; o.c = K[1]; return; }
+        rx = x - G[12]; ry = y - G[13];
+        if (rx * rx + ry * ry < Math.max(0.0009, mt * mt * 0.5)) { o.v = 0.12; o.c = K[3]; return; }
+        rx = x - G[5]; ry = y - G[6];
+        al = (rx * G[7] + ry * G[8]) / G[9];
+        lat = rx * G[8] - ry * G[7]; // > 0 dalla parte della fronte
+        hw = al < 0 ? 0.075 : al > 1 ? 0.048 : lerp(0.075, 0.048, al);
+        if (al > -0.3 && al < 1.2 && lat < hw && lat > -hw) {
+          var ex = al < 0 ? al * G[9] : al > 1 ? (al - 1) * G[9] : 0;
+          if (ex * ex + lat * lat < hw * hw) {
+            o.v = 0.92 - 0.25 * Math.abs(lat) / hw;
+            o.c = c.blaze && al > 0.12 && lat > hw * 0.3 ? 0 : al > 0.78 ? K[2] : lat > hw * 0.4 ? K[0] : K[1];
+            return;
+          }
+        }
+      }
+      // collo e criniera, che ondeggia
+      rx = x - G[0]; ry = y - G[1];
+      al = (rx * G[2] + ry * G[3]) / G[4];
+      if (al > -0.2 && al < 1.06) {
+        lat = rx * G[3] - ry * G[2]; // > 0 dalla parte della criniera
+        hw = lerp(0.125, 0.065, clamp(al, 0, 1));
+        if (lat < hw && lat > -hw) {
+          o.v = 0.9 - 0.2 * Math.abs(lat) / hw;
+          o.c = lat < -hw * 0.45 ? K[2] : K[1];
+          return;
+        }
+        if (lat >= hw && al > 0.05 && al < 1) {
+          var mw = (0.045 + 0.03 * Math.sin(al * 15 - c.mph * 2)) * (1 + 0.5 * clamp(c.sp / c.S - 1, 0, 1));
+          if (lat < hw + Math.max(mw, mt * 0.5)) { o.v = 0.72; o.c = K[3]; return; }
+        }
+      }
+      // corpo: groppa, botte e petto; in alto più chiaro, la pancia in ombra
+      ry = y - G[14];
+      var e = (x / 0.3) * (x / 0.3) + (ry / 0.155) * (ry / 0.155);
+      var e2 = ((x + 0.22) / 0.165) * ((x + 0.22) / 0.165) + ((ry + 0.015) / 0.16) * ((ry + 0.015) / 0.16);
+      var e3 = ((x - 0.2) / 0.15) * ((x - 0.2) / 0.15) + (ry / 0.16) * (ry / 0.16);
+      if (e2 < e) e = e2;
+      if (e3 < e) e = e3;
+      if (e < 1) {
+        o.v = 0.95 - 0.25 * e;
+        if (c.kind2 === 5) {
+          var sd = c.seed * 40;
+          o.c = Math.sin(x * 9 + sd) * Math.cos(ry * 11 + sd * 0.7) + 0.5 * Math.sin(x * 4 + sd * 1.9) > 0.25 ? 2 : 0;
+        } else o.c = ry < -0.08 + 0.02 * Math.sin(x * 13) ? K[0] : ry > 0.09 ? K[2] : K[1];
+        return;
+      }
+      // zampe vicine, coda, zampe lontane (più scure)
+      if (y > -0.02 && (horseLeg(x, y, c, o, 0, true) || horseLeg(x, y, c, o, 2, true))) return;
+      if (x < -0.28) {
+        for (k = 0; k < 3; k++) {
+          b = 15 + k * 2;
+          if (segD(x, y, G[b], G[b + 1], G[b + 2], G[b + 3]) < Math.max(0.03 + 0.016 * (k + _t), mt * 0.7)) {
+            o.v = 0.72 - 0.06 * k; o.c = K[3]; return;
+          }
+        }
+      }
+      if (y > -0.02 && !horseLeg(x, y, c, o, 1, false)) horseLeg(x, y, c, o, 3, false);
+    }
+  });
+
+  // Anatre: viste dall'alto, in uno stagno. Ogni mamma (germano reale) guida i suoi
+  // anatroccoli in fila: ognuno segue quello davanti. Qualche maschio gira da solo.
+  // c.role: 0 mamma, 1 maschio, 2 anatroccolo. Al clic arriva il pane.
+  // la riva in basso: sotto questa riga c'è terra
+  function shoreY(w, x) {
+    return w.rows - Math.max(3, w.rows * 0.06) - 1.6 * Math.sin(x * 0.05 + 1.3) - 0.9 * Math.sin(x * 0.13 + 0.4);
+  }
+  function nearestFood(w, x, y, r) {
+    var best = r * r, food = null;
+    for (var i = 0; i < w.food.length; i++) {
+      var f = w.food[i], d2 = (f.x - x) * (f.x - x) + (f.y - y) * (f.y - y);
+      if (d2 < best) { best = d2; food = f; }
+    }
+    return food;
+  }
+  // via dalla fila chi sparisce (cambio di schermo, cambio di animale)
+  function pruneKids(m) {
+    for (var k = m.kids.length - 1; k >= 0; k--) if (m.kids[k].dying || m.kids[k].mom !== m) m.kids.splice(k, 1);
+  }
+  // lo stagno finisce ai bordi dello schermo e alla riva: ci si gira prima
+  function pondWalls(c, dt, w) {
+    var m = 2 + 0.8 * c.S, by = shoreY(w, c.x) - 1 - 0.45 * c.S, fx = 0, fy = 0;
+    if (c.x < m) fx = 1 - c.x / m; else if (c.x > w.cols - m) fx = (w.cols - c.x) / m - 1;
+    if (c.y < m) fy = 1 - c.y / m; else if (c.y > by - m) fy = Math.max(-1.5, (by - m - c.y) / m);
+    if (fx || fy) {
+      var a = Math.atan2(fy, fx);
+      steer(c, a, 3 * Math.min(1.5, Math.sqrt(fx * fx + fy * fy)), dt);
+      if (Math.cos(c.hd - a) < 0.3) c.hd = a + (w.rnd() - 0.5) * 1.2;
+    }
+    c.x = clamp(c.x, 0.5, w.cols - 0.5);
+    c.y = clamp(c.y, 0.5, Math.max(1, by + 1));
+  }
+  function duckling(c, dt, t, w) {
+    var m = c.mom, k, o;
+    if (!m || m.dying) {
+      // la mamma non c'è più: se ne cerca un'altra, vicina e con pochi piccoli
+      m = c.mom = null;
+      var best = 1e9;
+      for (k = 0; k < w.creatures.length; k++) {
+        o = w.creatures[k];
+        if (o.kind !== c.kind || o.dying || o.role !== 0) continue;
+        var d2 = (o.x - c.x) * (o.x - c.x) + (o.y - c.y) * (o.y - c.y) + o.kids.length * 400;
+        if (d2 < best) { best = d2; m = o; }
+      }
+      if (m) { c.mom = m; m.kids.push(c); }
+    }
+    var lead = m ? m.kids[m.kids.indexOf(c) - 1] || m : null;
+    var food = nearestFood(w, c.x, c.y, w.pokeR * 0.9), tx, ty, vmax;
+    if (food) {
+      tx = food.x; ty = food.y; vmax = 4 + c.S * 0.5;
+      var reach = Math.max(0.8, c.S * 0.35);
+      if ((tx - c.x) * (tx - c.x) + (ty - c.y) * (ty - c.y) < reach * reach) {
+        food.eaten = true;
+        w.ripple(tx, ty, 1.2 + c.S * 0.15, 0.5, 0);
+      }
+    } else if (lead) {
+      // un posto dietro a chi sta davanti, con un piccolo zig-zag
+      var gap = lead.S * (lead.role === 2 ? 0.55 : 0.62) + c.S * 0.55, wob = Math.sin(t * 1.4 + c.seed * 20) * c.S * 0.12;
+      var lc = Math.cos(lead.th), ls = Math.sin(lead.th);
+      tx = lead.x - lc * gap - ls * wob; ty = lead.y - ls * gap + lc * wob;
+      vmax = lead.sp * 1.4 + 3 + (c.flee > 0 ? 3 : 0);
+    } else {
+      // smarrito: gira piano
+      c.hd += (w.rnd() - 0.5) * 2 * dt;
+      tx = c.x + Math.cos(c.hd) * 2; ty = c.y + Math.sin(c.hd) * 2; vmax = 0.8;
+    }
+    var dx = tx - c.x, dy = ty - c.y, v = Math.min(vmax, Math.sqrt(dx * dx + dy * dy) * 2.2);
+    if (v > 0.35) steer(c, Math.atan2(dy, dx), 7, dt);
+    else if (lead) steer(c, lead.th, 2, dt);
+    c.sp += (v - c.sp) * Math.min(1, 5 * dt);
+    c.ph += (4 + c.sp * 2) * dt;
+    advance(c, dt);
+    pondWalls(c, dt, w);
+  }
+
+  SPECIES.push({
+    id: 'anatre', label: 'Anatre', dot: '#ffe14d',
+    // 0 bianco, 1-2 marrone della femmina, 3 becco arancio, 4-5 anatroccolo, 6 testa verde del
+    // maschio, 7 grigio, 8 petto castano, 9 specchio blu dell'ala, 10 becco giallo, 11 coda scura,
+    // 12 testa chiara della femmina
+    pal: ['#f6f1e4', '#c39a66', '#8a6440', '#ff9a3c', '#ffe14d', '#c9a640', '#35b56f', '#aeb2bd',
+          '#a65f3c', '#6b7cff', '#e8d35a', '#5a5e6c', '#e3c99c'],
+    dens: 600, min: 6, max: 28, smin: 10, smax: 14, off: 0.04, rad: 0.62,
+    feeds: true,
+    spawn: function (c, w) {
+      var cs = w.creatures, mom = null, moms = 0, drakes = 0, k, o;
+      for (k = 0; k < cs.length; k++) {
+        o = cs[k];
+        if (o.kind !== this || o.dying) continue;
+        if (o.role === 1) drakes++;
+        if (o.role !== 0) continue;
+        moms++;
+        pruneKids(o);
+        if (o.kids.length < o.want && (!mom || o.kids.length < mom.kids.length)) mom = o;
+      }
+      c.dth = 0; c.hd = w.rnd() * TAU; c.th = c.hd; c.timer = w.rnd() * 4; c.pause = 0;
+      c.dip = 0; c.dipT = 0; c.kids = null; c.mom = null;
+      c.bright = 0.7 + 0.3 * c.z;
+      if (mom) {
+        // anatroccolo: in coda alla fila della mamma
+        c.role = 2; c.mom = mom; mom.kids.push(c);
+        c.S = mom.S * (0.42 + 0.06 * w.rnd()); c.z = mom.z; c.bright = mom.bright;
+        var lead = mom.kids.length > 1 ? mom.kids[mom.kids.length - 2] : mom, gap = lead.S * 0.6 + c.S * 0.55;
+        c.th = c.hd = lead.th;
+        c.x = lead.x - Math.cos(lead.th) * gap; c.y = lead.y - Math.sin(lead.th) * gap;
+        return;
+      }
+      if (moms && drakes < moms && w.rnd() < 0.35) c.role = 1;
+      else { c.role = 0; c.want = 3 + Math.floor(w.rnd() * 3); c.kids = []; }
+      c.y = Math.min(c.y, shoreY(w, c.x) - 2 - 0.5 * c.S);
+    },
+    update: function (c, dt, t, w) {
+      if (c.role === 2) { duckling(c, dt, t, w); return; }
+      if (c.kids) pruneKids(c);
+      var base = (1.1 + 1.2 * c.z) * c.S / 9, target = base;
+      var food = nearestFood(w, c.x, c.y, w.pokeR * 1.2);
+      if (c.flee > 0) {
+        // spavento (scatta il minuto): via di corsa, e i piccoli dietro
+        steer(c, c.fleeTh, 3, dt);
+        target = base * 3; c.dipT = 0; c.pause = 0;
+      } else if (food) {
+        c.dipT = 0; c.pause = 0;
+        steer(c, Math.atan2(food.y - c.y, food.x - c.x), 2.6, dt);
+        target = base * 2.2;
+        var mx = c.x + Math.cos(c.th) * 0.5 * c.S, my = c.y + Math.sin(c.th) * 0.5 * c.S, reach = Math.max(1.2, c.S * 0.15);
+        if ((food.x - mx) * (food.x - mx) + (food.y - my) * (food.y - my) < reach * reach) {
+          food.eaten = true;
+          w.ripple(food.x, food.y, 1.8 + c.S * 0.15, 0.6, 0);
+        }
+      } else {
+        // a zonzo: ogni tanto una rotta nuova, una pausa, o la testa sott'acqua
+        if ((c.timer -= dt) <= 0) {
+          if (w.rnd() < 0.2 && c.dip < 0.1) {
+            c.dipT = 1.2 + w.rnd() * 1.8; c.timer = c.dipT + 1 + w.rnd() * 2;
+            w.ripple(c.x + Math.cos(c.th) * 0.3 * c.S, c.y + Math.sin(c.th) * 0.3 * c.S, 1.2 + c.S * 0.12, 0.9, this.c0 + this.sc0 + 2);
+          } else {
+            // di solito verso un punto qualsiasi dello stagno, così non restano lungo le sponde
+            if (w.rnd() < 0.7) {
+              var gx = w.cols * (0.1 + 0.8 * w.rnd()), gy = (shoreY(w, gx) - 4) * (0.1 + 0.85 * w.rnd());
+              c.hd = Math.atan2(gy - c.y, gx - c.x);
+            } else c.hd = c.th + (w.rnd() - 0.5) * 2.2;
+            c.timer = 3 + w.rnd() * 6;
+            c.pause = w.rnd() < 0.25 ? 1.5 + w.rnd() * 2.5 : 0;
+          }
+        }
+        c.dth += (w.rnd() - 0.5) * 2 * dt;
+        c.dth *= Math.pow(0.3, dt);
+        c.th += c.dth * dt;
+        steer(c, c.hd, 0.5, dt);
+        if (c.pause > 0) { c.pause -= dt; target = base * 0.15; }
+        if (c.dipT > 0) { c.dipT -= dt; target = base * 0.1; }
+      }
+      c.dip += ((c.dipT > 0 ? 1 : 0) - c.dip) * Math.min(1, 5 * dt);
+      c.sp += (target - c.sp) * Math.min(1, 2 * dt);
+      c.ph += (2 + c.sp * 1.2) * dt;
+      advance(c, dt);
+      pondWalls(c, dt, w);
+    },
+    shape: function (x, y, c, o) {
+      var r = c.role, mt = c.mt, hx, hy, dh;
+      y -= Math.sin(c.ph) * (r === 2 ? 0.05 : 0.025) * (x < 0 ? -x : 0); // la coda scodinzola
+      var ay = y < 0 ? -y : y;
+      if (c.dip > 0.05 && x > 0.4 - 0.9 * c.dip) return; // testa sott'acqua: resta fuori il codone
+      if (r === 2) {
+        // anatroccolo: una palla gialla con la testa tonda e il becco piccolo
+        if (x > 0.36 && segD(x, ay, 0.4, 0, 0.5, 0) < Math.max(0.05, mt * 0.6)) { o.v = 0.85; o.c = 3; return; }
+        hx = (x - 0.27) / 0.17; hy = y / 0.17; dh = hx * hx + hy * hy;
+        if (dh < 1) { o.v = 0.95 - 0.2 * dh; o.c = ay < 0.05 && x < 0.3 ? 5 : 4; return; }
+        var bx = (x + 0.06) / 0.3, by = y / 0.26, db = bx * bx + by * by;
+        if (db < 1) { o.v = 0.92 - 0.3 * db; o.c = ay < 0.09 && x < 0.12 ? 5 : 4; }
+        return;
+      }
+      var drake = r === 1;
+      // becco, testa tonda (verde nel maschio, chiara con la riga scura in cima nella femmina), collo
+      if (x > 0.48 && segD(x, ay, 0.5, 0, 0.65, 0) < Math.max(0.05, mt * 0.6)) { o.v = 0.85; o.c = drake ? 10 : 3; return; }
+      hx = (x - 0.4) / 0.125; hy = y / 0.12; dh = hx * hx + hy * hy;
+      if (dh < 1) { o.v = 0.92 - 0.25 * dh; o.c = drake ? 6 : ay < 0.035 ? 2 : 12; return; }
+      if (x > 0.2 && x < 0.34 && ay < Math.max(0.075, mt * 0.6)) {
+        o.v = 0.85; o.c = drake ? (x > 0.3 ? 6 : x > 0.26 ? 0 : 8) : 1; return; // il maschio ha il collare bianco
+      }
+      // corpo, e la coda a punta
+      var ex = (x + 0.05) / 0.3, ey = y / 0.22, e = ex * ex + ey * ey;
+      if (e >= 1) {
+        if (x < -0.26 && x > -0.52 && ay < 0.15 * (x + 0.52) / 0.26) { o.v = 0.7; o.c = drake ? (x < -0.44 ? 0 : 11) : 2; }
+        return;
+      }
+      o.v = 0.9 - 0.3 * e;
+      if (ay > 0.12 && ay < 0.2 && x > -0.2 && x < -0.08) o.c = 9; // lo specchio blu sull'ala
+      else if (drake) o.c = x > 0.12 ? 8 : ay > 0.14 && x < 0.08 ? 2 : 7;
+      else {
+        var sd = c.seed * 40;
+        o.c = Math.sin(x * 31 + sd) * Math.cos(y * 27 + sd) > 0.25 || (ay > 0.12 && x < 0.1) ? 2 : 1;
+      }
+    }
+  });
+
   /* ------------------------------------------------------------------ */
   /* Scenografie: lo sfondo di ogni specie. Hanno uno stato proprio      */
   /* (rifatto se cambia la griglia), possono offrire posti dove posarsi  */
@@ -1263,8 +1714,222 @@ h1 {
     obstacles: function (w, s) { return s.rocks; }
   };
 
+  // Cavalli: prateria con l'erba mossa dal vento (le raffiche passano come onde
+  // chiare che piegano i fili), fiori di campo e una staccionata in basso, a tratti.
+  // Al galoppo i cavalli alzano la polvere.
+  SCENES.cavalli = {
+    pal: ['#2b4a2a', '#4f7d38', '#b4c46a', '#f4f0e0', '#ffd447', '#b48ce6', '#6e5236', '#a5804f', '#b49a78'],
+    init: function (w) {
+      var s = { flowers: [], cells: [], dust: [], row: new Float32Array(w.rows), col: new Float32Array(w.cols), amp: new Float32Array(w.cols) };
+      var b = w.clock ? w.clock.box : null, fy = w.rows - 4, bi = [], bj = [], bh = [], i, j, k;
+      for (j = 1; j < fy; j++) {
+        s.row[j] = Math.sin(j * 0.045) * 1.6 + j * 0.03; // fronti delle raffiche un po' curvi
+        for (i = 0; i < w.cols; i++) {
+          var h = hash2(i * 5 + 11, j * 7 + 3);
+          if (h >= 0.065) continue;
+          if (b && i >= b.x0 - 1 && i <= b.x1 + 1 && j >= b.y0 - 1 && j <= b.y1 + 2) continue;
+          bi.push(i); bj.push(j); bh.push(h < 0.01 ? 3 : h < 0.035 ? 2 : 1);
+        }
+      }
+      s.bi = Int16Array.from(bi); s.bj = Int16Array.from(bj); s.bh = Uint8Array.from(bh);
+      var n = clamp(Math.round(w.cols * w.rows / 420), 10, 48), fc = [3, 3, 4, 4, 5];
+      for (k = 0; k < n; k++) {
+        var p = place(w, 1.2, s.flowers, 2.5);
+        if (p.y < fy - 1) s.flowers.push({ x: Math.floor(p.x), y: Math.floor(p.y), r: 1.2, c: fc[Math.floor(w.rnd() * fc.length)], h: w.rnd() < 0.5 ? 1 : 2 });
+      }
+      // staccionata: tratti con un palo ogni 6 celle e due traverse, e qualche varco
+      for (i = Math.floor(w.rnd() * 8); i < w.cols - 3;) {
+        var len = 18 + Math.floor(w.rnd() * 26), end = Math.min(w.cols - 1, i + len);
+        for (k = i; k <= end; k++) {
+          var post = (k - i) % 6 === 0 || k === end;
+          if (post) for (j = fy; j < w.rows; j++) s.cells.push(k, j, j === fy ? 0.6 : 0.48, j === fy ? 7 : 6, 0.9);
+          else {
+            s.cells.push(k, fy, 0.4, 7, 0.8, k, fy + 2, 0.34, 6, 0.75);
+            if (hash2(k, 77) < 0.3) s.cells.push(k, w.rows - 1, 0.16, 1, 0.6); // erba ai piedi
+          }
+        }
+        i = end + 6 + Math.floor(w.rnd() * 16);
+      }
+      return s;
+    },
+    tick: function (w, dt, t, s) {
+      var sp = this, cs = w.creatures, D = s.dust, q;
+      for (q = 0; q < cs.length; q++) {
+        var c = cs[q];
+        if (c.kind !== sp || c.dying || c.sp < c.S * 1.1) continue;
+        c._du = (c._du || 0) + c.sp * dt;
+        if (c._du < 1.2) continue;
+        c._du = 0;
+        if (D.length < 160) {
+          D.push({ x: c.x - c.face * c.S * (0.1 + 0.4 * w.rnd()), y: c.y + c.S * 0.48, vx: -c.face * (1 + w.rnd() * 2),
+                   vy: -0.4 - w.rnd() * 0.8, age: 0, life: 0.8 + w.rnd() * 0.7 });
+        }
+      }
+      for (q = D.length - 1; q >= 0; q--) {
+        var d = D[q];
+        d.age += dt; d.x += d.vx * dt; d.y += d.vy * dt; d.vx *= Math.pow(0.4, dt);
+        if (d.age > d.life) D.splice(q, 1);
+      }
+    },
+    under: function (w, t, A, s) {
+      var C = this.c0 + this.sc0, R = s.row, K = s.col, M = s.amp, BI = s.bi, BJ = s.bj, BH = s.bh, i, j, n, g;
+      // il vento soffia verso destra: raffiche che vanno e vengono
+      for (i = 0; i < w.cols; i++) { K[i] = i * 0.075 - t * 1.25; M[i] = 0.55 + 0.45 * Math.sin(i * 0.017 - t * 0.23); }
+      for (n = 0; n < BI.length; n++) {
+        i = BI[n]; j = BJ[n];
+        g = Math.sin(K[i] + R[j]) * M[i];
+        // fili piegati dal vento: nella raffica si coricano e mostrano il verde chiaro
+        var hgt = BH[n], hi = g > 0.45, lean = g > -0.35 ? 1 : 0;
+        w.put(i, j, 0.15, C + (hgt === 1 ? 0 : 1), A * 0.7);
+        if (hgt > 1) w.put(i + lean, j - 1, hi ? 0.3 : 0.2, C + (hi ? 2 : 1), A * 0.75);
+        if (hgt > 2) w.put(i + lean + (g > 0.1 ? 1 : 0), j - (g > 0.6 ? 1 : 2), hi ? 0.3 : 0.18, C + (hi ? 2 : 1), A * 0.7);
+      }
+      for (n = 0; n < s.flowers.length; n++) {
+        var f = s.flowers[n];
+        g = Math.sin(K[f.x] + R[f.y]) * M[f.x];
+        for (j = 0; j < f.h; j++) w.put(f.x, f.y - j, 0.2, C + 1, A * 0.7);
+        w.put(f.x + (g > 0.4 ? 1 : 0), f.y - f.h, 0.55, C + f.c, A * 0.85);
+      }
+      drawCells(w, s.cells, C, A);
+    },
+    over: function (w, t, A, s) {
+      var C = this.c0 + this.sc0, D = s.dust;
+      for (var q = 0; q < D.length; q++) {
+        var d = D[q], u = d.age / d.life;
+        w.put(Math.floor(d.x), Math.floor(d.y), 0.08 + 0.3 * (1 - u), C + 8, A * 0.8 * (1 - u));
+      }
+    }
+  };
+
+  // Anatre: lo stagno visto dall'alto. In basso la riva (fango, erba e canne con le
+  // pannocchie che ondeggiano); sull'acqua riflessi, ninfee che si scostano quando
+  // un'anatra ci passa in mezzo, e la scia a V dietro ogni anatra.
+  SCENES.anatre = {
+    pal: ['#1f4a66', '#3f86b0', '#a8dcf0', '#4fae57', '#2f7a3a', '#f8f4ec', '#ffd447', '#6f9a4a', '#8a5a33', '#7a6448', '#3d6a35'],
+    init: function (w) {
+      var s = { bank: [], reeds: [], pads: [], wake: [], row: new Float32Array(w.rows), shore: new Float32Array(w.cols) };
+      var gi = [], gj = [], i, j, k, n;
+      for (i = 0; i < w.cols; i++) {
+        var sy = s.shore[i] = shoreY(w, i);
+        for (j = 0; j < w.rows; j++) {
+          var h = hash2(i * 3 + 17, j * 11 + 7);
+          if (j + 0.5 < sy) { if (h < 0.07 && j + 1.5 < sy) { gi.push(i); gj.push(j); } continue; }
+          // riva: un orlo di fango, poi l'erba
+          if (j - sy < 1) s.bank.push(i, j, 0.3 + 0.15 * h, 9, 0.85);
+          else if (h < 0.22) s.bank.push(i, j, 0.1 + 0.5 * h, h < 0.06 ? 7 : 10, 0.65);
+        }
+      }
+      s.gi = Int16Array.from(gi); s.gj = Int16Array.from(gj);
+      // canne a ciuffi lungo la riva, piegate verso l'acqua
+      n = clamp(Math.round(w.cols / 15), 4, 18);
+      for (k = 0; k < n; k++) {
+        var x = (k + 0.2 + w.rnd() * 0.6) * w.cols / n, bl = [];
+        for (var b = 0, nb = 6 + Math.floor(w.rnd() * 5); b < nb; b++) {
+          bl.push((w.rnd() - 0.5) * 3, -Math.PI / 2 + (w.rnd() - 0.5) * 1.5, 3 + w.rnd() * 4, w.rnd() < 0.5 ? 1 : 0);
+        }
+        s.reeds.push({ x: x, y: shoreY(w, x) + 0.8, bl: bl, ph: w.rnd() * TAU });
+      }
+      // ninfee lontane dall'orologio e dalla riva
+      n = clamp(Math.round(w.cols * w.rows / 1500), 4, 12);
+      for (k = 0; k < n; k++) {
+        var r = 1.6 + w.rnd() * 1.6, p = place(w, r, s.pads, 1.5);
+        if (p.y + r < shoreY(w, p.x) - 2) {
+          s.pads.push({ x0: p.x, y0: p.y, x: p.x, y: p.y, r: r, rot: w.rnd() * TAU, flower: w.rnd() < 0.35, dx: 0, dy: 0, vx: 0, vy: 0 });
+        }
+      }
+      return s;
+    },
+    tick: function (w, dt, t, s) {
+      var sp = this, cs = w.creatures, W = s.wake, q, n, c;
+      // la scia: a ogni tratto di strada due increspature che si allontanano ai lati
+      for (n = 0; n < cs.length; n++) {
+        c = cs[n];
+        if (c.kind !== sp || c.dying || c.sp < 0.3) continue;
+        c._wk = (c._wk || 0) + c.sp * dt;
+        if (c._wk < 0.6 || W.length > 420) continue;
+        c._wk = 0;
+        var cx = Math.cos(c.th), cy = Math.sin(c.th), bx = c.x - cx * c.S * 0.3, by = c.y - cy * c.S * 0.3, sv = 0.5 + c.sp * 0.25;
+        for (var sd = -1; sd <= 1; sd += 2) {
+          W.push({ x: bx - cy * sd * c.S * 0.15, y: by + cx * sd * c.S * 0.15, vx: -cy * sd * sv - cx * 0.3, vy: cx * sd * sv - cy * 0.3,
+                   age: 0, life: 1.4 + c.S * 0.08 });
+        }
+      }
+      for (q = W.length - 1; q >= 0; q--) {
+        var p = W[q];
+        p.age += dt; p.x += p.vx * dt; p.y += p.vy * dt;
+        if (p.age > p.life) W.splice(q, 1);
+      }
+      // ninfee: le anatre le spostano, poi piano tornano a posto
+      for (q = 0; q < s.pads.length; q++) {
+        var pd = s.pads[q];
+        for (n = 0; n < cs.length; n++) {
+          c = cs[n];
+          if (c.kind !== sp || c.dying) continue;
+          var dx = pd.x - c.x, dy = pd.y - c.y, R = pd.r + c.S * 0.3, d2 = dx * dx + dy * dy;
+          if (d2 < R * R && d2 > 1e-4) {
+            var d = Math.sqrt(d2), push = (1 - d / R) * (1 + c.sp) * 3 * dt;
+            pd.vx += dx / d * push; pd.vy += dy / d * push;
+          }
+        }
+        spring(pd, 'dx', 'vx', 0, 2, 1.8, dt); spring(pd, 'dy', 'vy', 0, 2, 1.8, dt);
+        pd.dx = clamp(pd.dx, -4, 4); pd.dy = clamp(pd.dy, -4, 4);
+        pd.x = pd.x0 + pd.dx; pd.y = pd.y0 + pd.dy;
+      }
+      // ogni tanto un pesce viene a galla
+      if (w.rnd() < dt * 0.12) {
+        var fx = w.rnd() * w.cols, fy = w.rnd() * (shoreY(w, fx) - 3);
+        if (!w.clock || w.boxDist(fx, fy).d > 3) w.ripple(fx, fy, 2 + w.rnd() * 2, 1.4, this.c0 + this.sc0 + 1);
+      }
+    },
+    under: function (w, t, A, s) {
+      var C = this.c0 + this.sc0, GI = s.gi, GJ = s.gj, R = s.row, i, j, n, q;
+      // riflessi che scorrono piano
+      for (j = 0; j < w.rows; j++) R[j] = t * 0.7 + Math.sin(j * 0.21 + t * 0.25) * 1.4;
+      for (n = 0; n < GI.length; n++) {
+        i = GI[n]; j = GJ[n];
+        var g = Math.sin(i * 0.15 + j * 0.55 + R[j]);
+        if (g > 0.8) w.put(i, j, 0.1 + (g - 0.8) * 0.8, C + (g > 0.94 ? 2 : 1), A * 0.6);
+      }
+      // l'acqua che lambisce la riva
+      for (i = 0; i < w.cols; i++) {
+        var lap = Math.sin(t * 1.3 + i * 0.45);
+        if (lap > 0.2) w.put(i, Math.floor(s.shore[i] - 0.5), 0.1 + 0.12 * lap, C + (lap > 0.8 ? 2 : 1), A * 0.6);
+      }
+      for (q = 0; q < s.wake.length; q++) {
+        var p = s.wake[q], u = p.age / p.life;
+        w.put(Math.floor(p.x), Math.floor(p.y), 0.12 + 0.2 * (1 - u), C + (u < 0.35 ? 2 : 1), A * 0.75 * (1 - u));
+      }
+      for (q = 0; q < s.pads.length; q++) {
+        var pd = s.pads[q], r = pd.r;
+        for (j = Math.floor(pd.y - r); j <= Math.ceil(pd.y + r); j++) {
+          for (i = Math.floor(pd.x - r); i <= Math.ceil(pd.x + r); i++) {
+            var dx = i + 0.5 - pd.x, dy = j + 0.5 - pd.y, d = Math.sqrt(dx * dx + dy * dy) / r;
+            if (d > 1) continue;
+            if (d > 0.15 && Math.abs(angDiff(Math.atan2(dy, dx), pd.rot)) < 0.35) continue; // la tacca della foglia
+            var col = d > 0.78 ? 4 : 3, v = 0.42 + 0.2 * (1 - d);
+            if (pd.flower && d < 0.48) { col = d < 0.2 ? 6 : 5; v = 0.8; }
+            w.put(i, j, v, C + col, A * 0.85);
+          }
+        }
+      }
+      drawCells(w, s.bank, C, A);
+      for (q = 0; q < s.reeds.length; q++) {
+        var rd = s.reeds[q], sway = Math.sin(t * 0.9 + rd.ph) * 0.12 + Math.sin(t * 2.1 + rd.ph * 3) * 0.04;
+        for (var b = 0; b < rd.bl.length; b += 4) {
+          var x0 = rd.x + rd.bl[b], a = rd.bl[b + 1] + sway, L = rd.bl[b + 2], ca = Math.cos(a), sa = Math.sin(a);
+          for (var e = 0.7; e <= L; e += 0.7) w.put(Math.floor(x0 + ca * e), Math.floor(rd.y + sa * e), 0.26 + 0.12 * e / L, C + 7, A * 0.8);
+          if (rd.bl[b + 3]) { // la pannocchia in cima
+            w.put(Math.floor(x0 + ca * (L + 0.7)), Math.floor(rd.y + sa * (L + 0.7)), 0.62, C + 8, A * 0.9);
+            w.put(Math.floor(x0 + ca * (L + 1.4)), Math.floor(rd.y + sa * (L + 1.4)), 0.55, C + 8, A * 0.9);
+          }
+        }
+      }
+    }
+  };
+
   // quanto in alto, rispetto alla taglia, va il nome dell'animale
-  var NAME_UP = { farfalle: 0.62, meduse: 0.55, libellule: 0.75, koi: 0.45, rane: 0.45, aironi: 0.8, granchi: 0.5 };
+  var NAME_UP = { farfalle: 0.62, meduse: 0.55, libellule: 0.75, koi: 0.45, rane: 0.45, aironi: 0.8, granchi: 0.5,
+                  cavalli: 0.6, anatre: 0.45 };
 
   Object.keys(SCENES).forEach(function (id) {
     var sp = byId(id), sc = SCENES[id];
@@ -1966,6 +2631,7 @@ h1 {
       c.dir = (-Math.sin(c.th) * Math.cos(a) + Math.cos(c.th) * Math.sin(a)) >= 0 ? 1 : -1;
       c.thT = a - c.dir * Math.PI / 2;
     }
+    else if (c.kind.bolt) c.kind.bolt(c, a, c.flee); // i cavalli partono al galoppo
   };
 
   // un punto a caso su un segmento acceso
@@ -2078,6 +2744,9 @@ h1 {
       // il granchio inverte il passo laterale
       var mx = -Math.sin(c.th) * c.dir, my = Math.cos(c.th) * c.dir;
       if (mx * nx + my * ny < -0.2 && c.sp > 0.1) c.dir = -c.dir;
+    } else if (sp.id === 'cavalli') {
+      // di profilo non girano il muso: cambiano pendenza (davanti all'orologio, vedi update)
+      if (ny > 0.3 || ny < -0.3) c.mvT = ny > 0 ? 0.45 : -0.45;
     } else {
       // scivola lungo il bordo: tolgo la parte di rotta che entra nel riquadro
       var hx = Math.cos(c.th), hy = Math.sin(c.th), dot = hx * nx + hy * ny;
@@ -2205,8 +2874,8 @@ h1 {
     Object.keys(buttons).forEach(function (k) { buttons[k].setAttribute('aria-pressed', k === id ? 'true' : 'false'); });
     root.style.setProperty('--accent', zoo.colore(sp.cd)); // il pallino, nel colore del tema
     var act = touch ? 'Tocca' : 'Clic';
-    hint.textContent = (sp.feeds ? act + ': dai da mangiare alle koi' : act + ': si disperdono') +
-      (touch ? '' : ' · tasti 1–7: cambia animale');
+    hint.textContent = (sp.feeds ? act + ': dai da mangiare alle ' + sp.label.toLowerCase() : act + ': si disperdono') +
+      (touch ? '' : ' · tasti 1–' + SPECIES.length + ': cambia animale');
     if (!keepHash && fromHash() !== id) {
       try { location.replace('#' + id); } catch (e) { /* non indispensabile */ }
     }
@@ -2247,7 +2916,7 @@ h1 {
   }, 1000);
 
   /* Impostazioni dello sfondo, inviate dal programma: zooSetting(nome, valore).
-     0 = a rotazione, 1..7 = un solo animale fisso. */
+     0 = a rotazione, 1..9 = un solo animale fisso. */
   /* Con il caricatore collegato: koi nello stagno (se l'opzione è attiva). */
   var pref = 0, koiAC = true, charging = false, hashFixed = fixed;
   function applyChoice() {
