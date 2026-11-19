@@ -61,6 +61,13 @@ fn main() {
         nerd::stampa();
         return;
     }
+    // Linux: lo screensaver, che l'app lancia da sé quando non si usa il PC (vedi linux.rs)
+    #[cfg(target_os = "linux")]
+    if std::env::args().nth(1).as_deref() == Some("--salvaschermo") {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        linux::salvaschermo(&args);
+        return;
+    }
     // Windows lancia lo screensaver (ascii-zoo.scr, cioè questo stesso programma)
     // con /s, /p o /c: lo fa il motore nativo di dreams/, non lo sfondo
     #[cfg(windows)]

@@ -64,6 +64,12 @@ pub struct Config {
     pub orologio: bool,
     /// tema dello sfondo: "scuro", "chiaro" o "sistema" (segue il tema chiaro o scuro del sistema)
     pub tema: String,
+    /// solo Linux: minuti senza toccare mouse e tastiera prima che parta lo screensaver
+    /// (0 = spento, di serie: un aggiornamento non lo accende a chi non l'ha chiesto). Su
+    /// Windows l'attesa la decide Windows.
+    pub salvaschermo_minuti: u32,
+    /// solo Linux: la scena dello screensaver, un id di ascii_dreams::scene() oppure "rotazione"
+    pub salvaschermo_scena: String,
 }
 
 impl Default for Config {
@@ -96,6 +102,8 @@ impl Default for Config {
             clic_desktop: true,
             orologio: true,
             tema: "scuro".into(),
+            salvaschermo_minuti: 0,
+            salvaschermo_scena: "rotazione".into(),
         }
     }
 }

@@ -71,6 +71,23 @@ Mette lo sfondo animato (`wallpaper/index.html`) dietro le icone del desktop, su
     `-schermo-N` con più schermi, senza mai sovrascrivere (`create_new`, poi ` (2)`, ` (3)`…).
     Poi la si mostra: Esplora risorse `/select,`, Finder `open -R`, su Linux
     `org.freedesktop.FileManager1.ShowItems` oppure `xdg-open` sulla cartella
+  - **Screensaver** (solo Linux; su Windows c'è **Usa come screensaver…**, che apre le
+    impostazioni di Windows): spento o dopo 1–30 minuti senza input, la scena, **Prova
+    adesso**. GNOME non accetta più screensaver di altri: l'app lancia sé stessa come
+    `ascii-zoo --salvaschermo` (un processo a parte, come il .scr su Windows, con
+    `PR_SET_PDEATHSIG` perché non resti lì se l'app si chiude). Quando partire lo dice il
+    monitor di inattività di mutter (`org.gnome.Mutter.IdleMonitor`: `AddIdleWatch` per i
+    minuti, `AddUserActiveWatch` per chiuderlo al primo input, anche se la sua finestra non ha
+    il focus e i tasti vanno altrove); senza mutter `org.freedesktop.ScreenSaver.GetSessionIdleTime`
+    ogni 2 secondi. Non parte con `org.gnome.SessionManager.IsInhibited(8)` (o
+    `org.freedesktop.PowerManagement.Inhibit.HasInhibit`), con lo schermo bloccato o con
+    un'app a schermo intero (la `Sonda`), e si chiude con `ActiveChanged(true)` di
+    `org.gnome.ScreenSaver` / `org.freedesktop.ScreenSaver`. Le finestre (una per monitor,
+    senza bordi, a schermo intero e "sempre in primo piano", sotto XWayland) disegnano con
+    cairo il buffer di `ascii_dreams::Motore`. Provato in GNOME Shell 46 senza schermo:
+    senza "sempre in primo piano" una finestra a schermo intero senza focus finisce sotto
+    quella attiva; una finestra override-redirect sta sopra ma lascia la barra in alto.
+    `ascii-zoo --salvaschermo --finestra [--scena id]` lo apre in una finestra normale
   - **Avvia con Windows** / **Apri al login**, **Ricarica sfondo**, **Esci**
 - Impostazioni salvate in `%APPDATA%\AsciiZoo\config.json` (Windows),
   `~/Library/Application Support/AsciiZoo/config.json` (macOS) o
@@ -136,6 +153,16 @@ Nel workflow:
 - `linux` prova la riserva: con una Release senza programma per Linux, `install.sh` compila
   questo commit; poi avvia il programma sotto Xvfb, prova il comando da una riga e la
   disinstallazione.
+- `linux-gnome-clic` prova in un GNOME Shell senza schermo l'estensione per il clic sul
+  desktop ([`../.github/gnome-click-test`](../.github/gnome-click-test)) e, con il programma
+  di `linux-binario`, lo screensaver ([`../.github/gnome-screensaver-test`](../.github/gnome-screensaver-test)):
+  deve partire dopo un minuto senza input, stare sopra a tutto (anche sopra una finestra con
+  il focus) con la barra in alto nascosta, chiudersi a un tasto, ripartire dopo un altro
+  minuto e chiudersi quando mutter dice che qualcuno ha usato il PC (`ResetIdletime`). Poi
+  non deve partire sopra un'app a schermo intero, ma appena si chiude: questo dipende dalla
+  `Sonda`, che sui runner senza GPU a volte non vede l'app, quindi lì ci sono solo avvisi.
+  Niente mouse virtuale: in GNOME Shell senza schermo un movimento sopra le finestre X11 del
+  programma vero blocca la shell.
 
 > Lo sfondo è una copia in `assets/`: dopo aver modificato `wallpaper/index.html`
 > (nella radice della repo) copialo in `assets/ascii-zoo-wallpaper.html` e ricompila.
@@ -173,6 +200,8 @@ loro `.sha256`. Da quella Release in poi `install.sh` scarica il programma invec
 | `src/power_mac.rs`, `src/dialog_mac.rs` | macOS: batteria, finestrella dei nomi |
 | `src/salvaschermo_mac.rs` | macOS: installa e aggiorna lo screensaver (`ASCII Zoo.saver`, da `../dreams/macos`) |
 | `src/linux.rs` | Linux: finestre di tipo "desktop", icona AppIndicator, controllo degli schermi, margini della barra in alto |
+| `src/salvaschermo_linux.rs` | Linux: quando far partire lo screensaver (inattività da mutter o `GetSessionIdleTime`, video, schermo bloccato), il suo sottomenu e il processo `ascii-zoo --salvaschermo` |
+| `src/sogno_linux.rs` | Linux: lo screensaver vero e proprio, le scene di `../dreams` in una finestra GTK a schermo intero per monitor |
 | `src/power_linux.rs`, `src/stats_linux.rs`, `src/dialog_linux.rs` | Linux: batteria e CPU/RAM da `/sys` e `/proc`, finestrella dei nomi (zenity o kdialog) |
 | `src/config.rs` | impostazioni (nomi, rotazione, widget, animale per schermo) e avvio automatico |
 | `macos/Info.plist` | descrizione dell'app per macOS |

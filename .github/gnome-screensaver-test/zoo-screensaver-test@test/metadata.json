@@ -1,0 +1,6 @@
+{
+  "uuid": "zoo-screensaver-test@test",
+  "name": "Prova dello screensaver di ASCII Zoo",
+  "description": "Solo per la prova automatica: avvia ASCII Zoo, guarda lo screensaver e muove il mouse.",
+  "shell-version": ["45", "46", "47", "48"]
+}
