@@ -240,11 +240,12 @@ jobs:
           diff -r "build/ASCII Zoo.app/Contents/Resources/ASCII Zoo.saver" "$HOME/Library/Screen Savers/ASCII Zoo.saver"
           grep -i "screensaver" app-macos.log || true
 
-      # come la voce del menu: installa e apre le impostazioni del salvaschermo. Solo una
-      # foto da guardare (il pannello vero non si comanda da qui), non fa fallire il job
+      # come la voce del menu: installa e apre le impostazioni del salvaschermo. Solo foto
+      # da guardare, non fa fallire il job: la lista del dialogo crea solo le voci visibili
+      # e System Events non la vede, quindi ASCII Zoo non si sceglie da qui
       - name: Prova - apre le impostazioni del salvaschermo (foto)
         continue-on-error: true
-        timeout-minutes: 6
+        timeout-minutes: 3
         run: |
           sw_vers
           "build/ASCII Zoo.app/Contents/MacOS/ascii-zoo" --installa-salvaschermo --apri-impostazioni
@@ -256,17 +257,6 @@ jobs:
             ./clic 700 415; sleep 8
             screencapture -x prova-screensaver/impostazioni-lista.png
           fi
-          # si sceglie la voce "ASCII Zoo" nella lista (Accessibilità, System Events):
-          # l'anteprima in alto la disegna allora legacyScreenSaver, il processo vero dei
-          # salvaschermo, nella sua sandbox
-          osascript .github/macos-saver-test/scegli.applescript || true
-          screencapture -x prova-screensaver/impostazioni-in-fondo.png
-          sleep 10
-          screencapture -x prova-screensaver/impostazioni-anteprima.png
-          ps ax | grep -i "[s]creensaver" || true
-          log show --last 4m --style compact --predicate 'process CONTAINS[c] "ScreenSaver" OR eventMessage CONTAINS[c] "ASCII Zoo" OR eventMessage CONTAINS[c] "AsciiZoo"' > prova-screensaver/log-salvaschermo.txt 2>&1 || true
-          wc -l prova-screensaver/log-salvaschermo.txt
-          grep -i "ascii\|error\|deny\|sandbox\|signature\|dlopen" prova-screensaver/log-salvaschermo.txt | head -40 || true
           osascript -e 'tell application "System Settings" to quit' || true
 
       - uses: actions/upload-artifact@v4
