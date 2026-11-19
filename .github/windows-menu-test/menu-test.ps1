@@ -45,6 +45,10 @@ public static class W {
     [DllImport("user32.dll")] public static extern int GetSystemMetrics(int i);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder s, int max);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int max);
+    [DllImport("user32.dll")] static extern IntPtr GetDC(IntPtr h);
+    [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr h, IntPtr dc);
+    [DllImport("gdi32.dll")] static extern bool BitBlt(IntPtr dst, int x, int y, int w, int h, IntPtr src, int sx, int sy, uint rop);
+    [DllImport("gdi32.dll")] static extern uint GetPixel(IntPtr dc, int x, int y);
 
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] public struct MOUSEINPUT { public int dx, dy; public uint mouseData, dwFlags, time; public IntPtr dwExtraInfo; }
@@ -74,6 +78,8 @@ public static class W {
     }
     // menu aperti (classe "#32768") del processo: il primo è il più in alto
     public static List<IntPtr> Menus(uint pid) { return Windows("#32768", pid, true); }
+    // figlia di una classe (da PowerShell $null diventerebbe "" e cercherebbe il titolo vuoto)
+    public static IntPtr Child(IntPtr parent, string cls) { return FindWindowEx(parent, IntPtr.Zero, cls, null); }
     public static IntPtr HMenu(IntPtr h) { return SendMessage(h, 0x01E1 /* MN_GETHMENU */, IntPtr.Zero, IntPtr.Zero); }
 
     public static string Text(IntPtr hm, int pos) {
@@ -136,6 +142,27 @@ public static class W {
         return string.Format("0x{0:X} classe '{1}' titolo '{2}' pid {3}", h.ToInt64(), c, t, Pid(h));
     }
     public static uint ForegroundPid() { return Pid(GetForegroundWindow()); }
+
+    // foto dello schermo in un DC: CAPTUREBLT, se no le finestre "layered" come i menu mancano
+    public static bool Grab(IntPtr dst, int w, int h) {
+        IntPtr s = GetDC(IntPtr.Zero);
+        bool ok = BitBlt(dst, 0, 0, w, h, s, 0, 0, 0x00CC0020 | 0x40000000);
+        ReleaseDC(IntPtr.Zero, s);
+        return ok;
+    }
+    // luminosità media (0-255) di 5x5 punti del rettangolo, -1 se non si legge
+    public static double Luma(int x0, int y0, int w, int h) {
+        IntPtr s = GetDC(IntPtr.Zero);
+        double t = 0; int n = 0;
+        for (int j = 0; j < 5; j++) for (int i = 0; i < 5; i++) {
+            uint c = GetPixel(s, x0 + i * w / 4, y0 + j * h / 4);
+            if (c == 0xFFFFFFFF) continue;
+            t += 0.299 * (c & 0xFF) + 0.587 * ((c >> 8) & 0xFF) + 0.114 * ((c >> 16) & 0xFF);
+            n++;
+        }
+        ReleaseDC(IntPtr.Zero, s);
+        return n > 0 ? t / n : -1;
+    }
 }
 '@
 
@@ -156,17 +183,22 @@ function Foto([string]$nome) {
     try {
         $b = New-Object System.Drawing.Bitmap $sw, $sh
         $g = [System.Drawing.Graphics]::FromImage($b)
-        # CAPTUREBLT: senza, le finestre "layered" come i menu non finiscono nella foto
-        $op = [System.Drawing.CopyPixelOperation]([int][System.Drawing.CopyPixelOperation]::SourceCopy -bor 0x40000000)
-        $g.CopyFromScreen(0, 0, 0, 0, $b.Size, $op)
+        $hdc = $g.GetHdc()
+        $ok = [W]::Grab($hdc, $sw, $sh)
+        $g.ReleaseHdc($hdc)
+        if (-not $ok) { Avviso "foto $nome: BitBlt non riuscito" }
         $b.Save((Join-Path $Out "$nome.png"), [System.Drawing.Imaging.ImageFormat]::Png)
         $g.Dispose(); $b.Dispose()
         Write-Host "foto: $nome.png"
     } catch { Avviso "foto $nome non riuscita: $_" }
 }
 
+# configurazione pulita, ma senza pause: sul runner lo sfondo andrebbe in pausa e nelle foto
+# non si vedrebbe il tema cambiare. Le altre finestre giù, perché si veda il desktop.
 $cfgPath = Join-Path $env:APPDATA 'AsciiZoo\config.json'
-Remove-Item $cfgPath -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force (Split-Path $cfgPath) | Out-Null
+'{"pausa_batteria": false, "pausa_schermo_intero": false, "pausa_coperto": false}' | Set-Content $cfgPath
+try { (New-Object -ComObject Shell.Application).MinimizeAll(); Start-Sleep -Seconds 1 } catch { Avviso "MinimizeAll: $_" }
 # config.json come oggetto; se il programma lo sta riscrivendo proprio adesso, si riprova
 function Cfg {
     for ($k = 0; $k -lt 5; $k++) {
@@ -282,8 +314,18 @@ Write-Host ([W]::Describe($sub))
 $pChiaro = [W]::Find($sub, 'Chiaro'); $pScuro = [W]::Find($sub, 'Scuro'); $pSistema = [W]::Find($sub, 'Come il sistema')
 $c = [W]::Center($sub, $pChiaro)
 if ($null -eq $c) { Esito $false "il sottomenu Tema si apre"; Fine 1 }
+# un pezzo di desktop lontano dal menu (in alto a destra): scuro prima, chiaro dopo
+$zona = @(($sw - 300), 40, 260, 200)
+$lumaPrima = [W]::Luma($zona[0], $zona[1], $zona[2], $zona[3])
 [W]::Click($c[0], $c[1]) | Out-Null
-Start-Sleep -Milliseconds 1200
+Start-Sleep -Milliseconds 2000
+$lumaDopo = [W]::Luma($zona[0], $zona[1], $zona[2], $zona[3])
+Write-Host ("luminosità del desktop accanto al menu: prima {0:N0}, dopo Chiaro {1:N0} (0-255)" -f $lumaPrima, $lumaDopo)
+if ($lumaPrima -ge 0 -and $lumaPrima -lt 80) {
+    Esito ($lumaDopo -gt $lumaPrima + 80) "lo sfondo diventa chiaro mentre il menu è ancora aperto"
+} else {
+    Avviso "il desktop accanto al menu non sembra lo sfondo scuro (luminosità $lumaPrima): niente controllo del colore, guarda le foto"
+}
 Esito ((Menus).Count -ge 2) "Tema > Chiaro: menu e sottomenu restano aperti ($((Menus).Count) finestre)"
 Esito ([W]::Checked($sub, $pChiaro) -and -not [W]::Checked($sub, $pScuro)) "spunta su Chiaro, tolta da Scuro"
 Esito ((Cfg).tema -eq 'chiaro') "config.json: tema = $((Cfg).tema)"
@@ -349,7 +391,8 @@ Esito ($dlg -ne [IntPtr]::Zero) "si apre la finestrella del nome"
 if ($dlg -ne [IntPtr]::Zero) {
     Foto '3-nome-della-koi'
     Write-Host "primo piano con la finestrella: $([W]::WindowInfo([W]::GetForegroundWindow()))"
-    $edit = [W]::FindWindowEx($dlg, [IntPtr]::Zero, 'Edit', $null)
+    $edit = [W]::Child($dlg, 'Edit')
+    Write-Host "campo del nome: $([W]::WindowInfo($edit))"
     [W]::SendText($edit, 0x000C, [IntPtr]::Zero, 'PROVA') | Out-Null # WM_SETTEXT
     [W]::Key(0x0D) | Out-Null
     Start-Sleep -Milliseconds 1000
