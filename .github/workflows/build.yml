@@ -313,20 +313,46 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Senza -qq, così se si blocca si vede dove; man-db spento perché il suo trigger
-      # sui runner può durare minuti. A volte il mirror di Ubuntu va pianissimo (una volta
-      # 12 minuti per 150 pacchetti): limite di tempo largo e tentativi ripetuti.
-      - name: GNOME Shell e le icone del desktop (DING)
-        timeout-minutes: 25
+      # Il mirror di Ubuntu a volte va pianissimo (una volta 13 minuti solo per gli sfondi
+      # di Ubuntu, che GNOME Shell si porta dietro): i .deb scaricati restano nella cache di
+      # GitHub, con una chiave fatta dall'elenco dei pacchetti e delle loro versioni. Se non
+      # è cambiato niente non si scarica niente; se no solo i pacchetti cambiati.
+      - name: Elenco dei pacchetti di GNOME Shell
+        id: deb
         run: |
           echo "set man-db/auto-update false" | sudo debconf-communicate >/dev/null || true
           sudo rm -f /var/lib/man-db/auto-update
           sudo apt-get update -q -o Acquire::Retries=3
+          apt-get install -s -qq --no-install-recommends $PACCHETTI | grep '^Inst ' | sort > pacchetti.txt
+          wc -l < pacchetti.txt
+          echo "chiave=$(sha256sum pacchetti.txt | cut -c1-16)" >> "$GITHUB_OUTPUT"
+        env:
+          PACCHETTI: gnome-shell gnome-shell-extension-desktop-icons-ng xwayland zenity python3-gi dbus-x11
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/deb
+          key: gnome-deb-${{ steps.deb.outputs.chiave }}
+          restore-keys: gnome-deb-
+
+      # Senza -qq, così se si blocca si vede dove; man-db spento perché il suo trigger
+      # sui runner può durare minuti
+      - name: GNOME Shell e le icone del desktop (DING)
+        timeout-minutes: 25
+        run: |
+          mkdir -p ~/deb/partial
+          ls ~/deb/*.deb 2>/dev/null | wc -l | xargs echo "pacchetti già nella cache:"
           sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
+            -o Dir::Cache::Archives="$HOME/deb" -o APT::Keep-Downloaded-Packages=true -o APT::Sandbox::User=root \
             -o Acquire::Retries=3 -o Acquire::http::Timeout=30 \
             -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold \
-            gnome-shell gnome-shell-extension-desktop-icons-ng xwayland zenity python3-gi dbus-x11 </dev/null
+            $PACCHETTI </dev/null
+          # nella cache solo le versioni che servono adesso, non quelle vecchie
+          sudo apt-get autoclean -q -o Dir::Cache::Archives="$HOME/deb"
+          sudo chown -R "$USER" ~/deb
           gnome-shell --version
+        env:
+          PACCHETTI: gnome-shell gnome-shell-extension-desktop-icons-ng xwayland zenity python3-gi dbus-x11
 
       - name: Prova - clic simulati
         run: bash .github/gnome-click-test/run.sh
