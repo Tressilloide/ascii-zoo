@@ -24,5 +24,8 @@
   <true/>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <!-- widget "In riproduzione": AppleScript a Musica e Spotify, solo se sono già aperti -->
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Il widget "In riproduzione" chiede a Musica e Spotify, se sono aperti, il titolo e l'artista del brano. Non li avvia e non li comanda.</string>
 </dict>
 </plist>

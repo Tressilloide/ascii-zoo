@@ -69,6 +69,12 @@ Riquadri di solo testo, nello stesso stile degli animali, in un angolo dello sch
   - **Acceso da** (uptime), numero di **processi** e **carico medio** a 1, 5 e 15 minuti (Linux e macOS: Windows non ce l'ha).
 
   I valori li legge il crate [sysinfo](https://crates.io/crates/sysinfo), più qualche lettura diretta e leggera (rete su Linux da `/sys`, disco, numero dei processi); solo le voci accese e solo quando almeno uno schermo con lo sfondo non è in pausa. Con tutto acceso costa circa 2 ms di CPU ogni 2 secondi.
+- **In riproduzione** (spento di serie): titolo, artista, `▶` o `❚❚` e una barra con il tempo, `[####........] 1:23 / 3:45`, che avanza da sola tra una lettura e l'altra. Quando non suona niente il riquadro sparisce.
+  - **Linux**: i lettori che parlano MPRIS (Spotify, Rhythmbox, VLC, Firefox, Chromium…); se ce n'è più d'uno vince quello che suona. Spotify su Linux non dice a che punto è: si vede solo la durata.
+  - **Windows**: i controlli multimediali di sistema, gli stessi del riquadro del volume (Spotify, Lettore multimediale, i browser…).
+  - **macOS**: da macOS 15.4 il "Now Playing" di sistema non risponde più alle app di terze parti, quindi ASCII Zoo chiede ad AppleScript, e solo a **Musica** e **Spotify**, e solo se sono già aperti (non li avvia mai). La prima volta macOS chiede il permesso **Automazione** per controllarli: serve solo per leggere titolo, artista e posizione. Se lo neghi il riquadro lo dice; si ridà in **Impostazioni di Sistema → Privacy e sicurezza → Automazione**. Gli altri lettori (browser, Podcast…) non si vedono.
+
+  Si legge ogni 2 secondi (su macOS ogni 4) su un thread a parte, solo con il widget acceso e lo sfondo visibile.
 - **Aspetto**: dimensione (piccoli, normali, grandi), cornice (`+--+` ASCII, `┌──┐` a linee, `╭──╮` arrotondata) e **sfondo pieno** dietro i riquadri, utile quando gli animali passano sotto il testo. Le linee delle cornici non ci sono nel carattere incorporato e le disegna un carattere del sistema, ognuna in una casella larga un carattere: i riquadri restano allineati anche dove quel carattere è più stretto (Consolas su Windows).
 - **Posizione**: uno dei quattro angoli; **Schermo**: il principale, uno a scelta o tutti.
 
@@ -143,7 +149,7 @@ La cartella `app/` contiene un programma che mette lo sfondo dietro le icone su 
 - **Rotazione**: ogni quanto cambia animale e quali animali far girare;
 - **Animale per schermo**: con più monitor, un animale diverso su ognuno (koi sul portatile, meduse sull'altro…);
 - **Nomi degli animali**: il nome dell'animale più grande di ogni specie;
-- **Widget**: nota, conto alla rovescia, CPU/RAM/batteria, statistiche per nerd, aspetto dei riquadri (vedi [I widget](#i-widget));
+- **Widget**: nota, conto alla rovescia, CPU/RAM/batteria, statistiche per nerd, in riproduzione, aspetto dei riquadri (vedi [I widget](#i-widget));
 - **Tema**: scuro, chiaro oppure come il sistema (vedi [Tema chiaro e scuro](#tema-chiaro-e-scuro));
 - **Salva una foto dello sfondo**: un PNG per schermo nella cartella Immagini (vedi [Foto dello sfondo](#foto-dello-sfondo));
 - **Orologio al centro**: togliendo la spunta l'orologio sparisce e lo schermo è tutto per gli animali;
@@ -208,6 +214,7 @@ Lo stesso programma esiste per macOS 11 o successivo, su Mac con Apple Silicon e
 - **Pause.** Lo sfondo si ferma a batteria e, schermo per schermo, quando non si vede: finestre che coprono tutto il desktop, un'app a schermo intero, schermo bloccato o spento. Lo dice macOS stesso (lo stato di occlusione della finestra), senza controlli a parte; riparte entro mezzo secondo da quando torna visibile. Come su Windows, nel menu ci sono le voci **Pausa con app a schermo intero** e **Pausa quando le finestre coprono il desktop**, che si possono spegnere una per una.
 - **Barra dei menu e Dock.** I widget restano fuori dalla barra dei menu e dal Dock, anche se lo sposti o lo nascondi.
 - **Clic sul desktop.** Un clic sul desktop, anche sulle icone del Finder, dà da mangiare alle koi e alle anatre o fa scappare gli altri animali. Usa un monitor globale dei clic di macOS (`NSEvent`): vede solo dove si preme il tasto sinistro nelle altre app, non blocca né cambia il clic, non registra niente e non chiede il permesso Accessibilità (serve solo per i tasti). Il clic vale solo se nel punto non c'è nessuna finestra, il Dock o la barra dei menu. Si spegne togliendo la spunta a **Clic sul desktop agli animali**.
+- **In riproduzione.** Il widget, spento di serie, chiede a Musica e Spotify cosa suonano (solo se sono aperti): la prima volta macOS chiede il permesso **Automazione** (vedi [I widget](#i-widget)). Dato che l'app non è firmata con un certificato Apple, dopo un aggiornamento macOS può chiederlo di nuovo.
 - **"Impossibile aprire l'app".** L'app non è firmata con un certificato Apple, quindi al primo avvio macOS la blocca: apri **Impostazioni di Sistema → Privacy e sicurezza** e premi **Apri comunque**, poi conferma.
 - **Aggiornare.** Trascina la versione nuova in **Applicazioni** (sostituendo la vecchia) e aprila: chiude da sola quella che sta girando, anche se veniva da un'altra cartella, e prende il suo posto; se **Apri al login** è attivo, da quel momento all'accesso parte la nuova. Una .app vecchia in un'altra cartella non la cancella: toglila tu. **Apri al login** si attiva solo con l'app in una cartella fissa (non aperta direttamente dal DMG).
 - **Da dove viene il DMG e cosa tocca**: come per Windows, lo compila GitHub Actions, ha SHA256 e attestazione (`gh attestation verify ascii-zoo-macos.dmg --repo ascii-things/ascii-zoo`), scrive solo `~/Library/Application Support/AsciiZoo/config.json`, le foto che chiedi (in `~/Pictures/ASCII Zoo`) e, se attivi **Apri al login**, `~/Library/LaunchAgents/io.github.tressilloide.asciizoo.plist`. Non si collega a internet.

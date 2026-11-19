@@ -42,6 +42,8 @@ pub struct Config {
     pub widget_cornice: String,
     /// riquadri con lo sfondo pieno (se no trasparenti, con gli animali che passano dietro)
     pub widget_sfondo_pieno: bool,
+    /// widget "In riproduzione" (spento di serie: su macOS chiede il permesso Automazione)
+    pub widget_musica: bool,
     /// angolo dei widget: "basso-destra", "basso-sinistra", "alto-destra", "alto-sinistra"
     pub widget_angolo: String,
     /// su quale schermo stanno i widget: "" = il principale, "*" = tutti, se no l'id dello schermo
@@ -77,6 +79,7 @@ impl Default for Config {
             widget_dimensione: "normali".into(),
             widget_cornice: "ascii".into(),
             widget_sfondo_pieno: false,
+            widget_musica: false,
             widget_angolo: "basso-destra".into(),
             widget_schermo: String::new(),
             animale_schermi: BTreeMap::new(),

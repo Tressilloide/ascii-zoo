@@ -9,6 +9,7 @@ use crate::config::{
 };
 use crate::{dialog, tema};
 use crate::nerd::{self, Nerd};
+use crate::riproduzione::Riproduzione;
 use crate::stats::Stats;
 
 pub static HTML: &str = include_str!("../assets/ascii-zoo-wallpaper.html");
@@ -125,6 +126,7 @@ pub struct Menus {
     pub statistiche: CheckMenuItem,
     /// "Statistiche per nerd": (id della voce, voce)
     pub nerd: Vec<(&'static str, CheckMenuItem)>,
+    pub musica: CheckMenuItem,
     /// "Aspetto": dimensione, cornice, sfondo pieno
     pub dimensioni: Vec<CheckMenuItem>,
     pub cornici: Vec<CheckMenuItem>,
@@ -179,6 +181,8 @@ pub struct Core {
     tema_pagina: &'static str,
     /// le statistiche per nerd (sysinfo), lette solo quando servono
     nerd: Nerd,
+    /// widget "In riproduzione": il thread che chiede ai lettori cosa suona
+    musica: Riproduzione,
 }
 
 impl Core {
@@ -186,7 +190,7 @@ impl Core {
     pub fn new(solo_windows: bool) -> (Self, Menu) {
         let cfg = Config::load();
         let (menu, menus) = build_menu(&cfg, solo_windows);
-        let mut core = Self { cfg, menus, schermi: Vec::new(), tema_pagina: "scuro", nerd: Nerd::default() };
+        let mut core = Self { cfg, menus, schermi: Vec::new(), tema_pagina: "scuro", nerd: Nerd::default(), musica: Riproduzione::default() };
         core.tema_pagina = core.tema_ora();
         zoo_log!("tema: {} (alla pagina: {})", core.cfg.tema, core.tema_pagina);
         (core, menu)
@@ -275,6 +279,7 @@ impl Core {
             "conto": conto,
             "statistiche": qui && c.widget_statistiche,
             "nerd": nerd,
+            "musica": qui && c.widget_musica,
             "angolo": c.widget_angolo,
             "dimensione": c.widget_dimensione,
             "cornice": c.widget_cornice,
@@ -303,6 +308,7 @@ impl Core {
             // spente: sysinfo libera quello che aveva
             self.nerd.leggi(&[], &mut serde_json::Map::new());
         }
+        js.extend(self.musica.giro(self.cfg.widget_musica, visibile));
         js
     }
 
@@ -332,6 +338,8 @@ impl Core {
             ),
         ];
         v.extend(self.js_schermo(schermo));
+        // quello che vive nel programma e non nella pagina: torna dopo "Ricarica sfondo"
+        v.push(self.musica.js_attuale());
         v
     }
 
@@ -481,6 +489,12 @@ impl Core {
             }
         } else if id == m.statistiche.id().0 {
             self.cfg.widget_statistiche = m.statistiche.is_checked();
+            {
+                widget = true;
+                None
+            }
+        } else if id == m.musica.id().0 {
+            self.cfg.widget_musica = m.musica.is_checked();
             {
                 widget = true;
                 None
@@ -740,6 +754,8 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     let _ = widget.append(&conto);
     let _ = widget.append(&statistiche);
     let _ = widget.append(&nerd_sub);
+    let musica = CheckMenuItem::new("In riproduzione", true, cfg.widget_musica, None);
+    let _ = widget.append(&musica);
     let _ = widget.append(&PredefinedMenuItem::separator());
     let _ = widget.append(&aspetto);
     let _ = widget.append(&PredefinedMenuItem::separator());
@@ -779,6 +795,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         conto,
         statistiche,
         nerd,
+        musica,
         dimensioni,
         cornici,
         sfondo_pieno,

@@ -2957,6 +2957,7 @@ h1 {
       return;
     }
     if (name === 'statistiche') { impostaStats(val); return; }
+    if (name === 'musica') { impostaMusica(val); return; }
     if (name === 'orologio') { zoo.setClock(val === true || val === 'true'); return; }
     if (name === 'tema') { setTema(val); return; }
     if (name === 'nomi') { zoo.setNames(asObject(val)); return; }
@@ -2982,17 +2983,19 @@ h1 {
   }
 
   /* ---- widget ----
-     Riquadri di solo testo: nota, conto alla rovescia, statistiche del PC e per nerd.
-     Li accende il programma: zooSetting('widget', {qui, nota, conto, statistiche, nerd,
-     angolo, dimensione, cornice, sfondo}) e ogni pochi secondi zooSetting('statistiche',
-     {cpu, ram, batteria, carica, core, temp, freq, mem, swap, rete, disco, acceso,
-     processi, carico}): i valori che un sistema non ha non arrivano e la loro riga non c'è.
+     Riquadri di solo testo: nota, conto alla rovescia, statistiche del PC e per nerd, in
+     riproduzione. Li accende il programma: zooSetting('widget', {qui, nota, conto,
+     statistiche, nerd, musica, angolo, dimensione, cornice, sfondo}) e ogni pochi secondi
+     zooSetting('statistiche', {cpu, ram, batteria, carica, core, temp, freq, mem, swap,
+     rete, disco, acceso, processi, carico}): i valori che un sistema non ha non arrivano e
+     la loro riga non c'è. Cosa suona: zooSetting('musica', {titolo, artista, stato, pos,
+     durata, quando} oppure null).
      Nel browser: ?widget=demo per vederli con dati di prova (anche &cornice=linee,
      &dimensione=grandi, &sfondo=pieno). */
   var W = {
-    qui: true, nota: '', conto: null, statistiche: false, nerd: [],
+    qui: true, nota: '', conto: null, statistiche: false, nerd: [], musica: false,
     angolo: 'basso-destra', dimensione: 'normali', cornice: 'ascii', sfondo: 'trasparente'
-  }, stats = {};
+  }, stats = {}, M = null;
   var wbox = $('widgets'), LARGO = 30;
   // angoli in alto (sinistra, destra), in basso (sinistra, destra), orizzontale, verticale
   var CORNICI = { ascii: '++++-|', linee: '┌┐└┘─│', arrotondata: '╭╮╰╯─│' };
@@ -3090,6 +3093,36 @@ h1 {
     return r;
   }
 
+  /* in riproduzione: la posizione avanza da sola tra una lettura e l'altra */
+  function minuti(ms) {
+    var s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+    s = s % 60;
+    return (h ? h + ':' + (m < 10 ? '0' : '') : '') + m + ':' + (s < 10 ? '0' : '') + s;
+  }
+  function posizione() {
+    if (!M || M.pos == null) return null;
+    var p = M.pos + (M.stato === 'play' ? Math.max(0, Date.now() - M.quando) : 0);
+    return M.durata ? Math.min(p, M.durata) : p;
+  }
+  function righeMusica() {
+    if (M.permesso) return [riga('manca il permesso:'), riga('Impostazioni di Sistema >'), riga('Privacy e sicurezza >'), riga('Automazione > ASCII Zoo')];
+    // ▶ e ❚❚ non sono nel carattere incorporato: caselle di un carattere (FE0E: niente
+    // emoji); l'icona occupa sempre due caselle
+    var icona = M.stato === 'play' ? '<i><span class="g">▶\ufe0e</span></i> ' : '<i>' + g('❚❚') + '</i>';
+    var t = pad(M.titolo || '(senza titolo)', LARGO - 6).replace(/\s+$/, '');
+    var r = [{ len: 3 + t.length, html: icona + ' <b>' + esc(t) + '</b>' }];
+    if (M.artista) r.push(riga(M.artista));
+    var p = posizione();
+    if (p != null && M.durata) {
+      var tempo = minuti(p) + ' / ' + minuti(M.durata), n = LARGO - 3 - tempo.length - 3;
+      var pieni = Math.round(Math.min(1, p / M.durata) * n);
+      r.push({ len: n + 3 + tempo.length, html: '[<i>' + ripeti('#', pieni) + '</i>' + ripeti('.', n - pieni) + '] <b>' + esc(tempo) + '</b>' });
+    } else if (p != null || M.durata) {
+      r.push(riga(p != null ? minuti(p) : minuti(M.durata)));
+    }
+    return r;
+  }
+
   function disegnaWidget() {
     var html = '';
     if (W.nota) html += riquadro('nota', a_capo(W.nota, LARGO - 3).map(function (t) { return riga(t, 'b'); }));
@@ -3110,6 +3143,8 @@ h1 {
       var n = righeNerd();
       html += riquadro('sistema', n.length ? n : [riga('in attesa dei dati...')]);
     }
+    // niente in riproduzione: il riquadro non c'è
+    if (W.musica && M) html += riquadro('in riproduzione', righeMusica());
     wbox.setAttribute('data-angolo', W.angolo);
     wbox.setAttribute('data-dimensione', W.dimensione);
     wbox.setAttribute('data-cornice', W.cornice);
@@ -3125,6 +3160,7 @@ h1 {
     W.conto = v.conto && typeof v.conto === 'object' ? { data: String(v.conto.data || ''), etichetta: String(v.conto.etichetta || '').slice(0, 40) } : null;
     W.statistiche = !!v.statistiche;
     W.nerd = Array.isArray(v.nerd) ? v.nerd.filter(function (x) { return typeof x === 'string'; }) : [];
+    W.musica = !!v.musica;
     W.angolo = /^(alto|basso)-(destra|sinistra)$/.test(v.angolo) ? v.angolo : 'basso-destra';
     W.dimensione = scelta(v.dimensione, ['piccoli', 'normali', 'grandi'], 'normali');
     W.cornice = scelta(v.cornice, Object.keys(CORNICI), 'ascii');
@@ -3147,7 +3183,25 @@ h1 {
     if (stats.rete && stats.rete.length !== 2) stats.rete = null;
     if (W.statistiche || W.nerd.length) disegnaWidget();
   }
-  setInterval(disegnaWidget, 60000); // il conto alla rovescia cambia a mezzanotte
+  function impostaMusica(v) {
+    v = asObject(v);
+    var ms = function (x) { return typeof x === 'number' && isFinite(x) && x >= 0 ? x : null; };
+    if (v && v.permesso) M = { permesso: true };
+    else if (v && (v.titolo || v.artista)) {
+      M = {
+        titolo: String(v.titolo || '').slice(0, 200), artista: String(v.artista || '').slice(0, 200),
+        stato: v.stato === 'play' ? 'play' : 'pausa', pos: ms(v.pos), durata: ms(v.durata) || null,
+        quando: ms(v.quando) || Date.now()
+      };
+    } else M = null;
+    if (W.musica) disegnaWidget();
+  }
+  setInterval(function () {
+    // il conto alla rovescia cambia a mezzanotte; quello che suona va avanti ogni secondo
+    var ora = new Date();
+    if (W.musica && M && M.stato === 'play' && zoo.running) disegnaWidget();
+    else if (ora.getSeconds() === 0) disegnaWidget();
+  }, 1000);
   disegnaWidget();
 
   /* Tema: scuro (di serie), chiaro oppure auto, che segue il sistema (prefers-color-scheme)
@@ -3331,7 +3385,7 @@ h1 {
     var tra = new Date(Date.now() + 12 * 86400000), q = function (k) { var m = new RegExp('[?&]' + k + '=([\\w-]+)').exec(location.search); return m && m[1]; };
     impostaWidget({
       nota: 'comprare il mangime per KARPISA', conto: { etichetta: 'esame di analisi', data: tra.toISOString().slice(0, 10) }, statistiche: true,
-      nerd: ['core', 'temperatura', 'frequenza', 'memoria', 'rete', 'disco', 'acceso', 'processi', 'carico'],
+      nerd: ['core', 'temperatura', 'frequenza', 'memoria', 'rete', 'disco', 'acceso', 'processi', 'carico'], musica: true,
       angolo: q('angolo'), dimensione: q('dimensione'), cornice: q('cornice'), sfondo: q('sfondo')
     });
     var finte = function (cpu) {
@@ -3343,6 +3397,7 @@ h1 {
       };
     };
     setInterval(function () { impostaStats(finte(8 + Math.random() * 30)); }, 2000);
+    impostaMusica({ titolo: 'Ninna nanna per carpe', artista: 'KARPISA e i Ninfei', stato: q('musica') === 'pausa' ? 'pausa' : 'play', pos: 83000, durata: 225000, quando: Date.now() });
     impostaStats(finte(18));
   }
 

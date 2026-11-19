@@ -13,6 +13,7 @@
 mod config;
 mod foto;
 mod nerd;
+mod riproduzione;
 mod shared;
 
 #[cfg_attr(target_os = "macos", path = "dialog_mac.rs")]
@@ -21,6 +22,9 @@ mod dialog;
 #[cfg_attr(target_os = "macos", path = "power_mac.rs")]
 #[cfg_attr(target_os = "linux", path = "power_linux.rs")]
 mod power;
+#[cfg_attr(target_os = "macos", path = "musica_mac.rs")]
+#[cfg_attr(target_os = "linux", path = "musica_linux.rs")]
+mod musica;
 #[cfg_attr(target_os = "macos", path = "stats_mac.rs")]
 #[cfg_attr(target_os = "linux", path = "stats_linux.rs")]
 mod stats;
