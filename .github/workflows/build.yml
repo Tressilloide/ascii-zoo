@@ -489,6 +489,10 @@ jobs:
         run: |
           echo "set man-db/auto-update false" | sudo debconf-communicate >/dev/null || true
           sudo rm -f /var/lib/man-db/auto-update
+          # come nel container per compilare: il mirror di Azure, perché archive e security
+          # di Ubuntu a volte non rispondono o danno "503 Service Unavailable"
+          sudo sed -i -E 's#https?://([a-z0-9.-]+\.)?(archive|security)\.ubuntu\.com/ubuntu/?#http://azure.archive.ubuntu.com/ubuntu/#g' \
+            /etc/apt/sources.list.d/*.sources /etc/apt/sources.list 2>/dev/null || true
           sudo apt-get update -q -o Acquire::Retries=3
           apt-get install -s -qq --no-install-recommends $PACCHETTI | grep '^Inst ' | sort > pacchetti.txt
           wc -l < pacchetti.txt
@@ -511,11 +515,15 @@ jobs:
         run: |
           mkdir -p ~/deb/partial
           ls ~/deb/*.deb 2>/dev/null | wc -l | xargs echo "pacchetti già nella cache:"
-          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
-            -o Dir::Cache::Archives="$HOME/deb" -o APT::Keep-Downloaded-Packages=true -o APT::Sandbox::User=root \
-            -o Acquire::Retries=3 -o Acquire::http::Timeout=30 \
-            -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold \
-            $PACCHETTI </dev/null
+          installa() {
+            sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
+              -o Dir::Cache::Archives="$HOME/deb" -o APT::Keep-Downloaded-Packages=true -o APT::Sandbox::User=root \
+              -o Acquire::Retries=3 -o Acquire::http::Timeout=30 \
+              -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold \
+              $PACCHETTI </dev/null
+          }
+          # un secondo tentativo dopo una pausa: i .deb già arrivati restano nella cartella
+          installa || { echo "::warning::apt non ha scaricato tutto, riprovo tra 30 secondi"; sleep 30; installa; }
           # nella cache solo le versioni che servono adesso, non quelle vecchie
           sudo apt-get autoclean -q -o Dir::Cache::Archives="$HOME/deb"
           sudo chown -R "$USER" ~/deb
