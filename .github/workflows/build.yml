@@ -117,10 +117,20 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: app
+          workspaces: |
+            app
+            dreams/macos
 
       - name: Compila
         working-directory: app
+        run: |
+          cargo build --release --locked --target aarch64-apple-darwin
+          cargo build --release --locked --target x86_64-apple-darwin
+
+      # lo screensaver, "ASCII Zoo.saver": una libreria che macOS carica nel suo processo
+      # dei salvaschermo (dreams/macos)
+      - name: Compila lo screensaver
+        working-directory: dreams/macos
         run: |
           cargo build --release --locked --target aarch64-apple-darwin
           cargo build --release --locked --target x86_64-apple-darwin
@@ -134,9 +144,28 @@ jobs:
             app/target/aarch64-apple-darwin/release/ascii-zoo \
             app/target/x86_64-apple-darwin/release/ascii-zoo
           sed "s/@VERSION@/$version/g" app/macos/Info.plist > "$app/Contents/Info.plist"
+          # il modulo dello screensaver, con la versione dell'app, dentro l'app: è lei che lo
+          # installa in ~/Library/Screen Savers
+          saver="build/ASCII Zoo.saver"
+          mkdir -p "$saver/Contents/MacOS"
+          lipo -create -output "$saver/Contents/MacOS/AsciiZoo" \
+            dreams/macos/target/aarch64-apple-darwin/release/libascii_dreams_macos.dylib \
+            dreams/macos/target/x86_64-apple-darwin/release/libascii_dreams_macos.dylib
+          sed "s/@VERSION@/$version/g" dreams/macos/Info.plist > "$saver/Contents/Info.plist"
+          # la miniatura nella lista dei salvaschermo: un pezzo dell'aurora (90×58 punti)
+          mkdir -p "$saver/Contents/Resources"
+          sips --resampleHeight 116 dreams/docs/aurora.png --out build/miniatura.png
+          sips -c 116 180 build/miniatura.png --out "$saver/Contents/Resources/thumbnail@2x.png"
+          sips --resampleHeight 58 dreams/docs/aurora.png --out build/miniatura.png
+          sips -c 58 90 build/miniatura.png --out "$saver/Contents/Resources/thumbnail.png"
+          sips -g pixelWidth -g pixelHeight "$saver"/Contents/Resources/thumbnail*.png
           # firma "ad hoc": non è un certificato Apple, ma i Mac con Apple Silicon
-          # non avviano codice senza nessuna firma
+          # non avviano codice senza nessuna firma. Prima il modulo, poi l'app che lo contiene
+          codesign --force --sign - "$saver"
+          cp -R "$saver" "$app/Contents/Resources/"
           codesign --force --deep --sign - "$app"
+          codesign --verify --strict --verbose=2 "$app"
+          codesign --verify --strict --verbose=2 "$app/Contents/Resources/ASCII Zoo.saver"
           mkdir build/dmg
           cp -R "$app" build/dmg/
           ln -s /Applications build/dmg/Applications
@@ -146,6 +175,44 @@ jobs:
 
       - name: Prova - statistiche per nerd
         run: '"build/ASCII Zoo.app/Contents/MacOS/ascii-zoo" --statistiche'
+
+      # il modulo come lo carica macOS: NSBundle, NSPrincipalClass, una vista grande e
+      # un'anteprima nello stesso processo; le immagini non devono essere vuote e alla
+      # notifica di fine salvaschermo il processo deve uscire da solo
+      - name: Prova - lo screensaver si carica e disegna
+        run: |
+          xcrun swiftc -O -o prova-saver .github/macos-saver-test/saver.swift
+          ./prova-saver "build/ASCII Zoo.app/Contents/Resources/ASCII Zoo.saver" prova-screensaver/dentro-app --willstop
+          echo "uscito con 0 dopo com.apple.screensaver.willstop"
+
+      # l'installazione che fa la voce "Usa come screensaver…" (senza aprire le impostazioni):
+      # un modulo di altri con lo stesso nome non si tocca; il nostro arriva senza la
+      # quarantena anche se l'originale ce l'ha, e da lì si carica
+      - name: Prova - installazione dello screensaver
+        run: |
+          app="build/ASCII Zoo.app"
+          mod="$HOME/Library/Screen Savers/ASCII Zoo.saver"
+          mkdir -p "$mod/Contents"
+          printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' '<plist version="1.0"><dict>' \
+            '<key>CFBundleIdentifier</key><string>com.example.altro</string></dict></plist>' > "$mod/Contents/Info.plist"
+          if "$app/Contents/MacOS/ascii-zoo" --installa-salvaschermo; then
+            echo "::error::l'installazione ha sostituito un modulo di altri"; exit 1
+          fi
+          grep -q com.example.altro "$mod/Contents/Info.plist" || { echo "::error::il modulo di altri è cambiato"; exit 1; }
+          rm -rf "$mod"
+          find "$app/Contents/Resources/ASCII Zoo.saver" -type f -exec xattr -w com.apple.quarantine "0081;00000000;Safari;" {} \;
+          "$app/Contents/MacOS/ascii-zoo" --installa-salvaschermo
+          ls -lR "$mod"
+          if xattr -r "$mod" | grep -q quarantine; then
+            echo "::error::il modulo installato ha la quarantena"; exit 1
+          fi
+          diff -r "$app/Contents/Resources/ASCII Zoo.saver" "$mod"
+          codesign --verify --strict --verbose=2 "$mod"
+          ./prova-saver "$mod" prova-screensaver/installato
+          # per la prova dell'aggiornamento all'avvio (passo dopo): una versione diversa
+          version=$(grep -m1 '^version' app/Cargo.toml | cut -d'"' -f2)
+          sed -i '' "s#<string>$version</string>#<string>0.0.1</string>#" "$mod/Contents/Info.plist"
+          grep -q 0.0.1 "$mod/Contents/Info.plist"
 
       - name: Prova - avvia l'app e fotografa lo schermo
         run: |
@@ -181,6 +248,31 @@ jobs:
           fi
           kill "$pid"
 
+      # all'avvio l'app ha rimesso la sua versione dello screensaver al posto di quella vecchia
+      - name: Prova - l'app aggiorna lo screensaver installato
+        run: |
+          diff -r "build/ASCII Zoo.app/Contents/Resources/ASCII Zoo.saver" "$HOME/Library/Screen Savers/ASCII Zoo.saver"
+          grep -i "screensaver" app-macos.log || true
+
+      # come la voce del menu: installa e apre le impostazioni del salvaschermo. Solo foto
+      # da guardare, non fa fallire il job: la lista del dialogo crea solo le voci visibili
+      # e System Events non la vede, quindi ASCII Zoo non si sceglie da qui
+      - name: Prova - apre le impostazioni del salvaschermo (foto)
+        continue-on-error: true
+        timeout-minutes: 3
+        run: |
+          sw_vers
+          "build/ASCII Zoo.app/Contents/MacOS/ascii-zoo" --installa-salvaschermo --apri-impostazioni
+          sleep 10
+          screencapture -x prova-screensaver/impostazioni.png
+          # su macOS 26 si apre il dialogo del salvaschermo: "Custom" mostra la lista dei
+          # salvaschermo (il punto viene dalla foto qui sopra, 1024×768)
+          if [ -x ./clic ]; then
+            ./clic 700 415; sleep 8
+            screencapture -x prova-screensaver/impostazioni-lista.png
+          fi
+          osascript -e 'tell application "System Settings" to quit' || true
+
       - uses: actions/upload-artifact@v4
         with:
           name: ascii-zoo-macos
@@ -191,6 +283,13 @@ jobs:
         with:
           name: prova-macos
           path: prova-macos.png
+          if-no-files-found: warn
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prova-macos-screensaver
+          path: prova-screensaver/
           if-no-files-found: warn
 
   # Il programma per Linux già compilato, che va nelle Release e che linux/install.sh
@@ -212,24 +311,50 @@ jobs:
     timeout-minutes: 45
     container: ubuntu:22.04
     steps:
-      # archive.ubuntu.com dai runner x86_64 a volte non risponde per ore (19/11: tre run
-      # ferme 45 minuti su apt-get update): apt prova più mirror in fila (metodo mirror+file),
-      # passa al successivo dopo 20 secondi senza risposta, e il passo ha un limite di tempo.
-      # ports.ubuntu.com (aarch64) non si tocca.
-      - name: Strumenti e librerie per compilare
-        timeout-minutes: 15
+      # Dai runner x86_64 archive.ubuntu.com a volte non risponde, e anche quando va ogni
+      # pacchetto può metterci un secondo (19/11: tre run ferme 45 minuti, poi 268 pacchetti
+      # su 423 in 20 minuti). Quindi: il mirror di Azure (ports.ubuntu.com per aarch64 non si
+      # tocca), i .deb scaricati 16 alla volta, e tenuti nella cache di GitHub con una
+      # chiave fatta dall'elenco dei pacchetti e delle loro versioni.
+      - name: Mirror di Ubuntu ed elenco dei pacchetti
+        id: deb
+        timeout-minutes: 10
         run: |
-          if grep -q 'archive.ubuntu.com' /etc/apt/sources.list; then
-            # senza "priority" apt li proverebbe in un ordine a caso
-            printf '%s\tpriority:%s\n' http://azure.archive.ubuntu.com/ubuntu/ 1 \
-              http://mirrors.edge.kernel.org/ubuntu/ 2 http://archive.ubuntu.com/ubuntu/ 3 > /etc/apt/mirrors.txt
-            sed -i -E 's#http://(archive|security)\.ubuntu\.com/ubuntu/?#mirror+file:/etc/apt/mirrors.txt#' /etc/apt/sources.list
-          fi
-          printf 'Acquire::http::Timeout "20";\nAcquire::Retries "3";\n' > /etc/apt/apt.conf.d/99rete
+          sed -i -E 's#http://(archive|security)\.ubuntu\.com/ubuntu/?#http://azure.archive.ubuntu.com/ubuntu/#' /etc/apt/sources.list
+          printf 'Acquire::http::Timeout "30";\nAcquire::Retries "3";\nAPT::Keep-Downloaded-Packages "true";\n' > /etc/apt/apt.conf.d/99rete
+          # l'immagine docker di Ubuntu cancella i .deb dopo ogni installazione
+          rm -f /etc/apt/apt.conf.d/docker-clean
           apt-get update -q
-          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
-            ca-certificates curl git build-essential pkg-config \
-            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev libxdo-dev
+          # "Inst nome [versione di adesso] (versione nuova …" → nome=versione nuova
+          apt-get install -s -qq --no-install-recommends $PACCHETTI \
+            | sed -nE 's/^Inst ([^ ]+) (\[[^]]*\] )?\(([^ ]+) .*/\1=\3/p' | sort > /tmp/pacchetti.txt
+          wc -l < /tmp/pacchetti.txt
+          echo "chiave=$(sha256sum /tmp/pacchetti.txt | cut -c1-16)" >> "$GITHUB_OUTPUT"
+        env:
+          PACCHETTI: ca-certificates curl git build-essential pkg-config libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev libxdo-dev
+
+      - uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives/*.deb
+          key: deb-jammy-${{ matrix.arch }}-${{ steps.deb.outputs.chiave }}
+          restore-keys: deb-jammy-${{ matrix.arch }}-
+
+      - name: Strumenti e librerie per compilare
+        timeout-minutes: 20
+        run: |
+          cd /var/cache/apt/archives
+          ls ./*.deb 2>/dev/null | wc -l | xargs echo "pacchetti già nella cache:"
+          # quelli che mancano, 16 alla volta (apt-get download controlla gli hash); se qualcuno
+          # non arriva lo riprende apt-get install qui sotto
+          while IFS='=' read -r nome versione; do
+            ls "${nome}_"*.deb >/dev/null 2>&1 || echo "$nome=$versione"
+          done < /tmp/pacchetti.txt > /tmp/mancanti.txt
+          wc -l < /tmp/mancanti.txt | xargs echo "da scaricare:"
+          xargs -r -P 16 -n 8 apt-get download -qq < /tmp/mancanti.txt 2>&1 | grep -v unsandboxed || true
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends -o Dpkg::Use-Pty=0 $PACCHETTI
+          apt-get autoclean -q
+        env:
+          PACCHETTI: ca-certificates curl git build-essential pkg-config libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev libxdo-dev
 
       - uses: actions/checkout@v4
 

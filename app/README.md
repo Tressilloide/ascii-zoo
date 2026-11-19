@@ -111,7 +111,8 @@ cargo build --release --locked
 L'eseguibile è `target/release/ascii-zoo` e si può avviare così. Per avere l'app vera
 (`ASCII Zoo.app`, senza icona nel Dock) e il DMG, guarda il job `macos` di
 [`../.github/workflows/build.yml`](../.github/workflows/build.yml): mette insieme l'app
-con `app/macos/Info.plist` e crea il DMG con `hdiutil`.
+con `app/macos/Info.plist`, ci mette dentro lo screensaver (il modulo `ASCII Zoo.saver`,
+compilato da [`../dreams/macos`](../dreams/macos)) e crea il DMG con `hdiutil`.
 
 ### Linux
 Il modo semplice è [`../linux/install.sh`](../linux/install.sh): scarica il programma già
@@ -170,6 +171,7 @@ loro `.sha256`. Da quella Release in poi `install.sh` scarica il programma invec
 | `src/stats.rs`, `src/stats_mac.rs` | CPU, RAM (e batteria su Windows) per il widget "pc" |
 | `src/mac.rs` | macOS: finestre al livello del desktop, barra dei menu, controllo degli schermi |
 | `src/power_mac.rs`, `src/dialog_mac.rs` | macOS: batteria, finestrella dei nomi |
+| `src/salvaschermo_mac.rs` | macOS: installa e aggiorna lo screensaver (`ASCII Zoo.saver`, da `../dreams/macos`) |
 | `src/linux.rs` | Linux: finestre di tipo "desktop", icona AppIndicator, controllo degli schermi, margini della barra in alto |
 | `src/power_linux.rs`, `src/stats_linux.rs`, `src/dialog_linux.rs` | Linux: batteria e CPU/RAM da `/sys` e `/proc`, finestrella dei nomi (zenity o kdialog) |
 | `src/config.rs` | impostazioni (nomi, rotazione, widget, animale per schermo) e avvio automatico |

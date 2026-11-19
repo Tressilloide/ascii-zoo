@@ -4,6 +4,8 @@
 //!
 //! L'app (`app/`) chiama `avvia` quando Windows la lancia come salvaschermo; il
 //! programma `ascii-dreams` di questa cartella fa lo stesso, per provarlo da solo.
+//! Su macOS lo screensaver è il modulo `ASCII Zoo.saver` della cartella `macos/`, che
+//! usa `Motore`.
 //!
 //! Windows avvia i salvaschermo (.scr) con questi argomenti:
 //!   /s           a schermo intero
@@ -149,7 +151,7 @@ pub fn avvia(args: &[String]) {
     }
     #[cfg(not(windows))]
     {
-        eprintln!("Per ora il salvaschermo funziona su Windows. Qui si può usare: --png file.png [--scena id]");
+        eprintln!("Da qui il salvaschermo parte solo su Windows (su macOS è il modulo ASCII Zoo.saver, in macos/). Qui si può usare: --png file.png [--scena id]");
     }
 }
 
