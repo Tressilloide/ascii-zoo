@@ -152,6 +152,12 @@ Nel workflow:
 - `linux` prova la riserva: con una Release senza programma per Linux, `install.sh` compila
   questo commit; poi avvia il programma sotto Xvfb, prova il comando da una riga e la
   disinstallazione.
+- `linux-gnome-clic` prova in un GNOME Shell senza schermo l'estensione per il clic sul
+  desktop ([`../.github/gnome-click-test`](../.github/gnome-click-test)) e, con il programma
+  di `linux-binario`, lo screensaver ([`../.github/gnome-screensaver-test`](../.github/gnome-screensaver-test)):
+  deve partire dopo un minuto senza input, stare sopra a tutto (anche sopra una finestra con
+  il focus) con la barra in alto nascosta, chiudersi a un tasto, ripartire dopo un altro
+  minuto e chiudersi quando mutter dice che qualcuno ha usato il PC (`ResetIdletime`).
 
 > Lo sfondo è una copia in `assets/`: dopo aver modificato `wallpaper/index.html`
 > (nella radice della repo) copialo in `assets/ascii-zoo-wallpaper.html` e ricompila.

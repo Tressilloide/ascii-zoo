@@ -327,7 +327,12 @@ jobs:
   # senza schermo con le icone di DING, come su Ubuntu: clic simulati sul desktop, su una
   # finestra, sulla barra in alto e per chiudere un menu; ad ASCII Zoo (qui un finto, sullo
   # stesso nome D-Bus) devono arrivare solo quelli sul desktop.
+  # Nello stesso GNOME Shell anche lo screensaver di Linux, con il programma vero di
+  # linux-binario: parte dopo un minuto senza input, sta sopra a tutto e si chiude al
+  # primo input. Se il programma per ARM non si compila questa prova si fa lo stesso.
   linux-gnome-clic:
+    needs: linux-binario
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -347,7 +352,9 @@ jobs:
           wc -l < pacchetti.txt
           echo "chiave=$(sha256sum pacchetti.txt | cut -c1-16)" >> "$GITHUB_OUTPUT"
         env:
-          PACCHETTI: gnome-shell gnome-shell-extension-desktop-icons-ng xwayland zenity python3-gi dbus-x11
+          PACCHETTI: >-
+            gnome-shell gnome-shell-extension-desktop-icons-ng xwayland zenity python3-gi dbus-x11
+            libwebkit2gtk-4.1-0 libayatana-appindicator3-1 libxdo3
 
       - uses: actions/cache@v4
         with:
@@ -372,10 +379,29 @@ jobs:
           sudo chown -R "$USER" ~/deb
           gnome-shell --version
         env:
-          PACCHETTI: gnome-shell gnome-shell-extension-desktop-icons-ng xwayland zenity python3-gi dbus-x11
+          PACCHETTI: >-
+            gnome-shell gnome-shell-extension-desktop-icons-ng xwayland zenity python3-gi dbus-x11
+            libwebkit2gtk-4.1-0 libayatana-appindicator3-1 libxdo3
 
       - name: Prova - clic simulati
         run: bash .github/gnome-click-test/run.sh
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ascii-zoo-linux-x86_64
+          path: dist
+
+      - name: Prova - screensaver (dopo un minuto senza input, poi un tasto)
+        run: |
+          tar -C dist -xzf dist/ascii-zoo-linux-x86_64.tar.gz
+          bash .github/gnome-screensaver-test/run.sh dist/ascii-zoo-linux-x86_64/ascii-zoo .
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: prova-screensaver-gnome
+          path: prova-screensaver-*
+          if-no-files-found: warn
 
   # La riserva di linux/install.sh: se la Release non ha il programma per Linux (qui un
   # indirizzo dove non c'è niente) compila dal sorgente, cioè questo commit. Lo si esegue
