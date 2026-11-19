@@ -256,28 +256,11 @@ jobs:
             ./clic 700 415; sleep 8
             screencapture -x prova-screensaver/impostazioni-lista.png
           fi
-          # si cerca la voce "ASCII Zoo" nella lista (Accessibilità, System Events) e la si
-          # sceglie: l'anteprima in alto la disegna allora legacyScreenSaver, il processo vero
-          # dei salvaschermo, nella sua sandbox
-          osascript -e 'tell application "System Events" to tell process "System Settings"
-            set n to 0
-            repeat with e in (entire contents of window 1)
-              set n to n + 1
-              set t to ""
-              try
-                set t to (name of e as text) & " " & (description of e as text)
-              end try
-              if t contains "ASCII Zoo" then
-                try
-                  click e
-                on error
-                  perform action "AXPress" of e
-                end try
-                return "cliccato: " & (class of e as text) & " " & t
-              end if
-            end repeat
-            return "ASCII Zoo non trovato fra " & n & " elementi"
-          end tell' || true
+          # si sceglie la voce "ASCII Zoo" nella lista (Accessibilità, System Events):
+          # l'anteprima in alto la disegna allora legacyScreenSaver, il processo vero dei
+          # salvaschermo, nella sua sandbox
+          osascript .github/macos-saver-test/scegli.applescript || true
+          screencapture -x prova-screensaver/impostazioni-in-fondo.png
           sleep 10
           screencapture -x prova-screensaver/impostazioni-anteprima.png
           ps ax | grep -i "[s]creensaver" || true
