@@ -36,9 +36,11 @@ Mette lo sfondo animato (`wallpaper/index.html`) dietro le icone del desktop, su
   - **Koi nello stagno in carica** (vale con "A rotazione")
   - **Clic sul desktop agli animali**: un clic sinistro sul desktop arriva alla pagina con
     `zooPoke(x, y)`. Windows: un hook del mouse (`WH_MOUSE_LL`) che guarda la classe della
-    finestra sotto il punto. macOS: un monitor globale di `NSEvent` e la lista delle finestre
-    sullo schermo (`CGWindowListCopyWindowInfo`): vale se la prima finestra sotto il punto è
-    al livello delle icone del Finder o più giù. Linux: l'estensione di GNOME Shell in
+    finestra sotto il punto. macOS: un monitor globale di `NSEvent`; la finestra che riceve
+    il clic (quella dell'evento, o `windowNumberAtPoint`) deve essere al livello delle icone
+    del Finder o più giù. Non basta la prima finestra sotto il punto nella lista di
+    `CGWindowListCopyWindowInfo`: il Dock ne ha una grande quanto lo schermo, trasparente ai
+    clic fuori dalla sua striscia (lo ha mostrato la prova in CI). Linux: l'estensione di GNOME Shell in
     [`../linux/gnome`](../linux/gnome) chiama il metodo D-Bus `Clic(x, y, larghezza,
     altezza)` sul nome `io.github.tressilloide.AsciiZoo`, che il programma tiene solo con
     l'opzione accesa

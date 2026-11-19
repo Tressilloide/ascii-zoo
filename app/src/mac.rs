@@ -20,7 +20,7 @@ use objc2::runtime::AnyObject;
 use objc2_app_kit::{
     NSEvent, NSEventMask, NSRunningApplication, NSWindow, NSWindowCollectionBehavior, NSWindowOcclusionState,
 };
-use objc2_foundation::{ns_string, NSArray, NSDictionary, NSNumber, NSRect, NSString};
+use objc2_foundation::{ns_string, MainThreadMarker, NSArray, NSDictionary, NSNumber, NSPoint, NSRect, NSString};
 use tao::dpi::{PhysicalPosition, PhysicalSize};
 use tao::event::{Event, StartCause};
 use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy, EventLoopWindowTarget};
@@ -55,13 +55,15 @@ const K_CG_DESKTOP_WINDOW_LEVEL_KEY: i32 = 2;
 const K_CG_DESKTOP_ICON_WINDOW_LEVEL_KEY: i32 = 18;
 /// kCGWindowListOptionOnScreenOnly: solo le finestre sullo schermo, dalla più in alto
 const K_CG_WINDOW_LIST_ON_SCREEN_ONLY: u32 = 1;
+/// kCGWindowListOptionIncludingWindow: solo la finestra indicata
+const K_CG_WINDOW_LIST_INCLUDING_WINDOW: u32 = 1 << 3;
 
 enum Evento {
     Menu(String),
     PaginaPronta,
     /// clic sinistro in un'altra app, nel punto (x, y) in coordinate di Cocoa (punti, origine
-    /// in basso a sinistra dello schermo principale)
-    Clic(f64, f64),
+    /// in basso a sinistra dello schermo principale), con il numero della finestra che lo riceve
+    Clic(f64, f64, isize),
 }
 
 /// lo sfondo di uno schermo (prima la WebView, poi la sua finestra: i campi si
@@ -163,55 +165,40 @@ struct App {
     monitor_clic: Option<Retained<AnyObject>>,
 }
 
-/// Nel punto (x, y), in coordinate di CoreGraphics (punti, origine in alto a sinistra dello
-/// schermo principale), c'è il desktop? Si guarda la prima finestra visibile che contiene il
-/// punto, saltando le nostre e quelle trasparenti: se è al livello delle icone del Finder o
-/// più giù (la scrivania del Finder, con le sue icone, o l'immagine di sfondo) sì; se è una
-/// finestra, il Dock, la barra dei menu e così via, no. Nessuna finestra: sì.
-fn sul_desktop(x: f64, y: f64) -> bool {
+/// Una finestra (di qualsiasi app) dal suo numero: livello, app, nome.
+fn finestra(numero: isize) -> Option<(f64, String, String)> {
+    let n = u32::try_from(numero).ok().filter(|&n| n > 0)?;
+    let lista = unsafe { Retained::from_raw(CGWindowListCopyWindowInfo(K_CG_WINDOW_LIST_INCLUDING_WINDOW, n)) }?;
+    let d = lista.iter().next()?;
+    let testo = |chiave: &NSString| {
+        d.objectForKey(chiave).and_then(|o| o.downcast::<NSString>().ok()).map(|s| s.to_string()).unwrap_or_default()
+    };
+    let livello = d.objectForKey(ns_string!("kCGWindowLayer"))?.downcast::<NSNumber>().ok()?.doubleValue();
+    Some((livello, testo(ns_string!("kCGWindowOwnerName")), testo(ns_string!("kCGWindowName"))))
+}
+
+/// Il clic nel punto (x, y), in coordinate di Cocoa, è andato al desktop? Lo dice il window
+/// server: la finestra che riceve il clic è quella dell'evento (`numero_evento`) o, se manca,
+/// quella che "verrebbe colpita da un clic" in quel punto (`windowNumberAtPoint`, che salta
+/// le finestre trasparenti ai clic, come lo sfondo). Se è al livello delle icone del Finder
+/// o più giù (la scrivania del Finder, con le sue icone, o l'immagine di sfondo) sì; se è una
+/// finestra, il Dock, la barra dei menu e così via, no.
+/// Non basta guardare la lista delle finestre sotto il punto: il Dock ha una finestra
+/// grande quanto tutto lo schermo, trasparente ai clic fuori dalla sua striscia.
+fn sul_desktop(x: f64, y: f64, numero_evento: isize) -> bool {
     let livello_icone = unsafe { CGWindowLevelForKey(K_CG_DESKTOP_ICON_WINDOW_LEVEL_KEY) } as f64;
-    let mio = std::process::id() as f64;
-    let Some(lista) = (unsafe { Retained::from_raw(CGWindowListCopyWindowInfo(K_CG_WINDOW_LIST_ON_SCREEN_ONLY, 0)) })
-    else {
-        return false;
-    };
-    let numero = |d: &NSDictionary<NSString, AnyObject>, chiave: &NSString| -> Option<f64> {
-        d.objectForKey(chiave)?.downcast::<NSNumber>().ok().map(|n| n.doubleValue())
-    };
-    for d in lista.iter() {
-        if numero(&d, ns_string!("kCGWindowOwnerPID")) == Some(mio)
-            || numero(&d, ns_string!("kCGWindowAlpha")).is_some_and(|a| a <= 0.0)
-        {
-            continue;
-        }
-        let Some(b) = d.objectForKey(ns_string!("kCGWindowBounds")) else { continue };
-        let mut r = NSRect::ZERO;
-        if !unsafe { CGRectMakeWithDictionaryRepresentation(Retained::as_ptr(&b), &mut r) } {
-            continue;
-        }
-        if x < r.origin.x || y < r.origin.y || x >= r.origin.x + r.size.width || y >= r.origin.y + r.size.height {
-            continue;
-        }
-        let livello = numero(&d, ns_string!("kCGWindowLayer")).unwrap_or(0.0);
-        if livello > livello_icone {
-            // per capire, con ASCII_ZOO_LOG=1, cosa c'è sopra il desktop in quel punto
-            let testo = |chiave: &NSString| {
-                d.objectForKey(chiave).and_then(|o| o.downcast::<NSString>().ok()).map(|s| s.to_string()).unwrap_or_default()
-            };
-            zoo_log!(
-                "clic: sopra il desktop c'è \"{}\" ({}) livello {livello} (icone {livello_icone}), {:.0}×{:.0} a {:.0},{:.0}, alpha {:?}",
-                testo(ns_string!("kCGWindowOwnerName")),
-                testo(ns_string!("kCGWindowName")),
-                r.size.width,
-                r.size.height,
-                r.origin.x,
-                r.origin.y,
-                numero(&d, ns_string!("kCGWindowAlpha"))
-            );
-        }
-        return livello <= livello_icone;
-    }
-    true
+    let numero_punto = MainThreadMarker::new()
+        .map(|mtm| NSWindow::windowNumberAtPoint_belowWindowWithWindowNumber(NSPoint::new(x, y), 0, mtm))
+        .unwrap_or(0);
+    let numero = if numero_evento > 0 { numero_evento } else { numero_punto };
+    let info = finestra(numero);
+    zoo_log!(
+        "clic: finestra dell'evento {numero_evento} {:?}, nel punto {numero_punto} {:?} (livello delle icone {livello_icone})",
+        finestra(numero_evento),
+        finestra(numero_punto)
+    );
+    // nessuna finestra: solo l'immagine di sfondo
+    info.is_none_or(|(livello, _, _)| livello <= livello_icone)
 }
 
 impl App {
@@ -316,9 +303,10 @@ impl App {
         match (self.core.cfg.clic_desktop, self.monitor_clic.is_some()) {
             (true, false) => {
                 let proxy = self.proxy.clone();
-                let blocco = RcBlock::new(move |_: NonNull<NSEvent>| {
+                let blocco = RcBlock::new(move |e: NonNull<NSEvent>| {
                     let p = NSEvent::mouseLocation();
-                    let _ = proxy.send_event(Evento::Clic(p.x, p.y));
+                    let numero = unsafe { e.as_ref() }.windowNumber();
+                    let _ = proxy.send_event(Evento::Clic(p.x, p.y, numero));
                 });
                 self.monitor_clic = NSEvent::addGlobalMonitorForEventsMatchingMask_handler(NSEventMask::LeftMouseDown, &blocco);
                 zoo_log!("clic sul desktop: monitor {}", if self.monitor_clic.is_some() { "acceso" } else { "non disponibile" });
@@ -334,7 +322,7 @@ impl App {
 
     /// clic nel punto (x, y) in coordinate di Cocoa: se lì c'è il desktop, lo riceve lo
     /// sfondo di quello schermo (la pagina ragiona in punti, come Cocoa, ma con l'origine in alto)
-    fn clic(&self, x: f64, y: f64) {
+    fn clic(&self, x: f64, y: f64, numero: isize) {
         if !self.core.cfg.clic_desktop {
             return;
         }
@@ -346,9 +334,7 @@ impl App {
             if s.paused {
                 return;
             }
-            // CoreGraphics ha l'origine in alto a sinistra dello schermo principale
-            let alto = unsafe { CGDisplayBounds(CGMainDisplayID()) }.size.height;
-            if !sul_desktop(x, alto - y) {
+            if !sul_desktop(x, y, numero) {
                 zoo_log!("clic a {x:.0},{y:.0}: non sul desktop (c'è una finestra, il Dock o la barra dei menu)");
                 return;
             }
@@ -541,7 +527,7 @@ pub fn run() {
             *control_flow = ControlFlow::WaitUntil(Instant::now() + GIRO);
         }
         Event::UserEvent(Evento::PaginaPronta) => app.push_settings(),
-        Event::UserEvent(Evento::Clic(x, y)) => app.clic(x, y),
+        Event::UserEvent(Evento::Clic(x, y, numero)) => app.clic(x, y, numero),
         Event::UserEvent(Evento::Menu(id)) => match app.core.on_menu(&id) {
             Esito::Cambiato(js) => {
                 if let Some(code) = js {
