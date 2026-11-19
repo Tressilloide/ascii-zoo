@@ -192,7 +192,24 @@ fn sul_desktop(x: f64, y: f64) -> bool {
         if x < r.origin.x || y < r.origin.y || x >= r.origin.x + r.size.width || y >= r.origin.y + r.size.height {
             continue;
         }
-        return numero(&d, ns_string!("kCGWindowLayer")).unwrap_or(0.0) <= livello_icone;
+        let livello = numero(&d, ns_string!("kCGWindowLayer")).unwrap_or(0.0);
+        if livello > livello_icone {
+            // per capire, con ASCII_ZOO_LOG=1, cosa c'è sopra il desktop in quel punto
+            let testo = |chiave: &NSString| {
+                d.objectForKey(chiave).and_then(|o| o.downcast::<NSString>().ok()).map(|s| s.to_string()).unwrap_or_default()
+            };
+            zoo_log!(
+                "clic: sopra il desktop c'è \"{}\" ({}) livello {livello} (icone {livello_icone}), {:.0}×{:.0} a {:.0},{:.0}, alpha {:?}",
+                testo(ns_string!("kCGWindowOwnerName")),
+                testo(ns_string!("kCGWindowName")),
+                r.size.width,
+                r.size.height,
+                r.origin.x,
+                r.origin.y,
+                numero(&d, ns_string!("kCGWindowAlpha"))
+            );
+        }
+        return livello <= livello_icone;
     }
     true
 }
