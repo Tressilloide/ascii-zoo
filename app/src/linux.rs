@@ -13,6 +13,8 @@
 //!   CPU e GPU per niente, e qui ogni fotogramma passa da XWayland
 //! - ogni 2 secondi: controllo degli schermi collegati, margini della barra in alto
 //!   per i widget
+//! - lo screensaver: lo fa partire l'app quando non si usa il PC (salvaschermo_linux.rs),
+//!   come processo a parte che disegna le scene di dreams/ (sogno_linux.rs)
 
 use std::cell::Cell;
 use std::os::linux::net::SocketAddrExt;
@@ -36,6 +38,16 @@ use crate::{foto, power};
 use crate::shared::{self, zoo_log, Core, Esito, Schermo, JS_START, JS_STOP, URL};
 use crate::stats::Stats;
 
+#[path = "salvaschermo_linux.rs"]
+mod salvaschermo;
+#[path = "sogno_linux.rs"]
+mod sogno;
+
+/// `ascii-zoo --salvaschermo [--finestra] [--scena id]`: lo screensaver, lanciato dall'app
+pub fn salvaschermo(args: &[String]) {
+    sogno::avvia(args);
+}
+
 /// ogni quanto si ricontrollano le pause: quando lo sfondo torna visibile riparte subito
 const GIRO: Duration = Duration::from_millis(500);
 /// ogni quanti giri si controllano batteria, schermi e margini (2 secondi)
@@ -46,6 +58,8 @@ enum Evento {
     PaginaPronta,
     /// clic sul desktop dall'estensione di GNOME Shell: x, y, larghezza, altezza
     Clic(f64, f64, f64, f64),
+    /// inattività, schermo bloccato… per lo screensaver
+    Salvaschermo(salvaschermo::Segnale),
 }
 
 /// Clic sul desktop. Sotto Wayland un programma non vede i clic fatti sulle altre finestre,
@@ -104,6 +118,8 @@ struct Screen {
     /// ultimi margini mandati alla pagina (barra in alto, dock…)
     margini: Option<[i32; 4]>,
     sonda: Sonda,
+    /// l'ultima risposta della sonda: un'app a schermo intero (o finestre) copre tutto
+    coperto: bool,
 }
 
 impl Screen {
@@ -212,6 +228,10 @@ struct App {
     bus: Option<gio::DBusConnection>,
     /// il nome DBUS_NOME, tenuto mentre "Clic sul desktop" è acceso
     nome_clic: Option<gio::OwnerId>,
+    /// lo screensaver: quando farlo partire, e il suo processo
+    salva: salvaschermo::Salvaschermo,
+    /// schermo bloccato o spento, all'ultimo controllo
+    bloccato: bool,
 }
 
 impl App {
@@ -246,19 +266,23 @@ impl App {
         }
     }
 
-    /// Pausa schermo per schermo: a batteria, con lo schermo bloccato o spento, con
-    /// un'app a schermo intero o finestre che coprono tutto lo sfondo. Da qui le due cose
-    /// non si distinguono (su Wayland non si vedono le finestre delle altre app): basta una
-    /// delle due voci del menu.
+    /// Pausa schermo per schermo: a batteria, con lo schermo bloccato o spento, mentre
+    /// gira lo screensaver, con un'app a schermo intero o finestre che coprono tutto lo
+    /// sfondo. Da qui le ultime due non si distinguono (su Wayland non si vedono le
+    /// finestre delle altre app): basta una delle due voci del menu.
     fn check_pause(&mut self) {
         let cfg = &self.core.cfg;
         let batteria = cfg.pausa_batteria && self.last_ac == Some(false);
         let bloccato = schermo_bloccato(self.bus.as_ref());
+        self.bloccato = bloccato;
+        let salvaschermo = self.salva.in_corso();
         let display = gtk::gdk::Display::default();
         let nascosto_conta = cfg.pausa_schermo_intero || cfg.pausa_coperto;
+        // la sonda serve se lo sfondo coperto è l'unico motivo di pausa che resta, e allo
+        // screensaver, per non partire sopra un'app a schermo intero
+        let sonda = (nascosto_conta || cfg.salvaschermo_minuti > 0) && !batteria && !bloccato && !salvaschermo;
         for s in &mut self.screens {
-            // la sonda serve solo se lo sfondo coperto è l'unico motivo che resta
-            let coperto = if nascosto_conta && !batteria && !bloccato {
+            s.coperto = if sonda {
                 let (cx, cy) = s.centro_logico();
                 let refresh = display
                     .as_ref()
@@ -271,11 +295,12 @@ impl App {
                 s.sonda.spegni();
                 false
             };
-            let pause = batteria || bloccato || coperto;
+            let coperto = s.coperto && nascosto_conta;
+            let pause = batteria || bloccato || salvaschermo || coperto;
             if pause != s.paused {
                 s.paused = pause;
                 zoo_log!(
-                    "schermo {}: {} (batteria {batteria}, bloccato {bloccato}, coperto {coperto})",
+                    "schermo {}: {} (batteria {batteria}, bloccato {bloccato}, screensaver {salvaschermo}, coperto {coperto})",
                     s.id,
                     if pause { "in pausa" } else { "riparte" }
                 );
@@ -472,7 +497,18 @@ fn make_screen(
     if let Some(w) = gw.window() {
         w.lower();
     }
-    Some(Screen { webview, window, pos, size, scala, id, paused: false, margini: None, sonda: Sonda::default() })
+    Some(Screen {
+        webview,
+        window,
+        pos,
+        size,
+        scala,
+        id,
+        paused: false,
+        margini: None,
+        sonda: Sonda::default(),
+        coperto: false,
+    })
 }
 
 /// Una sola copia per utente: un socket "astratto" (non è un file, sparisce da solo
@@ -561,17 +597,40 @@ pub fn run() {
     }));
 
     let (core, menu) = Core::new(false);
-    let mut menu = Some(menu);
     let bus = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE).ok();
     if let Some(bus) = &bus {
         if !registra_clic(bus, &proxy) {
             zoo_log!("clic sul desktop: non riesco a registrare l'oggetto D-Bus");
         }
     }
-    let mut app =
-        App { core, screens: Vec::new(), tray: None, last_ac: None, stats: Stats::default(), bus, nome_clic: None };
+    // lo screensaver: il suo sottomenu va dopo "Apri al login"
+    let p = std::sync::Mutex::new(proxy.clone());
+    let avvisa: std::sync::Arc<dyn Fn(salvaschermo::Segnale) + Send + Sync> = std::sync::Arc::new(move |s| {
+        if let Ok(p) = p.lock() {
+            let _ = p.send_event(Evento::Salvaschermo(s));
+        }
+    });
+    let salva = salvaschermo::Salvaschermo::new(bus.as_ref(), avvisa, &core.cfg);
+    salva.inserisci(&menu, &core.menus.avvio.id().0);
+    let mut menu = Some(menu);
+    let mut app = App {
+        core,
+        screens: Vec::new(),
+        tray: None,
+        last_ac: None,
+        stats: Stats::default(),
+        bus,
+        nome_clic: None,
+        salva,
+        bloccato: false,
+    };
     app.sync_clic();
     let mut giro: u32 = 0;
+    // Con ControlFlow::WaitUntil tao su Linux non mette nessun timer: controlla l'ora solo
+    // quando GTK si sveglia per qualcos'altro. Di solito lo sveglia la pagina, ma con lo
+    // sfondo in pausa (screensaver, batteria) può dormire per secondi: un timer di GLib
+    // lo sveglia ogni mezzo secondo, così i controlli arrivano quando devono.
+    glib::timeout_add_local(GIRO, || glib::ControlFlow::Continue);
 
     event_loop.run(move |event, target, control_flow| match event {
         Event::NewEvents(StartCause::Init) => {
@@ -589,6 +648,8 @@ pub fn run() {
         }
         Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
             giro = giro.wrapping_add(1);
+            let coperto = app.screens.iter().any(|s| s.coperto);
+            app.salva.giro(&app.core.cfg, app.bus.as_ref(), app.bloccato, coperto);
             if giro % GIRI_CONTROLLO == 0 {
                 app.check_screens(target, &proxy);
                 app.check_power(); // ricontrolla anche le pause
@@ -601,6 +662,14 @@ pub fn run() {
         }
         Event::UserEvent(Evento::PaginaPronta) => app.push_settings(),
         Event::UserEvent(Evento::Clic(x, y, w, h)) => app.clic(x, y, w, h),
+        Event::UserEvent(Evento::Salvaschermo(s)) => {
+            let coperto = app.screens.iter().any(|s| s.coperto);
+            app.salva.segnale(s, &app.core.cfg, app.bus.as_ref(), app.bloccato, coperto);
+            app.check_pause();
+        }
+        Event::UserEvent(Evento::Menu(id)) if app.salva.on_menu(&id, &mut app.core.cfg, app.bus.as_ref()) => {
+            app.check_pause();
+        }
         Event::UserEvent(Evento::Menu(id)) => match app.core.on_menu(&id) {
             Esito::Cambiato(js) => {
                 if let Some(code) = js {
@@ -618,6 +687,7 @@ pub fn run() {
                 }
             }
             Esito::Esci => {
+                app.salva.ferma(app.bus.as_ref(), "esco");
                 app.screens.clear();
                 app.tray = None;
                 *control_flow = ControlFlow::Exit;

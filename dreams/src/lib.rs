@@ -4,6 +4,9 @@
 //!
 //! L'app (`app/`) chiama `avvia` quando Windows la lancia come salvaschermo; il
 //! programma `ascii-dreams` di questa cartella fa lo stesso, per provarlo da solo.
+//! Su Linux non c'è un sistema che lanci gli screensaver: l'app lancia sé stessa come
+//! `ascii-zoo --salvaschermo` quando non si usa il PC e mette `Motore` in una finestra GTK
+//! per monitor (app/src/sogno_linux.rs).
 //!
 //! Windows avvia i salvaschermo (.scr) con questi argomenti:
 //!   /s           a schermo intero
@@ -147,7 +150,14 @@ pub fn avvia(args: &[String]) {
             win::impostazioni(cfg);
         }
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    {
+        eprintln!(
+            "Su Linux lo screensaver lo lancia l'app: ascii-zoo --salvaschermo [--finestra] [--scena id]. \
+             Qui si può usare: --png file.png [--scena id]"
+        );
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
         eprintln!("Per ora il salvaschermo funziona su Windows. Qui si può usare: --png file.png [--scena id]");
     }

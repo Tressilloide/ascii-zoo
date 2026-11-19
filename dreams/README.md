@@ -5,6 +5,7 @@ The Windows screensaver of ASCII Zoo, as a small Rust library (`lib.rs`) that th
 - `painter.rs` rasterizes JetBrains Mono once per character size with fontdue, precomputes a soft glow per glyph and draws the character grid straight into a pixel buffer, split across CPU cores.
 - `scenes/` holds the scenes (`stelle`, `pioggia`, `fuoco`, `aurora`, `vita`, `mare`): each one only fills a grid of characters, colours and brightness. `director.rs` rotates them with a fade and `clock.rs` adds the drifting clock.
 - `win.rs` puts the buffer on every monitor with GDI and speaks the screensaver protocol; settings are in `%APPDATA%\AsciiZoo\screensaver.json`.
+- On Linux there is no system that starts screensavers any more (GNOME dropped it), so the app does: after the idle minutes chosen in its menu it runs itself as `ascii-zoo --salvaschermo`, which puts `Motore` in a full-screen GTK window per monitor ([`app/src/sogno_linux.rs`](../app/src/sogno_linux.rs)). `ascii-zoo --salvaschermo --finestra --scena aurora` shows it in a normal window.
 
 ```
 cargo run --release -- --finestra --scena aurora          # in a window (Esc closes)

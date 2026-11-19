@@ -53,10 +53,10 @@ It's a small example of what two people and an AI can ship together in a short t
 - **Multi-monitor**, with a different animal on each screen if you like.
 - **ASCII widgets**: a sticky note, a countdown, CPU/RAM/battery meters, and stats for nerds (per-core CPU, temperature, frequency, RAM and swap, GPU usage, VRAM and temperature, network speed, disk, uptime, processes, load average), a "now playing" box (MPRIS on Linux, system media controls on Windows, Music and Spotify via AppleScript on macOS), a pomodoro timer run from the tray menu, in three frame styles (`+--+`, `┌──┐`, `╭──╮`) and three sizes.
 - **Names**: the biggest animal of each species can carry a name. Meet **KARPISA**, the koi from Pisa.
-- **A screensaver too** (Windows): six ASCII scenes, see below.
+- **A screensaver too** (Windows, Linux): six ASCII scenes, see below.
 - Everything is set from a small koi icon in the tray / menu bar.
 
-### Screensaver (Windows)
+### Screensaver
 
 | | | |
 |---|---|---|
@@ -66,6 +66,8 @@ It's a small example of what two people and an AI can ship together in a short t
 In the tray menu choose **Usa come screensaver…** (use as screensaver): Windows opens its screensaver settings with ASCII Zoo already picked. Choose the wait time, and tick *On resume, display logon screen* if you want the PC to lock. In **Settings** you pick the scene (or all of them in rotation), how often it changes, the character size and the big drifting clock.
 
 The screensaver is the same `ascii-zoo.exe`, copied as `%LOCALAPPDATA%\AsciiZoo\ascii-zoo.scr` and kept up to date by the app. It doesn't use the WebView: a small native renderer in [`dreams/`](dreams/) draws every frame in about 1–2 ms, on every monitor, at 30 fps (15 on battery).
+
+On Linux GNOME has no way to plug in a third-party screensaver, so the app starts the same scenes itself after a few minutes without mouse or keyboard: tray menu **Screensaver** (off by default). It only shows up if its delay is shorter than GNOME's *Blank Screen* delay (Settings > Power). Details in the [Italian README](README.it.md#sfondo-animato-per-linux).
 
 ## Download
 
