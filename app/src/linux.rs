@@ -429,9 +429,21 @@ impl App {
     fn check_screens(&mut self, target: &EventLoopWindowTarget<Evento>, proxy: &EventLoopProxy<Evento>) {
         let now = schermi(target);
         self.core.set_schermi(now.iter().map(|m| m.3.clone()).collect());
+        // anche la scala: GNOME può cambiarla dopo che le finestre ci sono (all'accesso l'app
+        // può partire prima che arrivi la scala dello schermo, ed è 1; poi diventa 2). La
+        // misura in pixel del monitor resta la stessa, ma GTK tiene quella logica della
+        // finestra, che così diventa grande il doppio: si vedeva solo il quarto in alto a
+        // sinistra dello sfondo, con l'orologio enorme nell'angolo in basso a destra
         let same = now.len() == self.screens.len()
-            && self.screens.iter().all(|s| now.iter().any(|m| m.0 == s.pos && m.1 == s.size && m.3.id == s.id));
+            && self.screens.iter().all(|s| {
+                now.iter().any(|m| m.0 == s.pos && m.1 == s.size && m.3.id == s.id && (m.2 - s.scala).abs() < 0.01)
+            });
         if !same {
+            for s in &self.screens {
+                if let Some(m) = now.iter().find(|m| m.3.id == s.id && (m.2 - s.scala).abs() >= 0.01) {
+                    zoo_log!("schermo {}: la scala è passata da {} a {}, rifaccio lo sfondo", s.id, s.scala, m.2);
+                }
+            }
             self.screens.clear();
             self.screens = now
                 .into_iter()
