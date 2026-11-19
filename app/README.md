@@ -156,11 +156,13 @@ Nel workflow:
 - `linux-gnome-clic` prova in un GNOME Shell senza schermo l'estensione per il clic sul
   desktop ([`../.github/gnome-click-test`](../.github/gnome-click-test)) e, con il programma
   di `linux-binario`, lo screensaver ([`../.github/gnome-screensaver-test`](../.github/gnome-screensaver-test)):
-  deve partire dopo un minuto senza input (non sopra un'app a schermo intero, ma appena si
-  chiude), stare sopra a tutto (anche sopra una finestra con il focus) con la barra in alto
-  nascosta, chiudersi a un tasto, ripartire dopo un altro minuto e chiudersi quando mutter
-  dice che qualcuno ha usato il PC (`ResetIdletime`). Niente mouse virtuale: in GNOME Shell
-  senza schermo un movimento sopra le finestre X11 del programma vero blocca la shell.
+  deve partire dopo un minuto senza input, stare sopra a tutto (anche sopra una finestra con
+  il focus) con la barra in alto nascosta, chiudersi a un tasto, ripartire dopo un altro
+  minuto e chiudersi quando mutter dice che qualcuno ha usato il PC (`ResetIdletime`). Poi
+  non deve partire sopra un'app a schermo intero, ma appena si chiude: questo dipende dalla
+  `Sonda`, che sui runner senza GPU a volte non vede l'app, quindi lì ci sono solo avvisi.
+  Niente mouse virtuale: in GNOME Shell senza schermo un movimento sopra le finestre X11 del
+  programma vero blocca la shell.
 
 > Lo sfondo è una copia in `assets/`: dopo aver modificato `wallpaper/index.html`
 > (nella radice della repo) copialo in `assets/ascii-zoo-wallpaper.html` e ricompila.

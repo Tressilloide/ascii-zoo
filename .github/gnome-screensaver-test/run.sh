@@ -3,18 +3,20 @@
 # (--headless), come su Ubuntu ma senza le icone del desktop:
 #   1. config con lo screensaver dopo 1 minuto;
 #   2. l'estensione zoo-screensaver-test@test avvia ASCII Zoo e apre una finestra normale
-#      (zenity), che ha il focus, e dal secondo 15 al 75 un'app a schermo intero;
+#      (zenity), che ha il focus;
 #   3. senza mouse né tastiera, dopo un minuto deve partire `ascii-zoo --salvaschermo`, e
-#      non prima; non sopra l'app a schermo intero ma appena si chiude (questo dipende dalla
-#      `Sonda` di linux.rs, che guarda il ritmo dei fotogrammi: se in questa macchina
-#      virtuale non se ne accorge è solo un avviso);
+#      non prima;
 #   4. la sua finestra deve stare sopra a tutto (anche sopra zenity) e la barra in alto
 #      deve sparire; l'estensione la fotografa;
 #   5. un tasto da una tastiera virtuale lo deve chiudere;
 #   6. dopo un altro minuto senza input deve ripartire; questa volta l'estensione chiede a
 #      mutter ResetIdletime (quello che mutter fa a ogni input, ma che lo screensaver non
 #      vede): lo deve chiudere ASCII Zoo, avvisato da mutter, come quando GNOME non dà il
-#      focus allo screensaver e i tasti vanno a un'altra finestra.
+#      focus allo screensaver e i tasti vanno a un'altra finestra;
+#   7. poi un'app a schermo intero per 75 secondi: lo screensaver non deve partirle sopra,
+#      ma appena si chiude. Questo dipende dalla `Sonda` di linux.rs, che guarda il ritmo dei
+#      fotogrammi: in queste macchine virtuali senza GPU a volte non se ne accorge (e allora
+#      lo screensaver parte sotto l'app, che ha il focus), quindi qui ci sono solo avvisi.
 #
 # Niente mouse virtuale: in questo GNOME senza schermo e senza GPU un movimento del mouse
 # sopra le finestre X11 di ASCII Zoo (anche solo lo sfondo, senza screensaver) blocca la
@@ -56,7 +58,7 @@ gs=\$!
 inizio=\$(date +%s)
 prima=no
 # ogni secondo: c'è un processo "ascii-zoo --salvaschermo"?
-for i in \$(seq 200); do
+for i in \$(seq 270); do
   sleep 1
   if pgrep -f -- "^$BIN --salvaschermo" > /dev/null; then ora=si; else ora=no; fi
   if [ "\$ora" != "\$prima" ]; then echo "\$(( \$(date +%s) - inizio )) s: screensaver \$ora" >> "$T/processi.log"; prima=\$ora; fi
@@ -70,7 +72,7 @@ FINE
 env -i HOME="$T/home" XDG_CONFIG_HOME="$T/config" XDG_DATA_HOME="$T/data" XDG_CACHE_HOME="$T/cache" \
   XDG_RUNTIME_DIR="$T/run" PATH=/usr/bin:/bin XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_TYPE=wayland LANG=C.UTF-8 \
   MUTTER_DEBUG_RESET_IDLETIME=1 ZOO_SCHERMO_INTERO="$QUI/schermo-intero.py" ZOO_BIN="$BIN" ZOO_LOG="$T/app.log" ZOO_FOTO="$USCITA/prova-screensaver-gnome.png" \
-  timeout 260 dbus-run-session -- bash "$T/sessione.sh" > "$T/sessione.log" 2>&1 || true
+  timeout 330 dbus-run-session -- bash "$T/sessione.sh" > "$T/sessione.log" 2>&1 || true
 
 echo "--- GNOME Shell"
 grep -E "PROVA|JS ERROR" "$T/shell.log" || true
@@ -91,11 +93,6 @@ elif [ "$partito" -lt 55 ]; then
   echo "LO SCREENSAVER È PARTITO TROPPO PRESTO ($partito s, l'attesa è 1 minuto)"; ok=0
 else
   echo "screensaver partito dopo $partito s"
-  if grep -q "non parte: un'app è a schermo intero" "$T/app.log" && [ "$partito" -ge 74 ]; then
-    echo "non è partito sopra l'app a schermo intero, ma appena si è chiusa"
-  else
-    echo "::warning::lo screensaver non ha visto l'app a schermo intero (la Sonda dipende dal ritmo dei fotogrammi di GNOME, qui senza GPU)"
-  fi
 fi
 grep -q "PROVA screensaver VISIBILE" "$T/shell.log" || { echo "LA FINESTRA DELLO SCREENSAVER NON È SOPRA A TUTTO"; ok=0; }
 if grep -q "PROVA giro 1: screensaver chiuso [0-9]* ms dopo l'input" "$T/shell.log"; then
@@ -109,7 +106,16 @@ if grep -q "PROVA giro 2: screensaver chiuso [0-9]* ms dopo l'input" "$T/shell.l
 else
   echo "GIRO 2: LO SCREENSAVER NON È RIPARTITO O NON L'HA CHIUSO ASCII ZOO"; ok=0
 fi
-[ "${#cambi[@]}" = 4 ] || { echo "ATTESI 4 CAMBI (parte, si chiude, riparte, si chiude), visti ${#cambi[@]}"; ok=0; }
+[ "${#cambi[@]}" -ge 4 ] || { echo "ATTESI ALMENO 4 CAMBI (parte, si chiude, riparte, si chiude), visti ${#cambi[@]}"; ok=0; }
+# terzo giro, con l'app a schermo intero: solo avvisi (vedi il punto 7 in cima)
+dopo_app=$(grep -oE "giro 3: screensaver comparso [0-9]+ s dopo l'apertura" "$T/shell.log" | grep -oE '[0-9]+ s' | cut -d' ' -f1 || true)
+if [ -n "$dopo_app" ] && [ "$dopo_app" -ge 74 ] && grep -q "non parte: un'app è a schermo intero" "$T/app.log"; then
+  echo "giro 3: non è partito sopra l'app a schermo intero, ma $dopo_app s dopo la sua apertura (si chiude dopo 75)"
+elif [ -n "$dopo_app" ]; then
+  echo "::warning::giro 3: lo screensaver è partito ${dopo_app} s dopo l'app a schermo intero, che era ancora aperta: la Sonda non l'ha vista (dipende dal ritmo dei fotogrammi di GNOME, qui senza GPU)"
+else
+  echo "::warning::giro 3: lo screensaver non è ripartito dopo l'app a schermo intero"
+fi
 if [ "$ok" != 1 ]; then
   echo "--- log di ASCII Zoo"; tail -n 60 "$T/app.log" 2>/dev/null || true
   echo "--- fine del log della sessione"; tail -n 40 "$T/sessione.log"

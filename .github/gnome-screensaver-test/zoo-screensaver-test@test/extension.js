@@ -1,8 +1,8 @@
 // Solo per la prova automatica (.github/gnome-screensaver-test/run.sh): avvia ASCII Zoo
-// dentro GNOME Shell (così ha DISPLAY e WAYLAND_DISPLAY giusti), apre una finestra normale
-// che ha il focus e, per un minuto, un'app a schermo intero. Quando compare la finestra
-// dello screensaver guarda se sta davvero sopra a tutto, la fotografa e simula un input:
-// lo screensaver si deve chiudere.
+// dentro GNOME Shell (così ha DISPLAY e WAYLAND_DISPLAY giusti) e apre una finestra normale
+// che ha il focus. Quando compare la finestra dello screensaver guarda se sta davvero sopra
+// a tutto, la fotografa e simula un input: lo screensaver si deve chiudere. Alla fine apre
+// un'app a schermo intero: lo screensaver non deve partirle sopra.
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Clutter from 'gi://Clutter';
@@ -37,32 +37,58 @@ export default class ProvaScreensaver extends Extension {
         });
         // una finestra normale con il focus, come quando ci si allontana dal PC
         dopo(8, () => GLib.spawn_command_line_async('zenity --info --text=finestra --width=500 --height=300'));
-        // un'app a schermo intero dal secondo 15 al 75: lo screensaver non deve partirle sopra
-        // (il minuto senza input finisce al secondo 60) ma subito dopo, se il PC è ancora inattivo
-        dopo(15, () => {
-            log('apro un\'app a schermo intero per 60 s');
-            GLib.spawn_async(null, ['python3', GLib.getenv('ZOO_SCHERMO_INTERO'), '60'], null,
-                GLib.SpawnFlags.SEARCH_PATH, null);
-        });
-        dopo(76, () => log('app a schermo intero chiusa'));
+        // ResetIdletime: quello che mutter fa a ogni input, ma che lo screensaver non vede
+        const attivita = (giro) => Gio.DBus.session.call('org.gnome.Mutter.IdleMonitor',
+            '/org/gnome/Mutter/IdleMonitor/Core', 'org.gnome.Mutter.IdleMonitor', 'ResetIdletime', null, null,
+            Gio.DBusCallFlags.NONE, -1, null, (c, res) => {
+                try {
+                    c.call_finish(res);
+                } catch (e) {
+                    log(`giro ${giro}: ResetIdletime non riuscito`, e);
+                }
+            });
 
-        // primo giro: tasto da una tastiera virtuale (lo vede lo screensaver, se ha il focus,
-        // e mutter). Secondo giro, dopo un altro minuto senza input: ResetIdletime, quello che
-        // mutter fa a ogni input, ma che lo screensaver non vede: lo deve chiudere ASCII Zoo.
+        // Primo giro: tasto da una tastiera virtuale (lo vede lo screensaver, se ha il focus,
+        // e mutter). Secondo giro, dopo un altro minuto senza input: ResetIdletime, quindi lo
+        // deve chiudere ASCII Zoo. Poi un'app a schermo intero per 75 secondi: il minuto senza
+        // input finisce mentre c'è, e lo screensaver deve partire solo dopo (terzo giro).
+        // L'app a schermo intero viene dopo i primi due giri perché, se ASCII Zoo non la vede
+        // (dipende dal ritmo dei fotogrammi, vedi run.sh), lo screensaver le parte sotto.
         this._giro = 0;
+        const finisci = () => {
+            if (!this._finito) {
+                this._finito = true;
+                dopo(2, () => log('fine'));
+            }
+        };
+        const schermoIntero = () => {
+            log('apro un\'app a schermo intero per 75 s');
+            this._aperta = GLib.get_monotonic_time();
+            GLib.spawn_async(null, ['python3', GLib.getenv('ZOO_SCHERMO_INTERO'), '75'], null,
+                GLib.SpawnFlags.SEARCH_PATH, null);
+            dopo(75, () => log('app a schermo intero chiusa'));
+            // se il terzo giro non arriva, la prova finisce lo stesso
+            dopo(110, finisci);
+        };
         const guarda = (w) => {
             if (w._zooVisto || w.get_title() !== TITOLO)
                 return;
             w._zooVisto = true;
             const giro = ++this._giro;
             log(`giro ${giro}: screensaver comparso dopo ${secondi()} s`);
+            if (giro === 3) {
+                const s = Math.round((GLib.get_monotonic_time() - this._aperta) / 1e6);
+                log(`giro 3: screensaver comparso ${s} s dopo l'apertura dell'app a schermo intero`);
+            }
             let input = null;
             w.connect('unmanaged', () => {
                 const ms = input ? Math.round((GLib.get_monotonic_time() - input) / 1000) : null;
                 log(ms === null ? `giro ${giro}: screensaver chiuso PRIMA dell'input`
                     : `giro ${giro}: screensaver chiuso ${ms} ms dopo l'input`);
                 if (giro === 2)
-                    dopo(2, () => log('fine'));
+                    dopo(1, schermoIntero);
+                if (giro === 3)
+                    finisci();
             });
             if (giro === 1) {
                 dopo(4, () => {
@@ -77,17 +103,9 @@ export default class ProvaScreensaver extends Extension {
                 });
             } else {
                 dopo(3, () => {
-                    log('giro 2: ResetIdletime');
+                    log(`giro ${giro}: ResetIdletime`);
                     input = GLib.get_monotonic_time();
-                    Gio.DBus.session.call('org.gnome.Mutter.IdleMonitor', '/org/gnome/Mutter/IdleMonitor/Core',
-                        'org.gnome.Mutter.IdleMonitor', 'ResetIdletime', null, null, Gio.DBusCallFlags.NONE, -1, null,
-                        (c, res) => {
-                            try {
-                                c.call_finish(res);
-                            } catch (e) {
-                                log('giro 2: ResetIdletime non riuscito', e);
-                            }
-                        });
+                    attivita(giro);
                 });
             }
         };
