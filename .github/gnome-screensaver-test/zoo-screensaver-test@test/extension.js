@@ -1,7 +1,8 @@
 // Solo per la prova automatica (.github/gnome-screensaver-test/run.sh): avvia ASCII Zoo
 // dentro GNOME Shell (così ha DISPLAY e WAYLAND_DISPLAY giusti), apre una finestra normale
-// che ha il focus, e quando compare la finestra dello screensaver guarda se sta davvero
-// sopra a tutto, la fotografa e simula un input: lo screensaver si deve chiudere.
+// che ha il focus e, per un minuto, un'app a schermo intero. Quando compare la finestra
+// dello screensaver guarda se sta davvero sopra a tutto, la fotografa e simula un input:
+// lo screensaver si deve chiudere.
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Clutter from 'gi://Clutter';
@@ -36,6 +37,14 @@ export default class ProvaScreensaver extends Extension {
         });
         // una finestra normale con il focus, come quando ci si allontana dal PC
         dopo(8, () => GLib.spawn_command_line_async('zenity --info --text=finestra --width=500 --height=300'));
+        // un'app a schermo intero dal secondo 15 al 75: lo screensaver non deve partirle sopra
+        // (il minuto senza input finisce al secondo 60) ma subito dopo, se il PC è ancora inattivo
+        dopo(15, () => {
+            log('apro un\'app a schermo intero per 60 s');
+            GLib.spawn_async(null, ['python3', GLib.getenv('ZOO_SCHERMO_INTERO'), '60'], null,
+                GLib.SpawnFlags.SEARCH_PATH, null);
+        });
+        dopo(76, () => log('app a schermo intero chiusa'));
 
         // primo giro: tasto da una tastiera virtuale (lo vede lo screensaver, se ha il focus,
         // e mutter). Secondo giro, dopo un altro minuto senza input: ResetIdletime, quello che

@@ -3,9 +3,11 @@
 # (--headless), come su Ubuntu ma senza le icone del desktop:
 #   1. config con lo screensaver dopo 1 minuto;
 #   2. l'estensione zoo-screensaver-test@test avvia ASCII Zoo e apre una finestra normale
-#      (zenity), che ha il focus;
+#      (zenity), che ha il focus, e dal secondo 15 al 75 un'app a schermo intero;
 #   3. senza mouse né tastiera, dopo un minuto deve partire `ascii-zoo --salvaschermo`, e
-#      non prima;
+#      non prima; non sopra l'app a schermo intero ma appena si chiude (questo dipende dalla
+#      `Sonda` di linux.rs, che guarda il ritmo dei fotogrammi: se in questa macchina
+#      virtuale non se ne accorge è solo un avviso);
 #   4. la sua finestra deve stare sopra a tutto (anche sopra zenity) e la barra in alto
 #      deve sparire; l'estensione la fotografa;
 #   5. un tasto da una tastiera virtuale lo deve chiudere;
@@ -20,8 +22,8 @@
 #
 #   bash .github/gnome-screensaver-test/run.sh percorso/di/ascii-zoo [cartella per i risultati]
 #
-# Serve gnome-shell 45 o successivo, xwayland, zenity, python3-gi e le librerie del
-# programma. Tutto (impostazioni, bus di sessione) sta in una cartella temporanea; il
+# Serve gnome-shell 45 o successivo, xwayland, zenity, python3-gi con GTK 3
+# (gir1.2-gtk-3.0) e le librerie del programma. Tutto (impostazioni, bus di sessione) sta in una cartella temporanea; il
 # percorso del socket di Wayland deve stare in 108 byte, quindi TMPDIR deve essere corta.
 set -euo pipefail
 QUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,6 +37,7 @@ fine() {
   rm -rf "$T"
 }
 trap fine EXIT
+trap 'exit 143' TERM INT
 mkdir -p "$T"/{home,config/AsciiZoo,data/gnome-shell/extensions,cache,run}
 chmod 700 "$T/run"
 cp -r "$QUI/zoo-screensaver-test@test" "$T/data/gnome-shell/extensions/"
@@ -57,16 +60,16 @@ for i in \$(seq 200); do
   sleep 1
   if pgrep -f -- "^$BIN --salvaschermo" > /dev/null; then ora=si; else ora=no; fi
   if [ "\$ora" != "\$prima" ]; then echo "\$(( \$(date +%s) - inizio )) s: screensaver \$ora" >> "$T/processi.log"; prima=\$ora; fi
-  grep -q "PROVA fine" "$T/shell.log" && break
+  grep -qE "PROVA fine$" "$T/shell.log" && break
   kill -0 \$gs 2>/dev/null || { echo "GNOME Shell si è chiuso" >> "$T/processi.log"; break; }
 done
-pkill -f -- "$BIN" || true
+pkill -f -- "^$BIN" || true
 kill \$gs 2>/dev/null || true
 sleep 1
 FINE
 env -i HOME="$T/home" XDG_CONFIG_HOME="$T/config" XDG_DATA_HOME="$T/data" XDG_CACHE_HOME="$T/cache" \
   XDG_RUNTIME_DIR="$T/run" PATH=/usr/bin:/bin XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_TYPE=wayland LANG=C.UTF-8 \
-  MUTTER_DEBUG_RESET_IDLETIME=1 ZOO_BIN="$BIN" ZOO_LOG="$T/app.log" ZOO_FOTO="$USCITA/prova-screensaver-gnome.png" \
+  MUTTER_DEBUG_RESET_IDLETIME=1 ZOO_SCHERMO_INTERO="$QUI/schermo-intero.py" ZOO_BIN="$BIN" ZOO_LOG="$T/app.log" ZOO_FOTO="$USCITA/prova-screensaver-gnome.png" \
   timeout 260 dbus-run-session -- bash "$T/sessione.sh" > "$T/sessione.log" 2>&1 || true
 
 echo "--- GNOME Shell"
@@ -88,6 +91,11 @@ elif [ "$partito" -lt 55 ]; then
   echo "LO SCREENSAVER È PARTITO TROPPO PRESTO ($partito s, l'attesa è 1 minuto)"; ok=0
 else
   echo "screensaver partito dopo $partito s"
+  if grep -q "non parte: un'app è a schermo intero" "$T/app.log" && [ "$partito" -ge 74 ]; then
+    echo "non è partito sopra l'app a schermo intero, ma appena si è chiusa"
+  else
+    echo "::warning::lo screensaver non ha visto l'app a schermo intero (la Sonda dipende dal ritmo dei fotogrammi di GNOME, qui senza GPU)"
+  fi
 fi
 grep -q "PROVA screensaver VISIBILE" "$T/shell.log" || { echo "LA FINESTRA DELLO SCREENSAVER NON È SOPRA A TUTTO"; ok=0; }
 if grep -q "PROVA giro 1: screensaver chiuso [0-9]* ms dopo l'input" "$T/shell.log"; then

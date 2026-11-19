@@ -375,7 +375,7 @@ jobs:
           echo "chiave=$(sha256sum pacchetti.txt | cut -c1-16)" >> "$GITHUB_OUTPUT"
         env:
           PACCHETTI: >-
-            gnome-shell gnome-shell-extension-desktop-icons-ng xwayland zenity python3-gi dbus-x11
+            gnome-shell gnome-shell-extension-desktop-icons-ng xwayland zenity python3-gi gir1.2-gtk-3.0 dbus-x11
             libwebkit2gtk-4.1-0 libayatana-appindicator3-1 libxdo3
 
       - uses: actions/cache@v4
@@ -402,7 +402,7 @@ jobs:
           gnome-shell --version
         env:
           PACCHETTI: >-
-            gnome-shell gnome-shell-extension-desktop-icons-ng xwayland zenity python3-gi dbus-x11
+            gnome-shell gnome-shell-extension-desktop-icons-ng xwayland zenity python3-gi gir1.2-gtk-3.0 dbus-x11
             libwebkit2gtk-4.1-0 libayatana-appindicator3-1 libxdo3
 
       - name: Prova - clic simulati
