@@ -995,20 +995,28 @@ h1 {
       var top = 0.62 * S + 1, bot = w.rows - 4.5 - 0.52 * S;
       if (c.y < top) c.mvT = 0.3; else if (c.y > bot) c.mvT = -0.3;
       // l'orologio davanti: se basta salire o scendere un po' lo aggirano, se no tornano indietro
-      if (w.clock && c.sp > 0.05 * S) {
+      if (w.clock) {
         var b = w.clock.box, half = 0.8 * S;
-        var gap = c.face > 0 ? b.x0 - (c.x + half) : (c.x - half) - b.x1;
-        var past = c.face > 0 ? b.x1 < c.x - half : b.x0 > c.x + half;
         var up = c.y + 0.52 * S - b.y0, dn = b.y1 - (c.y - 0.55 * S);
-        if (!past && up > 0 && dn > 0 && gap < 2 + c.sp * 0.5) {
-          var need = Math.min(up, dn);
-          if (gap > need * 2.2 && need < 0.6 * S) c.mvT = up < dn ? -0.45 : 0.45;
-          else if (gap < 1.5) {
-            c.face = -c.face; c.mvT = -c.mvT;
-            if (c.mode === 3) { c.gal = 0; c.mode = 2; c.timer = 1 + w.rnd(); }
+        if (up > 0 && dn > 0 && c.x + half > b.x0 && c.x - half < b.x1) {
+          // già sopra l'orologio (spinto da un vicino): esce salendo o scendendo, senza
+          // girarsi. Girarsi non serve, l'orologio è avanti in tutte e due le direzioni:
+          // si girava a ogni fotogramma, fermo sul posto. Se pascolava, si rimette in cammino.
+          c.mvT = up < dn ? -0.45 : 0.45;
+          if (c.mode === 0 && c.timer > 0.5) c.timer = 0.5;
+        } else if (up > 0 && dn > 0 && c.sp > 0.05 * S) {
+          var gap = c.face > 0 ? b.x0 - (c.x + half) : (c.x - half) - b.x1, need = Math.min(up, dn);
+          if (gap >= 0 && gap < 2 + c.sp * 0.5) {
+            if (gap > need * 2.2 && need < 0.6 * S) c.mvT = up < dn ? -0.45 : 0.45;
+            else if (gap < 1.5 && !(c.svolta > 0)) {
+              // tornano indietro, e per un paio di secondi non si rigirano
+              c.face = -c.face; c.mvT = -c.mvT; c.svolta = 2;
+              if (c.mode === 3) { c.gal = 0; c.mode = 2; c.timer = 1 + w.rnd(); }
+            }
           }
         }
       }
+      if (c.svolta > 0) c.svolta -= dt;
       c.mv += clamp(c.mvT - c.mv, -turn * dt, turn * dt);
       c.sp += (vt - c.sp) * Math.min(1, (c.mode === 3 ? 2.5 : 1.2) * dt);
       c.x += c.face * Math.cos(c.mv) * c.sp * dt;
