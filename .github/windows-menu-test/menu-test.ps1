@@ -186,7 +186,7 @@ function Foto([string]$nome) {
         $hdc = $g.GetHdc()
         $ok = [W]::Grab($hdc, $sw, $sh)
         $g.ReleaseHdc($hdc)
-        if (-not $ok) { Avviso "foto $nome: BitBlt non riuscito" }
+        if (-not $ok) { Avviso "foto ${nome}: BitBlt non riuscito" }
         $b.Save((Join-Path $Out "$nome.png"), [System.Drawing.Imaging.ImageFormat]::Png)
         $g.Dispose(); $b.Dispose()
         Write-Host "foto: $nome.png"
