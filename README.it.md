@@ -18,7 +18,7 @@
 Nove specie, una alla volta, ognuna con il suo ambiente. Di serie lo sfondo passa alla successiva ogni 2 minuti; dal programma per Windows si sceglie ogni quanto (da 30 secondi a un'ora) e quali animali far girare. Quando il PC è in carica restano le koi nel loro stagno (si può disattivare).
 
 <p align="center">
-  <img src="docs/animals.png" alt="Le sette specie, ognuna nel suo ambiente: farfalle sul prato fiorito, meduse tra le bolle, libellule sulle canne, koi nello stagno, rane nel prato con sassi e lucciole, aironi con i nidi, granchi sulla sabbia; più l'orologio" width="100%">
+  <img src="docs/animals.png" alt="Le nove specie, ognuna nel suo ambiente: farfalle sul prato fiorito, meduse tra le bolle, libellule sulle canne, koi nello stagno, rane nel prato con sassi e lucciole, aironi con i nidi, cavalli nella prateria, anatre con gli anatroccoli nello stagno, granchi sulla sabbia; più l'orologio" width="100%">
 </p>
 
 | Specie | Come si muove | L'ambiente | Con l'orologio |
@@ -137,7 +137,7 @@ La cartella `app/` contiene un programma che mette lo sfondo dietro le icone su 
 - **Tema**: scuro, chiaro oppure come il sistema (vedi [Tema chiaro e scuro](#tema-chiaro-e-scuro));
 - **Salva una foto dello sfondo**: un PNG per schermo nella cartella Immagini (vedi [Foto dello sfondo](#foto-dello-sfondo));
 - **Orologio al centro**: togliendo la spunta l'orologio sparisce e lo schermo è tutto per gli animali;
-- **Clic sul desktop agli animali**: un clic in una zona vuota del desktop dà da mangiare alle koi o fa scappare gli altri animali, come nel browser;
+- **Clic sul desktop agli animali**: un clic in una zona vuota del desktop dà da mangiare alle koi e alle anatre o fa scappare gli altri animali, come nel browser;
 - le pause (a batteria, con app a schermo intero, quando le finestre coprono il desktop; le stesse voci anche su macOS e Linux), l'avvio con Windows.
 
 #### Scaricarlo
@@ -182,7 +182,7 @@ Apri `wallpaper/index.html` in un browser qualsiasi. Aggiungendo il nome di una 
 index.html#koi      index.html#meduse      index.html#granchi
 ```
 
-Nel browser un clic sullo sfondo fa disperdere gli animali; con le koi invece fa cadere del cibo.
+Nel browser un clic sullo sfondo fa disperdere gli animali; con le koi e le anatre invece fa cadere del cibo.
 
 ### Note
 
@@ -197,7 +197,7 @@ Lo stesso programma esiste per macOS 11 o successivo, su Mac con Apple Silicon e
 - Lo sfondo copre ogni schermo sopra l'immagine del desktop e sotto le icone del Finder, in tutti gli Spazi. Il menu è l'icona a forma di koi nella **barra dei menu**, con le stesse voci della versione Windows (al posto di "Avvia con Windows" c'è **Apri al login**).
 - **Pause.** Lo sfondo si ferma a batteria e, schermo per schermo, quando non si vede: finestre che coprono tutto il desktop, un'app a schermo intero, schermo bloccato o spento. Lo dice macOS stesso (lo stato di occlusione della finestra), senza controlli a parte; riparte entro mezzo secondo da quando torna visibile. Come su Windows, nel menu ci sono le voci **Pausa con app a schermo intero** e **Pausa quando le finestre coprono il desktop**, che si possono spegnere una per una.
 - **Barra dei menu e Dock.** I widget restano fuori dalla barra dei menu e dal Dock, anche se lo sposti o lo nascondi.
-- **Clic sul desktop.** Un clic sul desktop, anche sulle icone del Finder, dà da mangiare alle koi o fa scappare gli altri animali. Usa un monitor globale dei clic di macOS (`NSEvent`): vede solo dove si preme il tasto sinistro nelle altre app, non blocca né cambia il clic, non registra niente e non chiede il permesso Accessibilità (serve solo per i tasti). Il clic vale solo se nel punto non c'è nessuna finestra, il Dock o la barra dei menu. Si spegne togliendo la spunta a **Clic sul desktop agli animali**.
+- **Clic sul desktop.** Un clic sul desktop, anche sulle icone del Finder, dà da mangiare alle koi e alle anatre o fa scappare gli altri animali. Usa un monitor globale dei clic di macOS (`NSEvent`): vede solo dove si preme il tasto sinistro nelle altre app, non blocca né cambia il clic, non registra niente e non chiede il permesso Accessibilità (serve solo per i tasti). Il clic vale solo se nel punto non c'è nessuna finestra, il Dock o la barra dei menu. Si spegne togliendo la spunta a **Clic sul desktop agli animali**.
 - **"Impossibile aprire l'app".** L'app non è firmata con un certificato Apple, quindi al primo avvio macOS la blocca: apri **Impostazioni di Sistema → Privacy e sicurezza** e premi **Apri comunque**, poi conferma.
 - **Aggiornare.** Trascina la versione nuova in **Applicazioni** (sostituendo la vecchia) e aprila: chiude da sola quella che sta girando, anche se veniva da un'altra cartella, e prende il suo posto; se **Apri al login** è attivo, da quel momento all'accesso parte la nuova. Una .app vecchia in un'altra cartella non la cancella: toglila tu. **Apri al login** si attiva solo con l'app in una cartella fissa (non aperta direttamente dal DMG).
 - **Da dove viene il DMG e cosa tocca**: come per Windows, lo compila GitHub Actions, ha SHA256 e attestazione (`gh attestation verify ascii-zoo-macos.dmg --repo ascii-things/ascii-zoo`), scrive solo `~/Library/Application Support/AsciiZoo/config.json`, le foto che chiedi (in `~/Pictures/ASCII Zoo`) e, se attivi **Apri al login**, `~/Library/LaunchAgents/io.github.tressilloide.asciizoo.plist`. Non si collega a internet.
