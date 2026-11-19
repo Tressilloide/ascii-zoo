@@ -25,8 +25,46 @@ mod scenes;
 #[cfg(windows)]
 mod win;
 
-use config::Config;
-use clock::Ora;
+pub use config::{Config, MINUTI, RIGHE};
+pub use clock::Ora;
+
+/// le scene: (id, nome mostrato)
+pub fn scene() -> &'static [(&'static str, &'static str)] {
+    scenes::SCENE
+}
+
+/// Uno schermo dello screensaver, per chi lo mette in una finestra (Linux, macOS): la
+/// scena con l'orologio, ridisegnata in `buf` (pixel 0x00RRGGBB, riga per riga
+/// dall'alto) a ogni `passo`.
+pub struct Motore {
+    pub w: usize,
+    pub h: usize,
+    pub buf: Vec<u32>,
+    pittore: painter::Pittore,
+    regia: director::Regia,
+}
+
+impl Motore {
+    /// `righe`: righe di testo per altezza dello schermo (di solito `cfg.righe`; meno per
+    /// un'anteprima piccola, così i caratteri si leggono ancora)
+    pub fn new(w: usize, h: usize, cfg: &Config, righe: u32, seme: u64) -> Self {
+        let (w, h) = (w.max(1), h.max(1));
+        let pittore = painter::Pittore::new(h / righe.max(1) as usize);
+        let (gw, gh) = pittore.misura(w, h);
+        Motore { w, h, buf: vec![0; w * h], regia: director::Regia::new(gw, gh, cfg, seme), pittore }
+    }
+
+    /// avanza di `dt` secondi, all'ora `ora`, e ridisegna `buf`
+    pub fn passo(&mut self, dt: f32, ora: Ora) {
+        let luce = self.regia.passo(dt, ora);
+        self.pittore.dipingi(&self.regia.griglia, &mut self.buf, self.w, self.h, luce);
+    }
+
+    /// avanza di `dt` secondi senza ridisegnare (per i fotogrammi che non si salvano)
+    pub fn avanza(&mut self, dt: f32, ora: Ora) {
+        self.regia.passo(dt, ora);
+    }
+}
 
 /// true se Windows ha lanciato il programma come salvaschermo: `/s`, `/p`, `/c`
 /// (anche `-s` o `/s:...`), oppure senza argomenti ma da un file `.scr`
@@ -115,7 +153,7 @@ pub fn avvia(args: &[String]) {
     }
 }
 
-/// ora del sistema (locale su Windows, UTC altrove)
+/// ora locale del sistema
 pub fn ora_adesso() -> Ora {
     #[cfg(windows)]
     {
@@ -129,8 +167,25 @@ pub fn ora_adesso() -> Ora {
             mese: s.wMonth as u32,
         }
     }
+    #[cfg(unix)]
+    {
+        // localtime_r: con il fuso orario e l'ora legale del sistema
+        let mut t: libc::tm = unsafe { std::mem::zeroed() };
+        let adesso = unsafe { libc::time(std::ptr::null_mut()) };
+        if !unsafe { libc::localtime_r(&adesso, &mut t) }.is_null() {
+            return Ora {
+                ore: t.tm_hour as u32,
+                minuti: t.tm_min as u32,
+                secondi: t.tm_sec.min(59) as u32,
+                giorno_settimana: t.tm_wday as u32,
+                giorno: t.tm_mday as u32,
+                mese: (t.tm_mon + 1) as u32,
+            };
+        }
+    }
     #[cfg(not(windows))]
     {
+        // riserva: UTC
         let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
         let giorni = secs / 86400;
         let (anno_g, mese, giorno) = civile(giorni as i64);
@@ -182,10 +237,7 @@ fn senza_finestra(args: &[String]) -> Result<(), String> {
         })
         .unwrap_or((1920usize, 1080usize));
 
-    let pittore = painter::Pittore::new(h / cfg.righe as usize);
-    let (gw, gh) = pittore.misura(w, h);
-    let mut regia = director::Regia::new(gw, gh, &cfg, 7);
-    let mut buf = vec![0u32; w * h];
+    let mut m = Motore::new(w, h, &cfg, cfg.righe, 7);
     let fps = 30.0;
     let n = (secondi * fps) as usize;
     let ora = Ora { ore: 23, minuti: 41, secondi: 0, giorno_settimana: 2, giorno: 18, mese: 11 };
@@ -196,26 +248,26 @@ fn senza_finestra(args: &[String]) -> Result<(), String> {
     for i in 0..n.max(1) {
         let mut o = ora;
         o.secondi = (i as f32 / fps) as u32 % 60;
-        let luce = regia.passo(1.0 / fps, o);
         if tutti || i + 1 == n.max(1) {
-            pittore.dipingi(&regia.griglia, &mut buf, w, h, luce);
+            m.passo(1.0 / fps, o);
             let nome = if tutti { format!("{uscita}/{i:05}.png") } else { uscita.clone() };
-            salva_png(&nome, &buf, w, h)?;
+            salva_png(&nome, &m.buf, w, h)?;
+        } else {
+            m.avanza(1.0 / fps, o);
         }
     }
     // tempo medio di un fotogramma completo (simulazione + disegno)
     let t0 = std::time::Instant::now();
     for _ in 0..30 {
-        let luce = regia.passo(1.0 / fps, ora);
-        pittore.dipingi(&regia.griglia, &mut buf, w, h, luce);
+        m.passo(1.0 / fps, ora);
     }
     eprintln!(
         "{} fotogrammi in {:.1}s; un fotogramma: {:.1} ms; griglia {}x{}",
         n,
         inizio.elapsed().as_secs_f32(),
         t0.elapsed().as_secs_f32() * 1000.0 / 30.0,
-        gw,
-        gh
+        m.regia.griglia.w,
+        m.regia.griglia.h
     );
     Ok(())
 }
