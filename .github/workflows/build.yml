@@ -39,6 +39,20 @@ jobs:
       - name: Prova - statistiche per nerd
         run: app/target/release/ascii-zoo.exe --statistiche
 
+      # il menu dell'icona con il programma vero, clic e tasti simulati: le impostazioni lo
+      # lasciano aperto, Esc, un clic fuori e le altre voci lo chiudono
+      - name: Prova - il menu resta aperto sulle impostazioni
+        shell: pwsh
+        timeout-minutes: 5
+        run: ./.github/windows-menu-test/menu-test.ps1 -Exe app/target/release/ascii-zoo.exe -Out menu-test
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prova-menu-windows
+          path: menu-test/
+          if-no-files-found: warn
+
       - name: Prova lo screensaver - un fotogramma per scena, senza finestra
         working-directory: dreams
         run: |
