@@ -16,7 +16,7 @@
 //! - lo screensaver: lo fa partire l'app quando non si usa il PC (salvaschermo_linux.rs),
 //!   come processo a parte che disegna le scene di dreams/ (sogno_linux.rs)
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::os::linux::net::SocketAddrExt;
 use std::os::unix::net::{SocketAddr, UnixListener};
 use std::rc::Rc;
@@ -146,57 +146,89 @@ impl Screen {
 /// intero). Sotto Wayland un'app X11 non vede le finestre native che le stanno sopra,
 /// ma mutter (GNOME), quando una finestra X11 è nascosta del tutto, le manda i messaggi
 /// "fotogramma disegnato" (_NET_WM_FRAME_DRAWN) a un sesto della frequenza dello
-/// schermo: il frame clock di GTK passa da ~60 a ~10 giri al secondo. La sonda tiene il
-/// frame clock in moto e a ogni giro ridisegna un pixel (senza niente da disegnare GTK
+/// schermo: il frame clock di GTK passa da ~60 a ~10 giri al secondo. La sonda mette in
+/// moto il frame clock e a ogni giro ridisegna un pixel (senza niente da disegnare GTK
 /// non aspetta il compositor e gira sempre a 60). Con le finestre solo massimizzate non
 /// scatta: per mutter la striscia sotto la barra in alto e la dock resta visibile.
 /// Dove il compositor non rallenta (altri desktop) semplicemente non scatta mai, e
 /// "lento" vale come "coperto" solo dopo aver visto almeno una volta il ritmo pieno:
 /// con un compositor che rallentasse sempre lo sfondo non resta fermo.
+///
+/// Misura a intervalli (MISURA ogni OGNI_MISURA), non sempre: ogni giro forzato fa
+/// ridipingere a GTK tutta la finestra con la WebView (con OpenGL) e Xwayland la passa a
+/// GNOME. Tenuta accesa sempre erano 60 ridisegni al secondo anche con lo sfondo a 15
+/// fotogrammi o fermo: su un portatile con la scala di GNOME al 125% (finestra di
+/// 3072×1728) ~0,6 core di Xwayland, e con la GPU piena le misure lente facevano andare e
+/// venire la pausa. Il ritmo si conta dal primo all'ultimo giro: il frame clock fermo ci
+/// mette un po' a ripartire, e contando anche quell'attesa lo sfondo sembrava coperto.
 #[derive(Default)]
 struct Sonda {
-    giri: Rc<Cell<u32>>,
-    id: Option<gtk::TickCallbackId>,
-    da: Option<Instant>,
-    /// controlli di fila con il frame clock rallentato
+    /// giri della misura in corso: (quanti, primo, ultimo)
+    giri: Rc<Cell<(u32, Option<Instant>, Option<Instant>)>>,
+    /// il giro del frame clock, mentre si misura
+    id: Rc<RefCell<Option<gtk::TickCallbackId>>>,
+    /// l'ultima misura finita: giri al secondo
+    misura: Rc<Cell<Option<f64>>>,
+    /// quando parte la prossima misura
+    prossima: Option<Instant>,
+    /// misure di fila con il frame clock rallentato
     lenti: u32,
     /// il frame clock ha girato almeno una volta a ritmo pieno
     visto_veloce: bool,
 }
 
+/// quanto dura una misura, e ogni quanto se ne fa una
+const MISURA: Duration = Duration::from_millis(500);
+const OGNI_MISURA: Duration = Duration::from_secs(2);
+
 impl Sonda {
-    /// true se la finestra è nascosta del tutto da più di un controllo
+    /// true se la finestra è nascosta del tutto da più di una misura
     fn coperto(&mut self, gw: &gtk::ApplicationWindow, refresh_hz: f64) -> bool {
-        if self.id.is_none() {
+        if let Some(al_secondo) = self.misura.take() {
+            if al_secondo < refresh_hz / 3.0 {
+                self.lenti += 1;
+            } else {
+                self.lenti = 0;
+                self.visto_veloce = true;
+            }
+        }
+        let ora = Instant::now();
+        if self.id.borrow().is_none() && self.prossima.is_none_or(|p| ora >= p) {
+            self.prossima = Some(ora + OGNI_MISURA);
+            self.giri.set((0, None, None));
             let giri = self.giri.clone();
-            self.id = Some(gw.add_tick_callback(move |w, _| {
-                giri.set(giri.get() + 1);
+            *self.id.borrow_mut() = Some(gw.add_tick_callback(move |w, _| {
+                let (n, primo, _) = giri.get();
+                let ora = Instant::now();
+                giri.set((n + 1, primo.or(Some(ora)), Some(ora)));
                 w.queue_draw_area(0, 0, 1, 1);
                 glib::ControlFlow::Continue
             }));
-            // la prima misura parte adesso
-            self.giri.set(0);
-            self.da = Some(Instant::now());
-            return false;
-        }
-        let ora = Instant::now();
-        let dt = self.da.map_or(0.0, |d| (ora - d).as_secs_f64());
-        self.da = Some(ora);
-        let giri = self.giri.replace(0);
-        if dt > 0.0 && (giri as f64 / dt) < refresh_hz / 3.0 {
-            self.lenti += 1;
-        } else {
-            self.lenti = 0;
-            self.visto_veloce = true;
+            let (giri, id, misura) = (self.giri.clone(), self.id.clone(), self.misura.clone());
+            glib::timeout_add_local_once(MISURA, move || {
+                if let Some(id) = id.borrow_mut().take() {
+                    id.remove();
+                    // con meno di 3 giri la misura non dice niente (anche coperta, la finestra
+                    // ne fa ~5 in mezzo secondo): si aspetta la prossima
+                    if let (n, Some(primo), Some(ultimo)) = giri.get() {
+                        let dt = (ultimo - primo).as_secs_f64();
+                        if n >= 3 && dt > 0.0 {
+                            misura.set(Some((n - 1) as f64 / dt));
+                        }
+                    }
+                }
+            });
         }
         self.visto_veloce && self.lenti >= 2
     }
 
     /// quando non serve (in pausa per altri motivi) il frame clock si lascia stare
     fn spegni(&mut self) {
-        if let Some(id) = self.id.take() {
+        if let Some(id) = self.id.borrow_mut().take() {
             id.remove();
         }
+        self.misura.set(None);
+        self.prossima = None;
         self.lenti = 0;
     }
 }
