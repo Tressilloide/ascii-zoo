@@ -10,6 +10,8 @@
 //!   costa CPU e GPU per niente
 //! - ogni 2 secondi: controllo degli schermi collegati
 //! - clic sul desktop: un monitor globale dei clic sinistri (vedi `App::sync_clic`)
+//! - lo screensaver: il modulo ASCII Zoo.saver, che l'app porta con sé e installa (vedi
+//!   `salvaschermo`)
 
 use std::ptr::NonNull;
 use std::time::{Duration, Instant};
@@ -34,6 +36,9 @@ use crate::config::autostart;
 use crate::{foto, power};
 use crate::stats::Stats;
 use crate::shared::{self, zoo_log, Core, Esito, Schermo, JS_START, JS_STOP, URL};
+
+#[path = "salvaschermo_mac.rs"]
+mod salvaschermo;
 
 /// ogni quanto si ricontrollano le pause: quando lo sfondo torna visibile riparte subito
 const GIRO: Duration = Duration::from_millis(500);
@@ -478,9 +483,16 @@ fn prendi_il_posto() {
 }
 
 pub fn run() {
+    // solo per la prova in CI: installa lo screensaver (e, se richiesto, apre le sue
+    // impostazioni) ed esce, senza toccare l'app che gira
+    if std::env::args().nth(1).as_deref() == Some("--installa-salvaschermo") {
+        salvaschermo::installa_da_riga_di_comando(std::env::args().any(|a| a == "--apri-impostazioni"));
+    }
     prendi_il_posto();
     // "Apri al login" segue la copia appena avviata
     autostart::aggiorna();
+    // e anche lo screensaver, se è installato: dopo un aggiornamento dell'app è la versione nuova
+    salvaschermo::aggiorna_se_installato();
     let mut event_loop = EventLoopBuilder::<Evento>::with_user_event().build();
     // niente icona nel Dock né nel selettore delle app: solo la barra dei menu
     event_loop.set_activation_policy(ActivationPolicy::Accessory);
@@ -491,7 +503,8 @@ pub fn run() {
         let _ = menu_proxy.send_event(Evento::Menu(e.id.0));
     }));
 
-    let (core, menu) = Core::new(false);
+    // true: anche qui c'è "Usa come screensaver…"
+    let (core, menu) = Core::new(true);
     let mut menu = Some(menu);
     let mut app = App {
         core,
@@ -552,7 +565,8 @@ pub fn run() {
                 app.tray = None;
                 *control_flow = ControlFlow::Exit;
             }
-            Esito::Salvaschermo | Esito::Niente => {} // lo screensaver c'è solo su Windows
+            Esito::Salvaschermo => salvaschermo::installa(),
+            Esito::Niente => {}
         },
         _ => {}
     });

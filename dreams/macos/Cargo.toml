@@ -1,0 +1,50 @@
+[package]
+name = "ascii-dreams-macos"
+version = "0.1.0"
+publish = false
+edition = "2021"
+description = "The ASCII Zoo screensaver as a macOS module (ASCII Zoo.saver)"
+license = "MIT"
+
+# Una libreria dinamica: è l'eseguibile del bundle "ASCII Zoo.saver", che macOS carica
+# nel suo processo dei salvaschermo (vedi src/lib.rs e Info.plist)
+[lib]
+crate-type = ["cdylib"]
+
+# su altri sistemi la libreria è vuota
+[target.'cfg(target_os = "macos")'.dependencies]
+ascii-dreams = { path = ".." }
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = [
+  "std",
+  "NSDistributedNotificationCenter",
+  "NSGeometry",
+  "NSNotification",
+  "NSProcessInfo",
+  "NSString",
+] }
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+  "std",
+  "NSGraphicsContext",
+  "NSResponder",
+  "NSView",
+  "objc2-core-graphics",
+] }
+objc2-screen-saver = { version = "0.3", default-features = false, features = ["std", "ScreenSaverView", "objc2-app-kit"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFCGTypes", "CFData", "CFString"] }
+objc2-core-graphics = { version = "0.3", default-features = false, features = [
+  "std",
+  "CGColorSpace",
+  "CGContext",
+  "CGDataProvider",
+  "CGImage",
+] }
+
+# Il disegno è tutto in software: qui conta la velocità (come in dreams/).
+# Niente panic = "abort": un panic deve fermarsi in catch_unwind, non chiudere il
+# processo dei salvaschermo di macOS.
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
