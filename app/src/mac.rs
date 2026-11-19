@@ -31,7 +31,7 @@ use tray_icon::{TrayIcon, TrayIconBuilder};
 use wry::{PageLoadEvent, WebView, WebViewBuilder};
 
 use crate::config::autostart;
-use crate::power;
+use crate::{foto, power};
 use crate::stats::Stats;
 use crate::shared::{self, zoo_log, Core, Esito, Schermo, JS_START, JS_STOP, URL};
 
@@ -541,6 +541,7 @@ pub fn run() {
                 app.sync_clic();
             }
             Esito::Schermi => app.push_schermi(),
+            Esito::Foto => foto::scatta(app.screens.iter().map(|s| &s.webview)),
             Esito::Ricarica => {
                 for s in &mut app.screens {
                     s.paused = false;

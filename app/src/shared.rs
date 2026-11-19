@@ -130,6 +130,7 @@ pub struct Menus {
     pub avvio: CheckMenuItem,
     /// "Usa come screensaver…" (solo Windows)
     pub salvaschermo: MenuItem,
+    pub foto: MenuItem,
     pub ricarica: MenuItem,
     pub esci: MenuItem,
 }
@@ -143,6 +144,8 @@ pub enum Esito {
     Ricarica,
     /// installare lo screensaver e aprire le sue impostazioni di Windows
     Salvaschermo,
+    /// salvare una foto di ogni schermo (vedi `foto::scatta`)
+    Foto,
     Esci,
     Niente,
 }
@@ -472,6 +475,8 @@ impl Core {
             return Esito::Niente;
         } else if id == m.salvaschermo.id().0 {
             return Esito::Salvaschermo;
+        } else if id == m.foto.id().0 {
+            return Esito::Foto;
         } else if id == m.ricarica.id().0 {
             return Esito::Ricarica;
         } else if id == m.esci.id().0 {
@@ -676,6 +681,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         coperto: CheckMenuItem::new("Pausa quando le finestre coprono il desktop", true, cfg.pausa_coperto, None),
         avvio: CheckMenuItem::new(avvio_label, true, autostart::enabled(), None),
         salvaschermo: MenuItem::new("Usa come screensaver…", true, None),
+        foto: MenuItem::new("Salva una foto dello sfondo", true, None),
         ricarica: MenuItem::new("Ricarica sfondo", true, None),
         esci: MenuItem::new("Esci", true, None),
     };
@@ -698,6 +704,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         let _ = menu.append(&m.salvaschermo);
     }
     let _ = menu.append(&PredefinedMenuItem::separator());
+    let _ = menu.append(&m.foto);
     let _ = menu.append(&m.ricarica);
     let _ = menu.append(&m.esci);
     (menu, m)

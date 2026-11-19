@@ -62,6 +62,15 @@ Mette lo sfondo animato (`wallpaper/index.html`) dietro le icone del desktop, su
     bloccato o spento sempre; su GNOME, quando i fotogrammi della finestra rallentano perché
     non si vede (la `Sonda` in `linux.rs`): da lì app a schermo intero e finestre non si
     distinguono, basta una delle due voci
+  - **Salva una foto dello sfondo**: a ogni pagina si chiede `zooFoto()` con
+    `evaluate_script_with_callback` (un data URL PNG alla risoluzione dello schermo: fondo
+    del tema, i canvas con il loro stile e i widget riscritti come testo). In un thread a
+    parte il PNG si decodifica e si salva nella cartella Immagini, sottocartella `ASCII Zoo`
+    (Windows `SHGetKnownFolderPath(FOLDERID_Pictures)`; macOS `~/Pictures`; Linux
+    `XDG_PICTURES_DIR` da `user-dirs.dirs`, se no `~/Pictures`), con data e ora nel nome,
+    `-schermo-N` con più schermi, senza mai sovrascrivere (`create_new`, poi ` (2)`, ` (3)`…).
+    Poi la si mostra: Esplora risorse `/select,`, Finder `open -R`, su Linux
+    `org.freedesktop.FileManager1.ShowItems` oppure `xdg-open` sulla cartella
   - **Avvia con Windows** / **Apri al login**, **Ricarica sfondo**, **Esci**
 - Impostazioni salvate in `%APPDATA%\AsciiZoo\config.json` (Windows),
   `~/Library/Application Support/AsciiZoo/config.json` (macOS) o

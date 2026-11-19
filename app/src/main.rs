@@ -11,6 +11,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 mod config;
+mod foto;
 mod shared;
 
 #[cfg_attr(target_os = "macos", path = "dialog_mac.rs")]

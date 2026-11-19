@@ -49,6 +49,7 @@ It's a small example of what two people and an AI can ship together in a short t
 - **An ASCII clock** they interact with: butterflies land on the digits, koi flee when the minute ticks over. Don't want it? Untick **Orologio al centro** (clock in the middle) in the menu, or open `index.html?orologio=0` in the browser.
 - **Click the desktop** to feed the koi or scatter the other animals (Windows, macOS, and Linux with GNOME 45+ through a tiny GNOME Shell extension, since Wayland doesn't let apps see clicks on other windows).
 - **Dark or light.** Dark by default; the light theme draws the animals as ink on cream paper, or it can follow the system's light/dark setting. Menu **Tema**, or `index.html?tema=chiaro` in the browser.
+- **Snapshots**: save a PNG of the wallpaper exactly as it looks right now, widgets included, into Pictures/ASCII Zoo (menu **Salva una foto dello sfondo**, or `P` in the browser).
 - **Multi-monitor**, with a different animal on each screen if you like.
 - **ASCII widgets**: a sticky note, a countdown, CPU/RAM/battery meters.
 - **Names**: the biggest animal of each species can carry a name. Meet **KARPISA**, the koi from Pisa.

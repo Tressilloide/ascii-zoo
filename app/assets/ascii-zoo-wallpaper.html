@@ -264,6 +264,7 @@ h1 {
       <input id="auto" type="checkbox">
       Cambia animale ogni minuto
     </label>
+    <button type="button" id="foto">Scarica una foto dello sfondo <kbd>P</kbd></button>
     <button type="button" id="hide">Nascondi l'interfaccia <kbd>H</kbd></button>
   </div>
   <button class="gear" id="gear" type="button" aria-label="Impostazioni" aria-expanded="false" aria-controls="panel">&#9881;&#xFE0E;</button>
@@ -2401,6 +2402,140 @@ h1 {
   var qt = /[?&]tema=([^&#]*)/.exec(location.search);
   if (qt) setTema(decodeURIComponent(qt[1]));
 
+  /* ---- foto dello sfondo ----
+     zooFoto(): un PNG (data URL) di come appare adesso lo sfondo, alla risoluzione dello
+     schermo: il fondo del tema con i suoi puntini, i canvas (bagliore, animali, data e
+     nomi) con opacità, sfocatura e fusione del loro stile, e sopra i widget, riscritti
+     come testo pezzo per pezzo con posizione, carattere, colore e alone calcolati dal
+     browser (vale anche per widget nuovi). La chiama il programma ("Salva una foto dello
+     sfondo"); nel browser il tasto P o il pulsante nel pannello la scaricano. Uno schermo
+     in pausa ha l'ultimo fotogramma: è quello che si vede. */
+  // "rgb(9, 10, 15) 0px 0px 8px, …" -> [{ c, x, y, b }]
+  function ombre(v) {
+    if (!v || v === 'none') return [];
+    var COL = /(rgba?\([^)]*\)|#[0-9a-f]+|\b[a-z]+\b)/i;
+    return v.split(/,(?![^(]*\))/).map(function (p) {
+      var c = COL.exec(p), n = (p.replace(COL, '').match(/-?[\d.]+(?=px)/g) || []).map(Number);
+      return { c: c ? c[1] : 'black', x: n[0] || 0, y: n[1] || 0, b: n[2] || 0 };
+    });
+  }
+  function fotoCanvas() {
+    var s = zoo.tile / zoo.cell; // pixel del canvas per pixel CSS
+    var out = document.createElement('canvas');
+    out.width = Math.round(root.clientWidth * s);
+    out.height = Math.round(root.clientHeight * s);
+    var g = out.getContext('2d');
+    g.fillStyle = getComputedStyle(document.body).backgroundColor;
+    g.fillRect(0, 0, out.width, out.height);
+    // i puntini del fondo: uno al centro di ogni cella
+    var t = zoo.tile, pc = document.createElement('canvas');
+    pc.width = pc.height = t;
+    var pg = pc.getContext('2d');
+    pg.fillStyle = getComputedStyle(root).getPropertyValue('--grana').trim() || 'transparent';
+    pg.beginPath();
+    pg.arc(t / 2, t / 2, 0.85 * s, 0, Math.PI * 2);
+    pg.fill();
+    g.fillStyle = g.createPattern(pc, 'repeat');
+    g.fillRect(0, 0, out.width, out.height);
+    // i canvas, nell'ordine della pagina
+    Array.prototype.forEach.call(document.querySelectorAll('canvas'), function (cv) {
+      var st = getComputedStyle(cv), r = cv.getBoundingClientRect();
+      if (st.display === 'none' || st.visibility === 'hidden' || !r.width || !r.height) return;
+      g.save();
+      g.globalAlpha = +st.opacity;
+      if (st.mixBlendMode && st.mixBlendMode !== 'normal') g.globalCompositeOperation = st.mixBlendMode;
+      // sfocatura in pixel CSS -> pixel della foto; senza ctx.filter (WebKit) resta
+      // l'ingrandimento sfumato del bagliore, che è una cella per pixel
+      if ('filter' in g && st.filter && st.filter !== 'none') {
+        g.filter = st.filter.replace(/blur\(([\d.]+)px\)/, function (m, v) { return 'blur(' + v * s + 'px)'; });
+      }
+      g.imageSmoothingEnabled = true;
+      g.drawImage(cv, r.left * s, r.top * s, r.width * s, r.height * s);
+      g.restore();
+    });
+    // i widget: ogni pezzo di testo, riga per riga, dove lo mette il browser
+    var box = $('widgets');
+    if (box && !box.hidden) {
+      var it = document.createTreeWalker(box, NodeFilter.SHOW_TEXT, null, false), range = document.createRange(), n;
+      while ((n = it.nextNode())) {
+        var el = n.parentElement, st = getComputedStyle(el);
+        if (st.visibility === 'hidden' || !el.getClientRects().length) continue;
+        var alfa = 1;
+        for (var e = el; e && e !== document.documentElement; e = e.parentElement) alfa *= +getComputedStyle(e).opacity;
+        if (!(alfa > 0)) continue;
+        var px = parseFloat(st.fontSize) * s, sh = ombre(st.textShadow);
+        g.font = st.fontStyle + ' ' + st.fontWeight + ' ' + px + 'px ' + st.fontFamily;
+        g.textBaseline = 'alphabetic';
+        g.globalAlpha = alfa;
+        for (var a = 0, txt = n.data; a < txt.length;) {
+          var b = txt.indexOf('\n', a);
+          if (b < 0) b = txt.length;
+          var riga = txt.slice(a, b);
+          if (/\S/.test(riga)) {
+            range.setStart(n, a);
+            range.setEnd(n, b);
+            // il riquadro più largo: all'inizio di una riga WebKit aggiunge quello vuoto
+            // dell'a capo, in fondo alla riga prima
+            var rs = range.getClientRects(), rr = null, m = g.measureText(riga);
+            for (var q = 0; q < rs.length; q++) if (!rr || rs[q].width > rr.width) rr = rs[q];
+            if (!rr) { a = b + 1; continue; }
+            var asc = m.fontBoundingBoxAscent || px * 0.8, desc = m.fontBoundingBoxDescent || px * 0.2;
+            var x = rr.left * s, y = (rr.top + rr.height / 2) * s + (asc - desc) / 2;
+            // l'alone (text-shadow): solo l'ombra, il testo vero sta fuori dalla foto
+            for (var k = sh.length - 1; k >= 0; k--) {
+              g.shadowColor = sh[k].c;
+              g.shadowBlur = sh[k].b * s;
+              g.shadowOffsetX = sh[k].x * s + 100000;
+              g.shadowOffsetY = sh[k].y * s;
+              g.fillText(riga, x - 100000, y);
+            }
+            g.shadowColor = 'transparent';
+            g.fillStyle = st.color;
+            g.fillText(riga, x, y);
+          }
+          a = b + 1;
+        }
+      }
+    }
+    return out;
+  }
+  window.zooFoto = function () {
+    try { return fotoCanvas().toDataURL('image/png'); } catch (e) { return ''; }
+  };
+  // nel browser: la foto si scarica, con data e ora nel nome
+  function scaricaFoto() {
+    var d = new Date(), p = function (v) { return (v < 10 ? '0' : '') + v; };
+    var nome = 'ascii-zoo-' + d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + '-' +
+      p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + '.png';
+    var c = fotoCanvas();
+    var scarica = function (url) {
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = nome;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    };
+    // un Blob, non un data URL: quelli grandi alcuni browser non li scaricano
+    if (c.toBlob) {
+      c.toBlob(function (blob) {
+        if (!blob) return;
+        var url = URL.createObjectURL(blob);
+        scarica(url);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
+      }, 'image/png');
+    } else scarica(c.toDataURL('image/png'));
+  }
+  // dentro il programma lo sfondo non riceve tasti; la foto la salva lui
+  var nelProgramma = location.protocol === 'zoo:' || location.hostname === 'zoo.localhost';
+  if (!nelProgramma) {
+    document.addEventListener('keydown', function (e) {
+      var tag = e.target && e.target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === 'p' || e.key === 'P') scaricaFoto();
+    });
+  }
+
   /* Orologio al centro: lo spegne il programma con zooSetting('orologio', false), nel
      browser index.html?orologio=0 e in Lively la casella "Orologio al centro"
      (LivelyProperties.json; Lively chiama livelyPropertyListener). */
@@ -2507,6 +2642,7 @@ h1 {
     save();
   });
   $('hide').addEventListener('click', function () { setBare(true); });
+  $('foto').addEventListener('click', function () { closePanel(); scaricaFoto(); });
 
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {

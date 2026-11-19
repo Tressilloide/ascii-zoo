@@ -40,7 +40,7 @@ use wry::{PageLoadEvent, WebView, WebViewBuilder};
 use crate::config::autostart;
 use crate::shared::{self, zoo_log, Core, Esito, Schermo, JS_START, JS_STOP, URL};
 use crate::stats::Stats;
-use crate::{desktop, power};
+use crate::{desktop, foto, power};
 
 const TIMER: usize = 1;
 /// tick (da 250 ms) da aspettare dopo un cambio di schermo prima di rifare gli sfondi
@@ -267,6 +267,7 @@ impl App {
                 self.sync_hook();
             }
             Esito::Schermi => self.push_schermi(),
+            Esito::Foto => foto::scatta(self.screens.iter().map(|s| &s.webview)),
             Esito::Ricarica => {
                 for s in &mut self.screens {
                     s.paused = false;
