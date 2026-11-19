@@ -138,6 +138,12 @@ jobs:
             dreams/macos/target/aarch64-apple-darwin/release/libascii_dreams_macos.dylib \
             dreams/macos/target/x86_64-apple-darwin/release/libascii_dreams_macos.dylib
           sed "s/@VERSION@/$version/g" dreams/macos/Info.plist > "$saver/Contents/Info.plist"
+          # la miniatura nella lista dei salvaschermo: un pezzo dell'aurora (90×58 punti)
+          mkdir -p "$saver/Contents/Resources"
+          sips -Z 206 dreams/docs/aurora.png --out build/miniatura.png
+          sips -c 116 180 build/miniatura.png --out "$saver/Contents/Resources/thumbnail@2x.png"
+          sips -Z 103 dreams/docs/aurora.png --out build/miniatura.png
+          sips -c 58 90 build/miniatura.png --out "$saver/Contents/Resources/thumbnail.png"
           # firma "ad hoc": non è un certificato Apple, ma i Mac con Apple Silicon
           # non avviano codice senza nessuna firma. Prima il modulo, poi l'app che lo contiene
           codesign --force --sign - "$saver"
@@ -242,6 +248,12 @@ jobs:
           "build/ASCII Zoo.app/Contents/MacOS/ascii-zoo" --installa-salvaschermo --apri-impostazioni
           sleep 10
           screencapture -x prova-screensaver/impostazioni.png
+          # su macOS 26 si apre il dialogo del salvaschermo: "Custom" mostra la lista dei
+          # salvaschermo (il punto viene dalla foto qui sopra, 1024×768)
+          if [ -x ./clic ]; then
+            ./clic 700 415; sleep 8
+            screencapture -x prova-screensaver/impostazioni-lista.png
+          fi
           osascript -e 'tell application "System Settings" to quit' || true
 
       - uses: actions/upload-artifact@v4
