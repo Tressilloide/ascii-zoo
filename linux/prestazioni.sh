@@ -8,8 +8,12 @@
 #   3. app con WebKitGTK tutto in software (WEBKIT_DISABLE_COMPOSITING_MODE=1)
 #   4. app con l'altra modalità di WebKitGTK per la GPU (WEBKIT_DISABLE_DMABUF_RENDERER)
 # Ognuna: 10 secondi per partire, poi 20 di misura. Alla fine l'app riparte come prima.
+# Con --wayland, sotto Wayland, anche:
+#   5. app in Wayland nativo, senza XWayland (GDK_BACKEND=wayland): Wayland non permette di
+#      fare da sfondo, quindi per quei 30 secondi è una finestra normale, sopra le altre.
+#      Serve solo a misurare quanto costa passare da XWayland
 #
-# Uso:  bash prestazioni.sh [percorso di ascii-zoo]
+# Uso:  bash prestazioni.sh [--wayland] [percorso di ascii-zoo]
 # Durante la prova il desktop deve vedersi: niente finestre a schermo intero o massimizzate
 # (lo sfondo coperto va in pausa e la misura non direbbe niente).
 set -u
@@ -20,6 +24,8 @@ DURATA=${DURATA:-20}
 LOG=$(mktemp)
 trap 'rm -f "$LOG"' EXIT
 
+WAYLAND=no
+if [ "${1:-}" = --wayland ]; then WAYLAND=si; shift; fi
 BIN="${1:-}"
 if [ -z "$BIN" ]; then
   pid=$(pgrep -x ascii-zoo | head -1)
@@ -97,6 +103,8 @@ prova() {
 {
   echo "ASCII Zoo, prestazioni — $(date '+%Y-%m-%d %H:%M')"
   echo "programma: $BIN ($("$BIN" --version 2>/dev/null))"
+  # compilato da un clone: il commit
+  c=$(git -C "$(dirname "$BIN")" rev-parse --short HEAD 2>/dev/null) && echo "commit: $c"
   echo "sistema: $(. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-?}"), kernel $(uname -r)"
   echo "sessione: ${XDG_SESSION_TYPE:-?}, desktop ${XDG_CURRENT_DESKTOP:-?}, $(gnome-shell --version 2>/dev/null || echo 'GNOME Shell ?')"
   echo "CPU: $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2- | sed 's/^ //'), $NCPU thread"
@@ -125,7 +133,7 @@ import json, sys
 c = json.load(open(sys.argv[1]))
 chiavi = ["animale", "animale_schermi", "tema", "orologio", "clic_desktop", "pausa_batteria",
           "pausa_schermo_intero", "pausa_coperto", "widget_statistiche", "widget_nerd", "widget_musica",
-          "widget_sfondo_pieno", "widget_schermo", "salvaschermo_minuti"]
+          "widget_sfondo_pieno", "widget_schermo", "salvaschermo_minuti", "fotogrammi"]
 for k in chiavi:
     if k in c: print("  %s: %s" % (k, json.dumps(c[k])))
 ' "$conf"
@@ -150,6 +158,10 @@ if [ -e /proc/driver/nvidia ]; then
   prova "WebKitGTK con DMA-BUF acceso (NVIDIA: se lo sfondo era nero, dimmelo)" WEBKIT_DISABLE_DMABUF_RENDERER=0
 else
   prova "WebKitGTK senza DMA-BUF" WEBKIT_DISABLE_DMABUF_RENDERER=1
+fi
+if [ "$WAYLAND" = si ] && [ -n "${WAYLAND_DISPLAY:-}" ]; then
+  echo "   (Wayland nativo: per 30 secondi ASCII Zoo è una finestra normale sopra le altre)" >&2
+  prova "Wayland nativo, senza XWayland (finestra normale, non sfondo)" GDK_BACKEND=wayland
 fi
 
 chiudi_app
