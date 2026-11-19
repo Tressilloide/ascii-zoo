@@ -116,7 +116,7 @@ Di serie lo sfondo è scuro: gli animali sono luce su fondo nero. Il tema **chia
 
 ## Fotogrammi al secondo
 
-Lo sfondo si muove a **30** fotogrammi al secondo. Dal menu **Fotogrammi al secondo** si può scendere a **20** o **15**: le scene sono lente e si vede poco, mentre CPU e GPU lavorano circa in proporzione meno (a 1920×1080, da 30 a 15: un terzo di CPU in meno). Serve sui portatili e soprattutto su Linux con la **scala frazionaria** di GNOME (125%, 150%…): lì le app che passano da XWayland, come ASCII Zoo, si disegnano più grandi dello schermo (su uno schermo 1920×1080 al 125%, 3072×1728) e GNOME poi le rimpicciolisce, quindi ogni fotogramma costa più del doppio. Per capire quanto pesa su un PC Linux c'è [`linux/prestazioni.sh`](linux/prestazioni.sh) (vedi la sezione Linux).
+Lo sfondo si muove a **30** fotogrammi al secondo. Dal menu **Fotogrammi al secondo** si può scendere a **20** o **15**: le scene sono lente e si vede poco, mentre CPU e GPU lavorano circa in proporzione meno (a 1920×1080, da 30 a 15: un terzo di CPU in meno). Serve sui portatili. Su Linux con la **scala frazionaria** di GNOME (125%, 150%…) aiuta meno: le app che passano da XWayland, come ASCII Zoo, si disegnano più grandi dello schermo (su uno schermo 1920×1080 al 125%, 3072×1728) e GNOME poi le rimpicciolisce, e una parte del costo (Xwayland) non scende con i fotogrammi; è il limite noto della 0.6.0. Per capire quanto pesa su un PC Linux c'è [`linux/prestazioni.sh`](linux/prestazioni.sh) (vedi la sezione Linux).
 
 ## Foto dello sfondo
 
