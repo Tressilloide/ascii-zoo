@@ -5,6 +5,7 @@ The Windows screensaver of ASCII Zoo, as a small Rust library (`lib.rs`) that th
 - `painter.rs` rasterizes JetBrains Mono once per character size with fontdue, precomputes a soft glow per glyph and draws the character grid straight into a pixel buffer, split across CPU cores.
 - `scenes/` holds the scenes (`stelle`, `pioggia`, `fuoco`, `aurora`, `vita`, `mare`): each one only fills a grid of characters, colours and brightness. `director.rs` rotates them with a fade and `clock.rs` adds the drifting clock.
 - `win.rs` puts the buffer on every monitor with GDI and speaks the screensaver protocol; settings are in `%APPDATA%\AsciiZoo\screensaver.json`.
+- `macos/` is the macOS module, `ASCII Zoo.saver`: a small `cdylib` with a `ScreenSaverView` subclass (objc2) that gives every screen and every preview its own `Motore` and draws its buffer in `drawRect:`. The app carries it inside `ASCII Zoo.app` and installs it into `~/Library/Screen Savers`; the `macos` job of the workflow builds it and checks in CI that it loads and draws.
 
 ```
 cargo run --release -- --finestra --scena aurora          # in a window (Esc closes)
