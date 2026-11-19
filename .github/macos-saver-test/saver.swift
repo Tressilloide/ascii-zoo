@@ -60,6 +60,8 @@ while Date() < fine {
     RunLoop.main.run(until: Date().addingTimeInterval(1.0 / 30.0))
 }
 print("\(fotogrammi) giri in 3 s; animateOneFrame della vista grande: \(String(format: "%.1f", speso * 1000 / Double(fotogrammi))) ms in media")
+// 1/30 con l'alimentatore, 1/15 a batteria: il runner è un Mac senza batteria
+print("animationTimeInterval dopo i fotogrammi: \(schermo.animationTimeInterval)")
 
 /// fotografa la vista (passa da drawRect:, come la cache di AppKit), salva il PNG e conta
 /// i pixel accesi: più chiari del fondo delle scene (6, 8, 12)

@@ -140,10 +140,11 @@ jobs:
           sed "s/@VERSION@/$version/g" dreams/macos/Info.plist > "$saver/Contents/Info.plist"
           # la miniatura nella lista dei salvaschermo: un pezzo dell'aurora (90×58 punti)
           mkdir -p "$saver/Contents/Resources"
-          sips -Z 206 dreams/docs/aurora.png --out build/miniatura.png
+          sips --resampleHeight 116 dreams/docs/aurora.png --out build/miniatura.png
           sips -c 116 180 build/miniatura.png --out "$saver/Contents/Resources/thumbnail@2x.png"
-          sips -Z 103 dreams/docs/aurora.png --out build/miniatura.png
+          sips --resampleHeight 58 dreams/docs/aurora.png --out build/miniatura.png
           sips -c 58 90 build/miniatura.png --out "$saver/Contents/Resources/thumbnail.png"
+          sips -g pixelWidth -g pixelHeight "$saver"/Contents/Resources/thumbnail*.png
           # firma "ad hoc": non è un certificato Apple, ma i Mac con Apple Silicon
           # non avviano codice senza nessuna firma. Prima il modulo, poi l'app che lo contiene
           codesign --force --sign - "$saver"
@@ -243,6 +244,7 @@ jobs:
       # foto da guardare (il pannello vero non si comanda da qui), non fa fallire il job
       - name: Prova - apre le impostazioni del salvaschermo (foto)
         continue-on-error: true
+        timeout-minutes: 6
         run: |
           sw_vers
           "build/ASCII Zoo.app/Contents/MacOS/ascii-zoo" --installa-salvaschermo --apri-impostazioni
@@ -254,6 +256,34 @@ jobs:
             ./clic 700 415; sleep 8
             screencapture -x prova-screensaver/impostazioni-lista.png
           fi
+          # si cerca la voce "ASCII Zoo" nella lista (Accessibilità, System Events) e la si
+          # sceglie: l'anteprima in alto la disegna allora legacyScreenSaver, il processo vero
+          # dei salvaschermo, nella sua sandbox
+          osascript -e 'tell application "System Events" to tell process "System Settings"
+            set n to 0
+            repeat with e in (entire contents of window 1)
+              set n to n + 1
+              set t to ""
+              try
+                set t to (name of e as text) & " " & (description of e as text)
+              end try
+              if t contains "ASCII Zoo" then
+                try
+                  click e
+                on error
+                  perform action "AXPress" of e
+                end try
+                return "cliccato: " & (class of e as text) & " " & t
+              end if
+            end repeat
+            return "ASCII Zoo non trovato fra " & n & " elementi"
+          end tell' || true
+          sleep 10
+          screencapture -x prova-screensaver/impostazioni-anteprima.png
+          ps ax | grep -i "[s]creensaver" || true
+          log show --last 4m --style compact --predicate 'process CONTAINS[c] "ScreenSaver" OR eventMessage CONTAINS[c] "ASCII Zoo" OR eventMessage CONTAINS[c] "AsciiZoo"' > prova-screensaver/log-salvaschermo.txt 2>&1 || true
+          wc -l prova-screensaver/log-salvaschermo.txt
+          grep -i "ascii\|error\|deny\|sandbox\|signature\|dlopen" prova-screensaver/log-salvaschermo.txt | head -40 || true
           osascript -e 'tell application "System Settings" to quit' || true
 
       - uses: actions/upload-artifact@v4
