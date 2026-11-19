@@ -79,7 +79,9 @@ body {
 }
 
 canvas { position: fixed; top: 0; left: 0; display: block; }
-#glow { opacity: 0.55; filter: blur(7px) saturate(1.2); pointer-events: none; }
+/* il bagliore è già sfocato e saturato dal motore (vedi sfocaBagliore): un filtro blur()
+   qui costerebbe molto dove la grafica non è accelerata */
+#glow { opacity: 0.55; pointer-events: none; }
 /* chiaro: la luce sulla carta non si vede; resta un alone colorato morbido, come acquerello */
 [data-tema="chiaro"] #glow { opacity: 0.32; mix-blend-mode: multiply; }
 #zoo { cursor: crosshair; touch-action: manipulation; }
@@ -1982,6 +1984,15 @@ h1 {
     var n = parseInt(hex.slice(1), 16);
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   }
+  // i colori del bagliore un po' più saturi, come il vecchio filtro CSS saturate(1.2)
+  function satura(c) {
+    var k = 1.2, r = c[0], g = c[1], b = c[2];
+    return [
+      clamp(Math.round((0.213 + 0.787 * k) * r + (0.715 - 0.715 * k) * g + (0.072 - 0.072 * k) * b), 0, 255),
+      clamp(Math.round((0.213 - 0.213 * k) * r + (0.715 + 0.285 * k) * g + (0.072 - 0.072 * k) * b), 0, 255),
+      clamp(Math.round((0.213 - 0.213 * k) * r + (0.715 - 0.715 * k) * g + (0.072 + 0.928 * k) * b), 0, 255)
+    ];
+  }
   function rgbHex(c) {
     return '#' + c.map(function (v) { return (v < 16 ? '0' : '') + v.toString(16); }).join('');
   }
@@ -2054,6 +2065,7 @@ h1 {
     this.last = 0;
     this.out = { v: 0, c: 0 };
     this.rgb = PALETTE.map(hexRgb);
+    this.grgb = this.rgb.map(satura);
     this.chiaro = false;
     this.tc = TEMI.scuro;
     this._seed = (Date.now() ^ 0x9e3779b9) >>> 0;
@@ -2186,6 +2198,7 @@ h1 {
     this.tc = chiaro ? TEMI.chiaro : TEMI.scuro;
     if (chiaro && !this.rgbChiaro) this.rgbChiaro = PALETTE.map(function (h) { return inChiaro(hexRgb(h)); });
     this.rgb = chiaro ? this.rgbChiaro : PALETTE.map(hexRgb);
+    this.grgb = this.rgb.map(satura);
     this.buildAtlas();
     // in pausa non arrivano fotogrammi: si ridisegna subito (due volte: il bagliore si
     // aggiorna un fotogramma sì e uno no)
@@ -2484,7 +2497,7 @@ h1 {
         shown[k] = key;
       }
       if (gd) {
-        var rgb = this.rgb[col], p = k * 4;
+        var rgb = this.grgb[col], p = k * 4;
         gd[p] = rgb[0]; gd[p + 1] = rgb[1]; gd[p + 2] = rgb[2];
         gd[p + 3] = Math.round(255 * clamp(al * v * v, 0, 1));
       }
@@ -2502,7 +2515,47 @@ h1 {
     this.ns = this.nt;
     ctx.globalAlpha = 1;
     this.drawOverlay();
-    if (gd) this.gctx.putImageData(this.gimg, 0, 0);
+    if (gd) {
+      this.sfocaBagliore(gd);
+      this.gctx.putImageData(this.gimg, 0, 0);
+    }
+  };
+
+  /* Il bagliore ha un pixel per casella, e il browser lo ingrandisce sfumato. Lo si
+     sfoca qui, su poche migliaia di pixel, invece che con filter: blur() sul livello
+     grande quanto lo schermo: dove la grafica non è accelerata (WebKitGTK senza GPU)
+     quel filtro costava circa il 40% della CPU dello sfondo. Sfocatura [1 6 1] / 8 in
+     orizzontale e in verticale, sui colori moltiplicati per l'alfa (se no gli orli
+     diventano scuri): con l'ingrandimento è circa il vecchio blur(7px). */
+  Zoo.prototype.sfocaBagliore = function (gd) {
+    var W = this.cols, H = this.rows, n = W * H * 4, A = this.gA, B = this.gB, i, x, y, p, q, r, a;
+    if (!A || A.length !== n) { A = this.gA = new Float32Array(n); B = this.gB = new Float32Array(n); }
+    for (i = 0; i < n; i += 4) {
+      a = gd[i + 3] / 255;
+      A[i] = gd[i] * a; A[i + 1] = gd[i + 1] * a; A[i + 2] = gd[i + 2] * a; A[i + 3] = gd[i + 3];
+    }
+    for (y = 0; y < H; y++) {
+      for (x = 0; x < W; x++) {
+        p = (y * W + x) * 4; q = x > 0 ? p - 4 : p; r = x < W - 1 ? p + 4 : p;
+        B[p] = (A[q] + 6 * A[p] + A[r]) * 0.125;
+        B[p + 1] = (A[q + 1] + 6 * A[p + 1] + A[r + 1]) * 0.125;
+        B[p + 2] = (A[q + 2] + 6 * A[p + 2] + A[r + 2]) * 0.125;
+        B[p + 3] = (A[q + 3] + 6 * A[p + 3] + A[r + 3]) * 0.125;
+      }
+    }
+    var riga = W * 4;
+    for (y = 0; y < H; y++) {
+      for (x = 0; x < W; x++) {
+        p = (y * W + x) * 4; q = y > 0 ? p - riga : p; r = y < H - 1 ? p + riga : p;
+        a = (B[q + 3] + 6 * B[p + 3] + B[r + 3]) * 0.125;
+        if (a < 0.5) { gd[p + 3] = 0; continue; }
+        var k = 255 / a;
+        gd[p] = Math.min(255, (B[q] + 6 * B[p] + B[r]) * 0.125 * k);
+        gd[p + 1] = Math.min(255, (B[q + 1] + 6 * B[p + 1] + B[r + 1]) * 0.125 * k);
+        gd[p + 2] = Math.min(255, (B[q + 2] + 6 * B[p + 2] + B[r + 2]) * 0.125 * k);
+        gd[p + 3] = a;
+      }
+    }
   };
 
   /* ------------------------------------------------------------------ */
