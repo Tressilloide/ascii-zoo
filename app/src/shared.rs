@@ -410,6 +410,9 @@ impl Core {
         let mut v = vec![
             self.js_tema(),
             self.js_fotogrammi(),
+            // su Linux i fotogrammi agganciati agli aggiornamenti dello schermo: il timer di
+            // WebKitGTK è impreciso e l'animazione scattava (vedi _loop nella pagina)
+            format!("window.zooSetting && zooSetting('vsync', {})", cfg!(target_os = "linux")),
             self.js_nomi(),
             self.js_rotazione(),
             self.js_orologio(),

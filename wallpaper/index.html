@@ -2056,6 +2056,7 @@ h1 {
     this.font = opts.font || '"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace';
     this.speed = opts.speed == null ? 1 : opts.speed;
     this.fps = opts.fps || 0;
+    this.vsync = false; // vedi _loop
     this.creatures = [];
     this.food = [];
     this.ripples = [];
@@ -2857,17 +2858,43 @@ h1 {
     this.render();
   };
 
-  // con un limite (lo sfondo, 30 al secondo): un timer. requestAnimationFrame
-  // sveglierebbe la pagina a ogni aggiornamento dello schermo, anche per non fare niente.
+  // Con un limite (lo sfondo, 30 al secondo) i fotogrammi li scandisce un timer:
+  // requestAnimationFrame sveglierebbe la pagina a ogni aggiornamento dello schermo, e su
+  // Windows e macOS, con lo sfondo dietro le icone, il browser potrebbe crederlo nascosto e
+  // fermarlo. Le scadenze stanno su una griglia fissa (la precedente + 1/fps), non "1/fps
+  // dopo la fine di questo fotogramma": il timer arriva sempre un po' in ritardo (in
+  // WebKitGTK ~3 ms) e contando dalla fine il ritardo si sommava: 36 ms invece di 33, cioè
+  // 27,8 fotogrammi al secondo che con lo schermo a 60 Hz cadevano ora ogni 2, ora ogni 3
+  // aggiornamenti dello schermo (un piccolo scatto 4 volte al secondo).
+  // Con zooSetting('vsync', true) (l'app su Linux) i fotogrammi si fanno invece sui callback
+  // di requestAnimationFrame, uno ogni tanti (a 60 Hz e 30 al secondo: uno sì e uno no), e
+  // cadono sempre alla stessa distanza; se i callback non arrivano, un timer di riserva fa
+  // andare avanti lo sfondo.
   Zoo.prototype._loop = function () {
-    this._timer = 0;
+    if (this._timer) { global.clearTimeout(this._timer); this._timer = 0; }
+    if (this._raf) { global.cancelAnimationFrame(this._raf); this._raf = 0; }
     if (!this.running) return;
-    var now = global.performance.now();
+    var now = global.performance.now(), period = 1000 / this.fps;
+    // con l'aggancio allo schermo: non è ancora ora (4 ms di margine, meno di mezzo aggiornamento)
+    if (this.vsync && this.last && now - this.last < period - 4) { this._prossimo(period); return; }
     var dt = this.last ? (now - this.last) / 1000 : 1 / this.fps;
     this.last = now;
     this.step(Math.min(dt, 0.05) * this.speed);
     this.render();
-    var wait = 1000 / this.fps - (global.performance.now() - now);
+    this._prossimo(period);
+  };
+
+  Zoo.prototype._prossimo = function (period) {
+    if (this.vsync && global.requestAnimationFrame) {
+      this._raf = global.requestAnimationFrame(this._loop);
+      this._timer = global.setTimeout(this._loop, period * 2); // riserva
+      return;
+    }
+    var ora = global.performance.now(), next = (this._next || ora) + period;
+    // in ritardo di più di un fotogramma (pagina ferma, PC occupato): si riparte da adesso
+    if (next < ora - period) next = ora + period;
+    this._next = next;
+    var wait = next - ora;
     this._timer = global.setTimeout(this._loop, wait > 1 ? wait : 1);
   };
 
@@ -2875,6 +2902,7 @@ h1 {
     if (this.running) return;
     this.running = true;
     this.last = 0;
+    this._next = 0;
     if (this.fps) this._timer = global.setTimeout(this._loop, 0);
     else global.requestAnimationFrame(this._tick);
   };
@@ -2882,6 +2910,7 @@ h1 {
   Zoo.prototype.stop = function () {
     this.running = false;
     if (this._timer) { global.clearTimeout(this._timer); this._timer = 0; }
+    if (this._raf) { global.cancelAnimationFrame(this._raf); this._raf = 0; }
   };
 
   global.AsciiZoo = Zoo;
@@ -3034,6 +3063,7 @@ h1 {
     if (name === 'orologio') { zoo.setClock(val === true || val === 'true'); return; }
     if (name === 'tema') { setTema(val); return; }
     if (name === 'fps') { zoo.setFps(val); return; }
+    if (name === 'vsync') { zoo.vsync = val === true || val === 'true'; return; }
     if (name === 'nomi') { zoo.setNames(asObject(val)); return; }
     if (name === 'rotazione') {
       var r = asObject(val);
