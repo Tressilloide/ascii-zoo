@@ -47,6 +47,8 @@ features = [
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tao = "0.34"
+# la scelta della scena dello screensaver (screensaver.json, lo legge il modulo ASCII Zoo.saver)
+ascii-dreams = { path = "../dreams" }
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
 objc2 = "0.6"

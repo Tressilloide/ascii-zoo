@@ -217,9 +217,63 @@ jobs:
           sed -i '' "s#<string>$version</string>#<string>0.0.1</string>#" "$mod/Contents/Info.plist"
           grep -q 0.0.1 "$mod/Contents/Info.plist"
 
-      - name: Prova - avvia l'app e fotografa lo schermo
+      # "Prova adesso" del menu Screensaver: l'app carica il suo modulo a tutto schermo, con la
+      # scena di screensaver.json (quello che scrive il menu); la foto deve essere quasi tutta
+      # scura (il fondo delle scene) ma con la scena accesa, e un clic lo chiude
+      - name: Prova - "Prova adesso" dello screensaver
         run: |
           xcrun swiftc -O -o clic .github/macos-click-test/click.swift || echo "::warning::non si compila il simulatore di clic"
+          mkdir -p "$HOME/Library/Application Support/AsciiZoo" prova-screensaver
+          echo '{"scena": "fuoco", "orologio": false}' > "$HOME/Library/Application Support/AsciiZoo/screensaver.json"
+          ASCII_ZOO_LOG=1 "build/ASCII Zoo.app/Contents/MacOS/ascii-zoo" --salvaschermo 2> sogno-macos.log &
+          pid=$!
+          sleep 6
+          screencapture -x prova-screensaver/prova-adesso.png || echo "::warning::screenshot non riuscito"
+          cat sogno-macos.log
+          if ! kill -0 "$pid" 2>/dev/null; then
+            echo "::error::--salvaschermo si è chiuso da solo"; exit 1
+          fi
+          grep -q "prova su" sogno-macos.log || { echo "::error::nessuna vista dello screensaver"; kill "$pid"; exit 1; }
+          if [ -s prova-screensaver/prova-adesso.png ]; then
+            sips -s format bmp prova-screensaver/prova-adesso.png --out prova-adesso.bmp >/dev/null
+            python3 - prova-adesso.bmp <<'PY'
+          import struct, sys
+          b = open(sys.argv[1], 'rb').read()
+          inizio, = struct.unpack_from('<I', b, 10)
+          w, h, _, bpp = struct.unpack_from('<iiHH', b, 18)
+          h = abs(h); passo = (w * bpp // 8 + 3) // 4 * 4; n = bpp // 8
+          scuri = accesi = 0
+          for y in range(0, h, 2):
+              riga = inizio + y * passo
+              for x in range(0, w, 2):
+                  p = b[riga + x * n: riga + x * n + 3]
+                  m = max(p)
+                  scuri += m < 24
+                  accesi += m > 80
+          tot = ((h + 1) // 2) * ((w + 1) // 2)
+          print(f"foto {w}x{h}: scuri {100 * scuri / tot:.1f}%, accesi {100 * accesi / tot:.2f}%")
+          if scuri < tot * 0.5:
+              sys.exit("::error::lo schermo non è quello dello screensaver (poco scuro)")
+          if accesi < tot * 0.001:
+              sys.exit("::error::lo screensaver è tutto spento")
+          PY
+          fi
+          # un clic chiude la prova (se il runner accetta i clic simulati)
+          if [ -x ./clic ]; then
+            ./clic 500 400
+            for i in 1 2 3 4 5 6; do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
+          fi
+          if kill -0 "$pid" 2>/dev/null; then
+            echo "::warning::il clic simulato non ha chiuso la prova dello screensaver (permesso Accessibilità del runner?)"
+            kill "$pid"
+          else
+            echo "chiuso dal clic"
+          fi
+          rm "$HOME/Library/Application Support/AsciiZoo/screensaver.json"
+
+      - name: Prova - avvia l'app e fotografa lo schermo
+        run: |
+          [ -x ./clic ] || xcrun swiftc -O -o clic .github/macos-click-test/click.swift || echo "::warning::non si compila il simulatore di clic"
           ASCII_ZOO_LOG=1 "build/ASCII Zoo.app/Contents/MacOS/ascii-zoo" 2> app-macos.log &
           pid=$!
           sleep 20

@@ -24,7 +24,7 @@ const ID: &str = "io.github.tressilloide.asciizoo.saver";
 
 /// il modulo dentro l'app: ASCII Zoo.app/Contents/Resources/ASCII Zoo.saver
 /// (None se il programma non gira da una .app, per esempio con cargo run)
-fn nell_app() -> Option<PathBuf> {
+pub fn nell_app() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let p = exe.parent()?.parent()?.join("Resources").join(NOME);
     p.join("Contents/Info.plist").is_file().then_some(p)

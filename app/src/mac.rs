@@ -39,6 +39,8 @@ use crate::shared::{self, zoo_log, Core, Esito, Schermo, JS_START, JS_STOP, URL}
 
 #[path = "salvaschermo_mac.rs"]
 mod salvaschermo;
+#[path = "sogno_mac.rs"]
+mod sogno;
 
 /// ogni quanto si ricontrollano le pause: quando lo sfondo torna visibile riparte subito
 const GIRO: Duration = Duration::from_millis(500);
@@ -485,6 +487,11 @@ fn prendi_il_posto() {
 }
 
 pub fn run() {
+    // "Prova adesso" del menu Screensaver: un processo a parte, che non tocca l'app che gira
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("--salvaschermo") {
+        sogno::esegui(&args, salvaschermo::nell_app().as_deref());
+    }
     // solo per la prova in CI: installa lo screensaver (e, se richiesto, apre le sue
     // impostazioni) ed esce, senza toccare l'app che gira
     if std::env::args().nth(1).as_deref() == Some("--installa-salvaschermo") {

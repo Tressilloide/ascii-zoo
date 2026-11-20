@@ -12,9 +12,14 @@
 //! - si disegna ai pixel veri dello schermo (2 per punto sugli schermi Retina), a 30
 //!   fotogrammi al secondo (15 a batteria)
 //! - nessun panic arriva a Objective-C: ogni metodo passa da `protetto`
-//! - le impostazioni: il processo è in una sandbox e la cartella dei dati è quella del
-//!   suo container, dove screensaver.json non c'è; quindi valgono quelle di serie
-//!   (tutte le scene a rotazione, orologio, caratteri medi)
+//! - le impostazioni: screensaver.json in ~/Library/Application Support/AsciiZoo, che scrive
+//!   l'app (menu Screensaver). Il processo è in una sandbox dove HOME è la cartella del suo
+//!   container, quindi `Config::carica` prende la cartella dell'utente dal database degli
+//!   utenti (dreams/src/config.rs); se il file non c'è o non si legge valgono quelle di serie
+//!   (tutte le scene a rotazione, orologio, caratteri medi). La finestra delle opzioni non
+//!   c'è: dalla sandbox il modulo non potrebbe scrivere il file
+//! - "Prova adesso" dell'app carica questo stesso modulo a tutto schermo (app/src/sogno_mac.rs)
+//!   e può chiedere una scena con la variabile d'ambiente ASCII_ZOO_SCENA
 //! - da macOS 14 legacyScreenSaver non ferma più i moduli e resta acceso: alla fine del
 //!   salvaschermo il processo esce da solo (vedi `prepara_uscita`)
 
@@ -127,7 +132,7 @@ define_class!(
             true
         }
 
-        /// niente finestra delle opzioni (vedi in cima: valgono quelle di serie)
+        /// niente finestra delle opzioni (vedi in cima: la scena si sceglie dal menu dell'app)
         #[unsafe(method(hasConfigureSheet))]
         fn has_configure_sheet(&self) -> bool {
             false
@@ -216,8 +221,11 @@ impl AsciiZooDreamsView {
 }
 
 fn nuovo_motore(w: usize, h: usize, piccola: bool, seme: u64) -> Motore {
-    // nella sandbox screensaver.json non c'è: di solito sono le impostazioni di serie
+    // screensaver.json dell'app, letto anche dalla sandbox (vedi in cima)
     let mut cfg = Config::carica();
+    if let Some(s) = std::env::var("ASCII_ZOO_SCENA").ok().filter(|s| !s.is_empty()) {
+        cfg.scena = s;
+    }
     let mut righe = cfg.righe;
     if piccola {
         // come l'anteprima di Windows: caratteri grandi e niente orologio

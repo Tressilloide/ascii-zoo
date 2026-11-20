@@ -34,15 +34,6 @@ use crate::shared::zoo_log;
 /// che GNOME spenga lo schermo (di serie dopo 5 minuti): per questo ci sono anche 1, 2 e 3.
 const MINUTI: [u32; 8] = [0, 1, 2, 3, 5, 10, 15, 30];
 
-/// i nomi delle scene nel menu (in dreams/ sono in inglese, per la finestra di Windows)
-const NOMI: [(&str, &str); 6] = [
-    ("stelle", "Stelle"),
-    ("pioggia", "Pioggia e lampi"),
-    ("fuoco", "Falò"),
-    ("aurora", "Aurora"),
-    ("vita", "Gioco della vita"),
-    ("mare", "Mare di notte"),
-];
 
 const MUTTER: &str = "org.gnome.Mutter.IdleMonitor";
 const MUTTER_PERCORSO: &str = "/org/gnome/Mutter/IdleMonitor/Core";
@@ -200,7 +191,7 @@ impl Salvaschermo {
         };
         let scene: Vec<(String, CheckMenuItem)> = std::iter::once(("rotazione".to_string(), "Tutte, una dopo l'altra".to_string()))
             .chain(ascii_dreams::scene().iter().map(|(id, nome)| {
-                let nome = NOMI.iter().find(|n| n.0 == *id).map_or(*nome, |n| n.1);
+                let nome = crate::shared::nome_salvaschermo(id).unwrap_or(nome);
                 (id.to_string(), nome.to_string())
             }))
             .map(|(id, nome)| {

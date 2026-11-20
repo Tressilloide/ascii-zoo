@@ -29,12 +29,34 @@ fn file() -> Option<PathBuf> {
     #[cfg(windows)]
     let base = std::env::var_os("APPDATA").map(PathBuf::from);
     #[cfg(target_os = "macos")]
-    let base = std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Library/Application Support"));
+    let base = casa_vera().map(|h| h.join("Library/Application Support"));
     #[cfg(all(unix, not(target_os = "macos")))]
     let base = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")));
     base.map(|b| b.join("AsciiZoo").join("screensaver.json"))
+}
+
+/// macOS: la cartella dell'utente presa dal database degli utenti, non da HOME. Il modulo
+/// dello screensaver gira nella sandbox di legacyScreenSaver, dove HOME è la cartella del
+/// suo container (~/Library/Containers/com.apple.ScreenSaver.Engine.legacyScreenSaver/Data)
+/// e il file che scrive l'app non si vedrebbe. Leggere fuori dal container la sandbox lo
+/// lascia fare, senza chiedere niente all'utente (scrivere no, ma il modulo non scrive);
+/// se un giorno non fosse più così, valgono le impostazioni di serie, come prima.
+#[cfg(target_os = "macos")]
+fn casa_vera() -> Option<PathBuf> {
+    use std::os::unix::ffi::OsStrExt;
+    // SAFETY: getpwuid dà un puntatore a una struttura statica (o nullo), letta subito
+    let dal_database = unsafe {
+        let pw = libc::getpwuid(libc::getuid());
+        if pw.is_null() || (*pw).pw_dir.is_null() {
+            None
+        } else {
+            let dir = std::ffi::CStr::from_ptr((*pw).pw_dir);
+            Some(PathBuf::from(std::ffi::OsStr::from_bytes(dir.to_bytes())))
+        }
+    };
+    dal_database.filter(|p| p.is_absolute()).or_else(|| std::env::var_os("HOME").map(PathBuf::from))
 }
 
 impl Config {
