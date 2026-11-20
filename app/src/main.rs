@@ -15,6 +15,7 @@ mod foto;
 mod nerd;
 mod pomodoro;
 mod riproduzione;
+mod scene;
 mod shared;
 
 #[cfg_attr(target_os = "macos", path = "dialog_mac.rs")]

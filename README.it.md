@@ -124,6 +124,16 @@ Voce **Salva una foto dello sfondo** nel menu del programma (Windows, macOS e Li
 
 Nel browser la foto si scarica con il tasto **P**.
 
+## Scene tue
+
+Oltre agli animali si possono aggiungere **scene**: uno sfondo senza animali (pioggia, un paesaggio, lucciole…) scritto in un piccolo file JavaScript. Menu **Animale** > **Apri la cartella delle scene…** apre la cartella (`%APPDATA%\AsciiZoo\scene` su Windows, `~/Library/Application Support/AsciiZoo/scene` su macOS, `~/.config/AsciiZoo/scene` su Linux). Ogni file `.js` lì dentro diventa una voce in più del menu **Animale**, dopo gli animali; per vederne una nuova si esce da ASCII Zoo e lo si riapre. Per condividere una scena basta mandare il file.
+
+C'è un esempio commentato in [`scene/lucciole.js`](scene/lucciole.js): lucciole sopra l'erba. La prima riga `// nome: …` dà il nome nel menu (se manca, il nome del file); il file chiama `scena({ colori, init, tick, disegna })`. `w.put(colonna, riga, intensità, colore, alfa)` accende una cella; `this.c0` è il primo dei colori della scena; `hash2`, `clamp`, `lerp`, `TAU` e `celle` sono già pronti.
+
+Anche gli animali sono file: l'app li scrive nella sottocartella `di-serie` (riscritta a ogni avvio). Per cambiarne uno lo si copia nella cartella delle scene: con lo stesso nome (`koi.js`) prende il posto dell'animale di serie, con un nome nuovo (e una nuova riga `// nome:`) è un animale in più nel menu, che si comporta come quello da cui è copiato. I file degli animali sono scritti come il codice di [`wallpaper/index.html`](wallpaper/index.html): `SPECIES.push({...})` per l'animale, `SCENES.x = {...}` per il suo sfondo.
+
+Le scene sono codice scritto da altri: nell'app la pagina dello sfondo non può usare la rete né aprire altre pagine, e una scena che va in errore smette di disegnare senza fermare il resto. Funzionano solo nel programma, non nella versione per il browser.
+
 ## Struttura
 
 ```
@@ -143,6 +153,7 @@ ascii-zoo/
 │   └── macos/               il modulo per macOS (ASCII Zoo.saver)
 ├── linux/                   install.sh (installazione con un comando), prestazioni.sh (misure) e l'icona
 │   └── gnome/               estensione di GNOME Shell: sfondo senza XWayland e clic sul desktop
+├── scene/                   scene di esempio da mettere nella cartella delle scene (lucciole.js)
 ├── firefox/                 estensione "nuova scheda" per Firefox
 │   ├── manifest.json
 │   ├── index.html, app.js, zoo.js, style.css, icon.svg

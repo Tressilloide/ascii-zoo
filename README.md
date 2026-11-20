@@ -65,13 +65,37 @@ It's a small example of what two people and an AI can ship together in a short t
 | ![Starfield](dreams/docs/stars.png) **Starfield** | ![Rain and lightning](dreams/docs/rain.png) **Rain & lightning** | ![Campfire](dreams/docs/fire.png) **Campfire** |
 | ![Aurora](dreams/docs/aurora.png) **Aurora** | ![Game of Life](dreams/docs/life.png) **Game of Life** | ![Night sea](dreams/docs/sea.png) **Night sea** |
 
-In the tray menu choose **Usa come screensaver…** (use as screensaver): Windows opens its screensaver settings with ASCII Zoo already picked. Choose the wait time, and tick *On resume, display logon screen* if you want the PC to lock. In **Settings** you pick the scene (or all of them in rotation), how often it changes, the character size and the big drifting clock.
+In the tray menu open **Screensaver**: pick the scene there (or *Tutte, una dopo l'altra* for all of them in rotation), and **Prova adesso** shows it right away. **Attiva come screensaver di Windows…** opens the Windows screensaver settings with ASCII Zoo already picked: choose the wait time, and tick *On resume, display logon screen* if you want the PC to lock. Its **Settings** button also has how often the scene changes, the character size and the big drifting clock.
 
 The screensaver is the same `ascii-zoo.exe`, copied as `%LOCALAPPDATA%\AsciiZoo\ascii-zoo.scr` and kept up to date by the app. It doesn't use the WebView: a small native renderer in [`dreams/`](dreams/) draws every frame in about 1–2 ms, on every monitor, at 30 fps (15 on battery).
 
 On macOS the same menu item copies the `ASCII Zoo.saver` module into `~/Library/Screen Savers` and opens the screen saver settings (inside **Wallpaper** on macOS 26): pick **ASCII Zoo** there. It shows all the scenes in rotation with the clock, since macOS runs screen savers in a sandbox where the settings can't reach them.
 
 On Linux GNOME has no way to plug in a third-party screensaver, so the app starts the same scenes itself after a few minutes without mouse or keyboard: tray menu **Screensaver** (off by default). It only shows up if its delay is shorter than GNOME's *Blank Screen* delay (Settings > Power). Details in the [Italian README](README.it.md#sfondo-animato-per-linux).
+
+## Your own scenes
+
+Besides the animals you can add **scenes**: a backdrop without animals (rain, a landscape, fireflies…) written as a small JavaScript file. Tray menu **Animale** > **Apri la cartella delle scene…** opens the folder (`%APPDATA%\AsciiZoo\scene` on Windows, `~/Library/Application Support/AsciiZoo/scene` on macOS, `~/.config/AsciiZoo/scene` on Linux). Every `.js` file in it becomes one more entry in the **Animale** menu, after the animals; quit and reopen ASCII Zoo to see a new one. To share a scene, send the file.
+
+[`scene/lucciole.js`](scene/lucciole.js) is a commented example (fireflies over the grass). In short:
+
+```js
+// nome: Lucciole                   <- the name in the menu (else the file name)
+scena({
+  colori: ['#2f7a3a', '#d8ff6a'],   // the scene's colors: this.c0 + 0, this.c0 + 1, …
+  init: function (w) { return {}; },              // state, rebuilt when the grid changes
+  tick: function (w, dt, t, s) { },               // move things (dt, t in seconds)
+  disegna: function (w, t, A, s) {                // draw one frame
+    w.put(10, 5, 0.8, this.c0 + 1, A);            // column, row, intensity 0..1, color, alpha
+  }
+});
+```
+
+`w.cols` and `w.rows` are the grid size, `w.rnd()` a random number, and `hash2`, `clamp`, `lerp`, `TAU` and `celle(w, cells, color, A)` are ready to use.
+
+The animals are files too. The app writes them into the `di-serie` subfolder (rewritten every time it starts): copy one into the scene folder to change it. With the same file name (`koi.js`) it takes the place of the built-in animal; with a new name (and a new `// nome:` line) it's one more animal in the menu, and it still behaves like the one it was copied from. Animal files are written like the code in [`wallpaper/index.html`](wallpaper/index.html): `SPECIES.push({...})` for the animal, `SCENES.x = {...}` for its backdrop.
+
+Scene and animal files are code written by someone else, so inside the app the wallpaper page can't use the network or open other pages, and a file that throws an error just stops drawing. They only run in the app, not in the browser version.
 
 ## Download
 
@@ -105,7 +129,7 @@ The app only writes its settings file (and an autostart entry or the screensaver
 
 ### Privacy
 
-This program will not transfer any information to other networked systems unless specifically requested by the user. It has no telemetry, no accounts and no update checks; the only network request is the web search you type yourself in the browser version of the page.
+This program will not transfer any information to other networked systems unless specifically requested by the user. It has no telemetry, no accounts and no update checks; the only network request is the web search you type yourself in the browser version of the page. In the app the wallpaper page is not allowed to use the network at all, so [your own scenes](#your-own-scenes) can't either.
 
 ### Code signing policy
 
