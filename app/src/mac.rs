@@ -534,6 +534,10 @@ pub fn run() {
         }
         Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
             giro = giro.wrapping_add(1);
+            // "Rotazione > Spenta": la pagina ha detto quale animale mostra
+            if app.core.risposta_animale() {
+                app.push_schermi();
+            }
             if giro % GIRI_CONTROLLO == 0 {
                 app.check_screens(target, &proxy);
                 app.check_power(); // ricontrolla anche le pause
@@ -554,6 +558,11 @@ pub fn run() {
             }
             Esito::Schermi => app.push_schermi(),
             Esito::Foto => foto::scatta(app.screens.iter().map(|s| &s.webview)),
+            Esito::FermaRotazione => {
+                if let Some(s) = app.screens.first() {
+                    app.core.chiedi_animale(&s.webview);
+                }
+            }
             Esito::Ricarica => {
                 for s in &mut app.screens {
                     s.paused = false;

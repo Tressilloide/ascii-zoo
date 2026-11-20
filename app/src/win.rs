@@ -271,6 +271,11 @@ impl App {
             }
             Esito::Schermi => self.push_schermi(),
             Esito::Foto => foto::scatta(self.screens.iter().map(|s| &s.webview)),
+            Esito::FermaRotazione => {
+                if let Some(s) = self.screens.first() {
+                    self.core.chiedi_animale(&s.webview);
+                }
+            }
             Esito::Ricarica => {
                 for s in &mut self.screens {
                     s.paused = false;
@@ -294,6 +299,10 @@ impl App {
 
     fn tick(&mut self) {
         self.leggi_menu();
+        // "Rotazione > Spenta": la pagina ha detto quale animale mostra
+        if self.core.risposta_animale() {
+            self.push_schermi();
+        }
         self.ticks = self.ticks.wrapping_add(1);
         if REBUILD.swap(false, Ordering::SeqCst) {
             // altri cambi in arrivo spostano l'attesa: si rifÃ  tutto una volta sola

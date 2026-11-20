@@ -127,6 +127,8 @@ fn nome_schermo(n: usize, s: &Schermo) -> String {
 
 pub struct Menus {
     pub animali: Vec<CheckMenuItem>,
+    /// "Rotazione > Spenta": spuntata quando c'è un animale fisso
+    pub rot_spenta: CheckMenuItem,
     pub rot_tempi: Vec<CheckMenuItem>,
     pub rot_specie: Vec<CheckMenuItem>,
     pub nomi: Vec<MenuItem>,
@@ -186,6 +188,9 @@ pub enum Esito {
     Salvaschermo,
     /// salvare una foto di ogni schermo (vedi `foto::scatta`)
     Foto,
+    /// "Rotazione > Spenta": chiedere alla pagina del primo schermo quale animale mostra
+    /// (`Core::chiedi_animale`); la risposta la applica `Core::risposta_animale`
+    FermaRotazione,
     Esci,
     Niente,
 }
@@ -207,7 +212,13 @@ pub struct Core {
     pomodoro: Pomodoro,
     /// ultimo titolo del sottomenu "Pomodoro" (si cambia solo quando cambia)
     pomodoro_titolo: String,
+    /// "Rotazione > Spenta": l'animale che la pagina dice di mostrare (1..=9), quando risponde
+    animale_mostrato: std::sync::Arc<std::sync::Mutex<Option<u32>>>,
 }
+
+/// l'animale che la pagina mostra adesso: 1..=9 come la voce "Animale" (0 = non si sa)
+const JS_ANIMALE: &str = "(function () { try { return window.AsciiZoo && window.asciiZoo && window.asciiZoo.species \
+    ? AsciiZoo.SPECIES.indexOf(asciiZoo.species) + 1 : 0; } catch (e) { return 0; } })()";
 
 impl Core {
     /// `solo_windows`: se mostrare la voce dello screensaver (Windows e macOS)
@@ -224,6 +235,7 @@ impl Core {
             musica: Riproduzione::default(),
             pomodoro,
             pomodoro_titolo: String::new(),
+            animale_mostrato: Default::default(),
         };
         core.tema_pagina = core.tema_ora();
         zoo_log!("tema: {} (alla pagina: {})", core.cfg.tema, core.tema_pagina);
@@ -397,12 +409,54 @@ impl Core {
         self.cfg.animale_schermi.get(schermo).copied().unwrap_or(self.cfg.animale)
     }
 
-    /// le impostazioni che cambiano da schermo a schermo
-    pub fn js_schermo(&self, schermo: &str) -> [String; 2] {
+    /// le impostazioni che cambiano da schermo a schermo (e la rotazione, che cambia insieme
+    /// all'animale quando si sceglie "Rotazione > Spenta" o un intervallo)
+    pub fn js_schermo(&self, schermo: &str) -> [String; 3] {
         [
             self.js_widget(schermo),
+            self.js_rotazione(),
             format!("window.zooSetting && zooSetting('animale', {})", self.animale_di(schermo)),
         ]
+    }
+
+    /// le spunte di "Animale" e "Rotazione" secondo la configurazione: con un animale fisso
+    /// la rotazione è "Spenta", se no è spuntato il suo intervallo
+    fn segna_animale(&self) {
+        let m = &self.menus;
+        for (k, item) in m.animali.iter().enumerate() {
+            item.set_checked(k as u32 == self.cfg.animale);
+        }
+        m.rot_spenta.set_checked(self.cfg.animale != 0);
+        for (item, (secondi, _)) in m.rot_tempi.iter().zip(INTERVALLI.iter()) {
+            item.set_checked(self.cfg.animale == 0 && *secondi == self.cfg.rotazione_secondi);
+        }
+    }
+
+    /// "Rotazione > Spenta": chiede alla pagina quale animale mostra (risponde dopo)
+    pub fn chiedi_animale(&self, webview: &wry::WebView) {
+        let mostrato = self.animale_mostrato.clone();
+        let fatto = webview.evaluate_script_with_callback(JS_ANIMALE, move |r| {
+            let i = r.trim().parse::<u32>().unwrap_or(0);
+            if (1..=SPECIE.len() as u32).contains(&i) {
+                if let Ok(mut m) = mostrato.lock() {
+                    *m = Some(i);
+                }
+            }
+        });
+        if let Err(e) = fatto {
+            zoo_log!("rotazione: la pagina non risponde: {e}");
+        }
+    }
+
+    /// la risposta di `chiedi_animale`, se è arrivata: quell'animale diventa fisso (come
+    /// sceglierlo in "Animale"). true = le pagine vanno aggiornate (`js_schermo`)
+    pub fn risposta_animale(&mut self) -> bool {
+        let Some(i) = self.animale_mostrato.lock().ok().and_then(|mut m| m.take()) else { return false };
+        zoo_log!("rotazione spenta: resta {}", SPECIE[i as usize - 1].0);
+        self.cfg.animale = i;
+        self.segna_animale();
+        self.cfg.save();
+        true
     }
 
     /// tutte le impostazioni di uno schermo, da mandare quando la sua pagina ha finito di caricare
@@ -491,9 +545,21 @@ impl Core {
         let m = &self.menus;
         if let Some(i) = m.animali.iter().position(|x| x.id().0 == id) {
             self.cfg.animale = i as u32;
-            for (k, item) in self.menus.animali.iter().enumerate() {
-                item.set_checked(k == i);
-            }
+            self.segna_animale();
+            self.cfg.save();
+            return Esito::Schermi;
+        }
+        // "Rotazione > Spenta": resta l'animale di adesso, che sa solo la pagina. Le spunte
+        // restano com'erano finché non risponde (il menu le cambia da solo al clic)
+        if m.rot_spenta.id().0 == id {
+            self.segna_animale();
+            return if self.cfg.animale == 0 { Esito::FermaRotazione } else { Esito::Niente };
+        }
+        // un intervallo: la rotazione riparte, se era spenta
+        if let Some(i) = m.rot_tempi.iter().position(|x| x.id().0 == id) {
+            self.cfg.rotazione_secondi = INTERVALLI[i].0;
+            self.cfg.animale = 0;
+            self.segna_animale();
             self.cfg.save();
             return Esito::Schermi;
         }
@@ -519,13 +585,7 @@ impl Core {
         }
         // i widget cambiano da schermo a schermo: si rimandano a ognuno i suoi
         let mut widget = false;
-        let js = if let Some(i) = m.rot_tempi.iter().position(|x| x.id().0 == id) {
-            self.cfg.rotazione_secondi = INTERVALLI[i].0;
-            for (k, item) in self.menus.rot_tempi.iter().enumerate() {
-                item.set_checked(k == i);
-            }
-            Some(self.js_rotazione())
-        } else if let Some(i) = m.rot_specie.iter().position(|x| x.id().0 == id) {
+        let js = if let Some(i) = m.rot_specie.iter().position(|x| x.id().0 == id) {
             // almeno un animale deve restare in rotazione
             if !m.rot_specie.iter().any(|x| x.is_checked()) {
                 m.rot_specie[i].set_checked(true);
@@ -817,9 +877,12 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     }
 
     let rot = Submenu::new("Rotazione", true);
+    // spenta = un animale fisso (scelto in "Animale", o quello che si vede quando si spegne)
+    let rot_spenta = CheckMenuItem::new("Spenta: resta l'animale di adesso", true, cfg.animale != 0, None);
+    let _ = rot.append(&rot_spenta);
     let rot_tempi: Vec<CheckMenuItem> = INTERVALLI
         .iter()
-        .map(|(s, name)| CheckMenuItem::new(*name, true, *s == cfg.rotazione_secondi, None))
+        .map(|(s, name)| CheckMenuItem::new(*name, true, cfg.animale == 0 && *s == cfg.rotazione_secondi, None))
         .collect();
     for item in &rot_tempi {
         let _ = rot.append(item);
@@ -950,6 +1013,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     let avvio_label = if cfg!(windows) { "Avvia con Windows" } else { "Apri al login" };
     let m = Menus {
         animali,
+        rot_spenta,
         rot_tempi,
         rot_specie,
         nomi,

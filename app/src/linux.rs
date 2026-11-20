@@ -1116,6 +1116,10 @@ pub fn run() {
         Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
             giro = giro.wrapping_add(1);
             app.giro_wayland();
+            // "Rotazione > Spenta": la pagina ha detto quale animale mostra
+            if app.core.risposta_animale() {
+                app.push_schermi();
+            }
             // il segnale dell'estensione accesa potrebbe essere arrivato prima che lo si
             // ascoltasse: si chiede comunque dopo 10 e dopo 30 secondi
             if giro == 20 || giro == 60 {
@@ -1172,6 +1176,11 @@ pub fn run() {
             }
             Esito::Schermi => app.push_schermi(),
             Esito::Foto => foto::scatta(app.screens.iter().map(|s| &s.webview)),
+            Esito::FermaRotazione => {
+                if let Some(s) = app.screens.first() {
+                    app.core.chiedi_animale(&s.webview);
+                }
+            }
             Esito::Ricarica => {
                 for s in &mut app.screens {
                     s.paused = false;
