@@ -4,7 +4,8 @@
 # (--headless) con le icone di DING, come su Ubuntu. zoo-sfondo-test@test:
 #   1. avvia ASCII Zoo, che deve trovare l'estensione e mettersi in modo Wayland;
 #   2. controlla che la finestra sia minimizzata, fuori da Alt+Tab, da get_window_actors e
-#      dalle app, e mostrata da un clone dentro lo sfondo di GNOME; fotografa il desktop;
+#      dalle app, e mostrata da un clone dentro lo sfondo di GNOME; fotografa il desktop; un
+#      clic con un mouse virtuale sul desktop deve arrivare ad ASCII Zoo;
 #   3. apre un'app a schermo intero: lo sfondo deve andare in pausa, e ripartire quando si chiude;
 #   4. spegne e riaccende un'altra estensione accesa prima (zoo-prima@test): GNOME spegne e
 #      riaccende in cascata anche zoo-click, che deve riprendere la finestra (di nuovo il
@@ -58,7 +59,7 @@ cp "$T"/out/desktop-*.png "$USCITA/" 2>/dev/null || true
 echo "--- GNOME Shell"
 grep -E "PROVA|ASCII Zoo|JS ERROR" "$T/shell.log" || true
 echo "--- ASCII Zoo"
-grep -E "sfondo|pausa|riparte|fotogrammi al|PASSO" "$T/out/app.log" 2>/dev/null | cut -c1-200 || true
+grep -E "sfondo|pausa|riparte|fotogrammi al|clic sul desktop" "$T/out/app.log" 2>/dev/null | cut -c1-200 || true
 ok=1
 manca() { echo "MANCA: $1"; ok=0; }
 c() { grep -qE "$2" "$1" || manca "$3"; }
@@ -73,7 +74,12 @@ due "$S" "PROVA in alt-tab 0" "la finestra è in Alt+Tab"
 due "$S" "PROVA in get_window_actors 0" "la finestra è in get_window_actors"
 due "$S" "PROVA con app 0" "la finestra ha un'app (dash)"
 due "$S" "PROVA cloni nello sfondo [1-9]" "nessun clone nello sfondo"
-c "$A" "in pausa .*schermo intero true" "nessuna pausa con l'app a schermo intero"
+if grep -q "PROVA mouse virtuale non affidabile" "$S"; then
+  echo "::warning::il mouse virtuale di questo GNOME non va dove gli si dice: clic sul desktop non provato"
+else
+  c "$A" "clic sul desktop: 700,500 → schermo" "il clic sul desktop non è arrivato ad ASCII Zoo"
+fi
+c "$A" "in pausa .*(schermo intero true|coperto true)" "nessuna pausa con l'app a schermo intero"
 c "$A" "riparte .*schermo intero false" "lo sfondo non è ripartito dopo l'app a schermo intero"
 c "$A" "riparto su X11" "con l'estensione spenta ASCII Zoo non è ripartito su X11"
 [ "$(grep -c "riparto su X11" "$A")" = 1 ] || manca "ASCII Zoo è ripartito su X11 più di una volta (anche con la cascata?)"

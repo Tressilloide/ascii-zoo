@@ -91,7 +91,7 @@ export class Sfondo {
     enable() {
         this._finestre = new Map(); // MetaWindow → {geo, segnali}
         this._sfondi = new Set();   // {attore, clone, monitor}
-        this._attese = new Map();   // MetaWindow → segnale notify::title (titolo non ancora pronto)
+        this._attese = new Map();   // MetaWindow → segnali (titolo non ancora pronto)
         this._ultimo = '';
         this._giro = 0;
         this._errori = 0;
@@ -122,8 +122,10 @@ export class Sfondo {
             o.disconnect(id);
         this._segnali = [];
         this._fermaGiro();
-        for (const [w, id] of this._attese ?? [])
-            w.disconnect(id);
+        for (const [w, ids] of this._attese ?? []) {
+            for (const id of ids)
+                w.disconnect(id);
+        }
         this._attese?.clear();
         for (const [w, f] of this._finestre ?? []) {
             if (f.attesa)
@@ -199,12 +201,19 @@ export class Sfondo {
         if (!titoloSfondo(w)) {
             // GTK può mettere il titolo dopo: si aspetta, per le finestre senza titolo
             if (!w.get_title() && !this._attese.has(w)) {
-                const id = w.connect('notify::title', () => this._protetto(() => {
-                    w.disconnect(id);
+                const smetti = () => {
+                    for (const id of this._attese.get(w) ?? [])
+                        w.disconnect(id);
                     this._attese.delete(w);
-                    this._prova(w);
-                }));
-                this._attese.set(w, id);
+                };
+                this._attese.set(w, [
+                    w.connect('notify::title', () => this._protetto(() => {
+                        smetti();
+                        this._prova(w);
+                    })),
+                    // chiusa senza aver mai avuto un titolo: non la si tiene
+                    w.connect('unmanaged', () => this._protetto(smetti)),
+                ]);
             }
             return;
         }

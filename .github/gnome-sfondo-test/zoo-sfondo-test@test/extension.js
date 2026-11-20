@@ -11,7 +11,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const PREFISSO = '@ascii-zoo-sfondo!';
-const PASSI = [[3, '_avvia'], [35, '_controlla'], [37, '_foto'], [40, '_schermoIntero'], [55, '_chiudi'],
+const PASSI = [[3, '_avvia'], [35, '_controlla'], [37, '_foto'], [38, '_clic'], [40, '_schermoIntero'], [55, '_chiudi'],
     [62, '_cascata'], [64, '_riaccendi'], [72, '_controlla'], [73, '_foto'], [78, '_spegni'], [96, '_fine']];
 
 function log(m) {
@@ -89,6 +89,30 @@ export default class Prova extends Extension {
             } catch (e) {
                 log(`foto non riuscita: ${e}`);
             }
+        });
+    }
+
+    // un clic vero (mouse virtuale) sul desktop, con lo sfondo di ASCII Zoo al suo posto: deve
+    // arrivare ad ASCII Zoo passando dall'estensione
+    _clic() {
+        // GNOME 49 e successivi: dal backend di mutter; prima: da Clutter
+        const seat = global.stage.context?.get_backend?.().get_default_seat() ?? Clutter.get_default_backend().get_default_seat();
+        this._mouse ??= seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+        const t = () => GLib.get_monotonic_time();
+        this._mouse.notify_absolute_motion(t(), 700, 500);
+        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
+            Main.overview.hide();
+            const [x, y] = global.get_pointer();
+            // in certi GNOME senza schermo (51) il mouse virtuale non va dove gli si dice
+            if (Math.abs(x - 700) > 2 || Math.abs(y - 500) > 2)
+                log(`mouse virtuale non affidabile qui: è a ${x},${y}`);
+            log('clic sul desktop a 700,500');
+            this._mouse.notify_button(t(), Clutter.BUTTON_PRIMARY, Clutter.ButtonState.PRESSED);
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 90, () => {
+                this._mouse.notify_button(t(), Clutter.BUTTON_PRIMARY, Clutter.ButtonState.RELEASED);
+                return GLib.SOURCE_REMOVE;
+            });
+            return GLib.SOURCE_REMOVE;
         });
     }
 
