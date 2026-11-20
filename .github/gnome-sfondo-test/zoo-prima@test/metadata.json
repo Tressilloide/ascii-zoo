@@ -1,0 +1,6 @@
+{
+  "uuid": "zoo-prima@test",
+  "name": "Estensione accesa prima di zoo-click (prova)",
+  "description": "Solo per .github/gnome-sfondo-test/run.sh: spegnerla e riaccenderla fa spegnere e riaccendere a GNOME anche zoo-click",
+  "shell-version": ["45", "46", "47", "48", "49", "50", "51"]
+}

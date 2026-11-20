@@ -1,0 +1,6 @@
+{
+  "uuid": "zoo-sfondo-test@test",
+  "name": "Prova dello sfondo di ASCII Zoo sotto Wayland",
+  "description": "Solo per .github/gnome-sfondo-test/run.sh",
+  "shell-version": ["45", "46", "47", "48", "49", "50", "51"]
+}

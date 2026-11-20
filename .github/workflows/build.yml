@@ -471,7 +471,10 @@ jobs:
   # stesso nome D-Bus) devono arrivare solo quelli sul desktop.
   # Nello stesso GNOME Shell anche lo screensaver di Linux, con il programma vero di
   # linux-binario: parte dopo un minuto senza input, sta sopra a tutto e si chiude al
-  # primo input. Se il programma per ARM non si compila questa prova si fa lo stesso.
+  # primo input. E lo sfondo sotto Wayland senza XWayland: l'estensione prende la finestra del
+  # programma vero e la mette al posto dello sfondo di GNOME (pause, cascata di estensioni,
+  # ritorno su X11 quando la si spegne). Se il programma per ARM non si compila queste prove
+  # si fanno lo stesso.
   linux-gnome-clic:
     needs: linux-binario
     if: ${{ !cancelled() }}
@@ -500,7 +503,7 @@ jobs:
         env:
           PACCHETTI: >-
             gnome-shell gnome-shell-extension-desktop-icons-ng xwayland zenity python3-gi gir1.2-gtk-3.0 dbus-x11
-            libwebkit2gtk-4.1-0 libayatana-appindicator3-1 libxdo3
+            libwebkit2gtk-4.1-0 libayatana-appindicator3-1 libxdo3 imagemagick
 
       - uses: actions/cache@v4
         with:
@@ -531,7 +534,7 @@ jobs:
         env:
           PACCHETTI: >-
             gnome-shell gnome-shell-extension-desktop-icons-ng xwayland zenity python3-gi gir1.2-gtk-3.0 dbus-x11
-            libwebkit2gtk-4.1-0 libayatana-appindicator3-1 libxdo3
+            libwebkit2gtk-4.1-0 libayatana-appindicator3-1 libxdo3 imagemagick
 
       - name: Prova - clic simulati
         run: bash .github/gnome-click-test/run.sh
@@ -546,11 +549,20 @@ jobs:
           tar -C dist -xzf dist/ascii-zoo-linux-x86_64.tar.gz
           bash .github/gnome-screensaver-test/run.sh dist/ascii-zoo-linux-x86_64/ascii-zoo .
 
+      - name: Prova - sfondo sotto Wayland con l'estensione di GNOME (niente XWayland)
+        if: ${{ !cancelled() }}
+        run: |
+          [ -x dist/ascii-zoo-linux-x86_64/ascii-zoo ] || tar -C dist -xzf dist/ascii-zoo-linux-x86_64.tar.gz
+          bash .github/gnome-sfondo-test/run.sh dist/ascii-zoo-linux-x86_64/ascii-zoo .
+
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
           name: prova-screensaver-gnome
-          path: prova-screensaver-*
+          path: |
+            prova-screensaver-*
+            prova-sfondo-*
+            desktop-*.png
           if-no-files-found: warn
 
   # La riserva di linux/install.sh: se la Release non ha il programma per Linux (qui un
@@ -565,10 +577,10 @@ jobs:
       - name: Lo sfondo incorporato è uguale a wallpaper/index.html
         run: cmp wallpaper/index.html app/assets/ascii-zoo-wallpaper.html
 
-      - name: Estensione di GNOME per il clic sul desktop - sintassi
+      - name: Estensione di GNOME (sfondo e clic sul desktop) - sintassi
         run: |
-          for d in linux/gnome/*/; do
-            node --input-type=module --check < "$d/extension.js"
+          for d in linux/gnome/*/ .github/gnome-*-test/*@test/; do
+            for f in "$d"*.js; do node --input-type=module --check < "$f"; done
             python3 -m json.tool "$d/metadata.json" > /dev/null
           done
 

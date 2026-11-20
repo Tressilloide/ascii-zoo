@@ -26,8 +26,9 @@
 #      voce nel menu delle applicazioni, lo fa partire all'accesso e lo avvia: l'icona a forma
 #      di koi compare nella barra in alto
 #   4. su GNOME 45 o successivo mette la piccola estensione zoo-click@tressilloide.github.io
-#      (linux/gnome), che passa ad ASCII Zoo i clic sul desktop: sotto Wayland un programma
-#      non li vede. GNOME la carica dal prossimo accesso
+#      (linux/gnome), che sotto Wayland mette lo sfondo al posto di quello di GNOME senza
+#      passare da XWayland (molto più leggero) e passa ad ASCII Zoo i clic sul desktop (sotto
+#      Wayland un programma non li vede). GNOME la carica dal prossimo accesso
 #   5. se trova una versione vecchia fatta come estensione di GNOME Shell (uuid ascii-zoo…@…),
 #      la spegne e la toglie, così non girano due sfondi insieme
 #
@@ -348,8 +349,9 @@ togli_vecchie() {
   fi
 }
 
-# Clic sul desktop su GNOME: l'estensione zoo-click@… (vedi linux/gnome) vede i clic sul
-# desktop, anche sopra le icone di DING, e li passa ad ASCII Zoo. L'uuid non comincia per
+# Su GNOME l'estensione zoo-click@… (vedi linux/gnome) mette lo sfondo di ASCII Zoo al posto
+# di quello di GNOME sotto Wayland, senza XWayland (molto più leggero: sfondo.js), e vede i
+# clic sul desktop, anche sopra le icone di DING, e li passa ad ASCII Zoo. L'uuid non comincia per
 # "ascii-zoo", se no togli_vecchie la prenderebbe per una versione vecchia dello sfondo.
 # GNOME carica le estensioni nuove solo all'accesso: la si mette in enabled-extensions e
 # funziona dal prossimo. Se l'utente l'ha spenta (disabled-extensions) resta spenta.
@@ -363,13 +365,15 @@ installa_estensione() {
   [ -f "$src/extension.js" ] || return 0
   ver=$(gnome-shell --version 2>/dev/null | grep -oE '[0-9]+' | head -n1 || true)
   if [ -z "$ver" ] || [ "$ver" -lt 45 ]; then
-    avviso "Il clic sul desktop su GNOME richiede GNOME 45 o successivo (qui: ${ver:-?}): lo sfondo funziona lo stesso, senza clic."
+    avviso "L'estensione di GNOME (sfondo più leggero e clic sul desktop) richiede GNOME 45 o successivo (qui: ${ver:-?}): lo sfondo funziona lo stesso, via XWayland e senza clic."
     return 0
   fi
   dest="$data/gnome-shell/extensions/$ESTENSIONE"
-  if [ -f "$dest/extension.js" ]; then prima=$(cat "$dest/extension.js"); fi
+  if [ -f "$dest/extension.js" ]; then prima=$(cat "$dest"/*.js); fi
   mkdir -p "$dest"
-  cp "$src/extension.js" "$dest/extension.js"
+  # tutti i moduli (extension.js, sfondo.js…): quelli delle versioni vecchie che non ci sono più si tolgono
+  rm -f "$dest"/*.js
+  cp "$src"/*.js "$dest/"
   # la versione di GNOME in uso va nell'elenco, se no GNOME non la carica
   if grep -q "\"$ver\"" "$src/metadata.json"; then
     cp "$src/metadata.json" "$dest/metadata.json"
@@ -377,7 +381,7 @@ installa_estensione() {
     sed -E "s/(\"shell-version\": *\[)/\1\"$ver\", /" "$src/metadata.json" > "$dest/metadata.json"
   fi
   if lista=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null) && [[ "$lista" == *"'$ESTENSIONE'"* ]]; then
-    avviso "L'estensione per il clic sul desktop ($ESTENSIONE) è spenta in Estensioni: riaccendila lì se vuoi i clic."
+    avviso "L'estensione di ASCII Zoo ($ESTENSIONE) è spenta in Estensioni: riaccendila lì per lo sfondo più leggero sotto Wayland e i clic sul desktop."
     return 0
   fi
   if lista=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null) && [[ "$lista" != *"'$ESTENSIONE'"* ]]; then
@@ -388,9 +392,10 @@ installa_estensione() {
     gsettings set org.gnome.shell enabled-extensions "$lista" 2>/dev/null || true
   fi
   if [ "$(gsettings get org.gnome.shell disable-user-extensions 2>/dev/null)" = true ]; then
-    avviso "Le estensioni di GNOME sono spente (Estensioni → Estensioni dell'utente): senza, niente clic sul desktop."
-  elif [ "$prima" != "$(cat "$dest/extension.js")" ]; then
-    say "Clic sul desktop: estensione di GNOME $ESTENSIONE installata. Funziona dal prossimo accesso (esci e rientra)."
+    avviso "Le estensioni di GNOME sono spente (Estensioni → Estensioni dell'utente): senza, lo sfondo passa da XWayland (più pesante) e niente clic sul desktop."
+  elif [ "$prima" != "$(cat "$dest"/*.js)" ]; then
+    say "Estensione di GNOME $ESTENSIONE installata (sfondo più leggero sotto Wayland e clic sul desktop)."
+    say "Funziona dal prossimo accesso (esci e rientra): fino ad allora lo sfondo passa da XWayland, come prima."
   fi
 }
 

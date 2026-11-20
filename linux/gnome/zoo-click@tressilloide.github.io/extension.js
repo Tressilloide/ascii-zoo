@@ -1,6 +1,13 @@
-// ASCII Zoo: clic sul desktop (GNOME Shell 45 e successivi).
+// ASCII Zoo: sfondo sotto Wayland e clic sul desktop (GNOME Shell 45 e successivi).
 //
-// Lo sfondo di ASCII Zoo è una finestra X11 sotto tutte le altre, trasparente ai clic.
+// Due cose:
+//   1. lo sfondo vero e proprio senza XWayland: vedi sfondo.js;
+//   2. i clic sul desktop, qui sotto.
+// Resta accesa anche con lo schermo bloccato ("session-modes" in metadata.json): GNOME
+// altrimenti la spegnerebbe a ogni blocco e lo sfondo sparirebbe e tornerebbe a ogni sblocco.
+// Con lo schermo bloccato i clic non si guardano.
+//
+// Clic. Lo sfondo di ASCII Zoo è sotto tutte le finestre, trasparente ai clic.
 // Sotto Wayland un programma non vede i clic fatti sulle altre finestre, e su Ubuntu le
 // icone del desktop (DING) stanno in una finestra a tutto schermo sopra lo sfondo: i clic
 // li vede solo GNOME Shell. Questa estensione, quando si preme il tasto sinistro su una
@@ -24,6 +31,7 @@ import Clutter from 'gi://Clutter';
 import Meta from 'gi://Meta';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
+import {Sfondo} from './sfondo.js';
 
 const NOME = 'io.github.tressilloide.AsciiZoo';
 const PERCORSO = '/io/github/tressilloide/AsciiZoo';
@@ -50,6 +58,8 @@ function finestraDelDesktop(w) {
 
 export default class ZooClic extends Extension {
     enable() {
+        this._sfondo = new Sfondo(finestraDelDesktop);
+        this._protetto(() => this._sfondo.enable());
         this._giro = 0;
         this._fermo = 0;
         this._attivo = 0;
@@ -64,6 +74,8 @@ export default class ZooClic extends Extension {
     }
 
     disable() {
+        this._protetto(() => this._sfondo?.disable());
+        this._sfondo = null;
         if (this._osserva)
             Gio.bus_unwatch_name(this._osserva);
         this._osserva = 0;

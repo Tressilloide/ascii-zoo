@@ -1,7 +1,8 @@
 {
   "uuid": "zoo-click@tressilloide.github.io",
-  "name": "ASCII Zoo: clic sul desktop",
-  "description": "Passa ad ASCII Zoo i clic sinistri sul desktop (anche sopra le icone di DING), per dare da mangiare alle koi o far scappare gli animali dello sfondo. Non fa niente se ASCII Zoo non è acceso.",
+  "name": "ASCII Zoo: sfondo e clic sul desktop",
+  "description": "Mette lo sfondo animato di ASCII Zoo al posto dello sfondo di GNOME sotto Wayland, senza XWayland (molto più leggero), e passa ad ASCII Zoo i clic sinistri sul desktop (anche sopra le icone di DING), per dare da mangiare alle koi o far scappare gli animali. Non fa niente se ASCII Zoo non è acceso.",
   "shell-version": ["45", "46", "47", "48", "49", "50", "51"],
+  "session-modes": ["user", "unlock-dialog"],
   "url": "https://github.com/ascii-things/ascii-zoo"
 }

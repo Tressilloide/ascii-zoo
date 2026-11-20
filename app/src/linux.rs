@@ -1,11 +1,18 @@
 //! Linux (pensato per Ubuntu/GNOME; funziona anche con altri desktop che rispettano
 //! le finestre di tipo "desktop", come KDE e XFCE).
 //!
-//! - per ogni schermo una finestra X11 di tipo "desktop" con dentro WebKitGTK: sotto tutte
-//!   le finestre, in tutti gli spazi di lavoro, fuori dalla barra delle applicazioni e
-//!   trasparente ai clic (i clic vanno alle icone del desktop). Sotto Wayland passa da
-//!   XWayland (GDK_BACKEND=x11): Wayland non permette a un programma normale di mettersi
-//!   al posto dello sfondo.
+//! - per ogni schermo una finestra con dentro WebKitGTK. Due modi:
+//!   - **Wayland, su GNOME con l'estensione** (linux/gnome/…/sfondo.js): una finestra Wayland
+//!     normale, con un titolo che l'estensione riconosce; l'estensione la minimizza e ne
+//!     mostra il contenuto dentro lo sfondo di GNOME, e dice qui se lo schermo è coperto e
+//!     dov'è l'area di lavoro. È il modo leggero: sotto XWayland GTK 3 non può prendere il
+//!     fotogramma di WebKit dalla GPU, lo copia in memoria e XWayland lo ricarica sulla GPU
+//!     (GNOME 51, scala 125%: ~0,8 core in più e non più di 20 fotogrammi al secondo);
+//!   - **X11** (anche sotto Wayland, via XWayland: GDK_BACKEND=x11) negli altri casi: una
+//!     finestra di tipo "desktop", sotto tutte le finestre, in tutti gli spazi di lavoro,
+//!     fuori dalla barra delle applicazioni e trasparente ai clic. Anche su GNOME finché
+//!     l'estensione nuova non è caricata (cioè fino al prossimo accesso dopo l'installazione),
+//!     e se l'estensione si spegne mentre l'app gira (l'app riparte da sola su X11).
 //! - icona AppIndicator nella barra in alto (Ubuntu la mostra di serie; su GNOME senza
 //!   Ubuntu serve l'estensione "AppIndicator and KStatusNotifierItem Support")
 //! - ogni mezzo secondo le pause: a batteria, con lo schermo bloccato o spento, con
@@ -69,6 +76,150 @@ enum Evento {
     Clic(f64, f64, f64, f64),
     /// inattività, schermo bloccato… per lo screensaver
     Salvaschermo(salvaschermo::Segnale),
+    /// modo Wayland: com'è ogni schermo, dall'estensione di GNOME
+    Shell(Vec<StatoSchermo>),
+    /// modo Wayland: l'estensione di GNOME è stata spenta
+    EstensioneSpenta,
+    /// su X11 solo perché l'estensione non rispondeva: ora si è accesa
+    EstensioneAccesa,
+}
+
+/// Modo Wayland: l'oggetto dell'estensione di GNOME (linux/gnome/…/sfondo.js), sul nome di
+/// GNOME Shell. Il titolo delle finestre che l'estensione mette al posto dello sfondo
+/// comincia con TITOLO_WAYLAND, seguito dallo schermo in pixel logici: "x,y,larghezza,altezza".
+const SFONDO_PERCORSO: &str = "/io/github/tressilloide/AsciiZoo/Sfondo";
+const SFONDO_INTERFACCIA: &str = "io.github.tressilloide.AsciiZoo.Sfondo";
+const SFONDO_TIPO: &str = "(a(iiiiiiiibbbs))";
+const TITOLO_WAYLAND: &str = "@ascii-zoo-sfondo!";
+const ESTENSIONE: &str = "zoo-click@tressilloide.github.io";
+/// modo Wayland: se dopo questo tempo l'estensione non ha preso le finestre (al loro posto
+/// resterebbero finestre normali davanti al desktop), si riparte su X11
+const ATTESA_ESTENSIONE: Duration = Duration::from_secs(8);
+/// modo Wayland: l'estensione risulta spenta. GNOME spegne e riaccende in un attimo tutte le
+/// estensioni accese dopo una che si spegne o si accende (anche solo nell'app Estensioni):
+/// si riparte su X11 solo se dopo questo tempo non risponde ancora
+const ATTESA_SPENTA: Duration = Duration::from_secs(3);
+
+/// Uno schermo come lo vede GNOME Shell (modo Wayland), in pixel logici.
+#[derive(Clone, Debug, PartialEq)]
+struct StatoSchermo {
+    geo: [i32; 4],
+    /// area di lavoro: lo schermo senza la barra in alto, il dock…
+    lavoro: [i32; 4],
+    /// un'app a schermo intero
+    intero: bool,
+    /// le finestre coprono tutta l'area di lavoro (o un'app a schermo intero)
+    coperto: bool,
+    /// la finestra di ASCII Zoo per questo schermo è al posto dello sfondo
+    adottata: bool,
+    /// "eDP-1", "HDMI-1"… (vuoto se GNOME non lo dice)
+    connettore: String,
+}
+
+type StatoDBus = (i32, i32, i32, i32, i32, i32, i32, i32, bool, bool, bool, String);
+
+fn leggi_stato(v: &glib::Variant) -> Option<Vec<StatoSchermo>> {
+    let (schermi,) = v.get::<(Vec<StatoDBus>,)>()?;
+    Some(
+        schermi
+            .into_iter()
+            .map(|(x, y, w, h, lx, ly, lw, lh, intero, coperto, adottata, connettore)| StatoSchermo {
+                geo: [x, y, w, h],
+                lavoro: [lx, ly, lw, lh],
+                intero,
+                coperto,
+                adottata,
+                connettore,
+            })
+            .collect(),
+    )
+}
+
+/// Il connettore di ogni schermo ("eDP-1"…) per posizione in pixel logici, da mutter
+/// (org.gnome.Mutter.DisplayConfig, la stessa interfaccia di Impostazioni > Schermi). Serve
+/// nel modo Wayland quando l'estensione non lo sa dire (GNOME 45–48)
+fn connettori_mutter(bus: &gio::DBusConnection) -> Vec<([i32; 2], String)> {
+    let Ok(v) = bus.call_sync(
+        Some("org.gnome.Mutter.DisplayConfig"),
+        "/org/gnome/Mutter/DisplayConfig",
+        "org.gnome.Mutter.DisplayConfig",
+        "GetCurrentState",
+        None,
+        None,
+        gio::DBusCallFlags::NO_AUTO_START,
+        1000,
+        gio::Cancellable::NONE,
+    ) else {
+        return Vec::new();
+    };
+    // (u, a((ssss)…) monitor, a(iiduba(ssss)a{sv}) schermi logici, a{sv}): degli schermi
+    // logici servono x, y e il primo monitor fisico, il cui primo campo è il connettore
+    let logici = v.child_value(2);
+    (0..logici.n_children())
+        .filter_map(|i| {
+            let l = logici.child_value(i);
+            let (x, y) = (l.child_value(0).get::<i32>()?, l.child_value(1).get::<i32>()?);
+            let monitor = l.child_value(5);
+            (monitor.n_children() > 0).then(|| ([x, y], monitor.child_value(0).child_value(0).get::<String>().unwrap_or_default()))
+        })
+        .collect()
+}
+
+/// Lo stato dall'estensione di GNOME, se c'è (e così si sa che c'è, ed è quella nuova)
+fn chiedi_stato(bus: &gio::DBusConnection) -> Option<Vec<StatoSchermo>> {
+    let v = bus
+        .call_sync(
+            Some("org.gnome.Shell"),
+            SFONDO_PERCORSO,
+            SFONDO_INTERFACCIA,
+            "Stato",
+            None,
+            Some(glib::VariantTy::new(SFONDO_TIPO).ok()?),
+            gio::DBusCallFlags::NO_AUTO_START,
+            2000,
+            gio::Cancellable::NONE,
+        )
+        .ok()?;
+    leggi_stato(&v)
+}
+
+/// Il modo Wayland si usa sotto Wayland, se l'estensione di GNOME risponde e nessuno ha
+/// chiesto X11 (GDK_BACKEND=x11, oppure ASCII_ZOO_SFONDO=x11: lo mette l'app stessa quando
+/// riparte perché l'estensione non c'è più). Restituisce lo stato degli schermi.
+fn modo_wayland(bus: Option<&gio::DBusConnection>) -> Option<Vec<StatoSchermo>> {
+    std::env::var_os("WAYLAND_DISPLAY")?;
+    if std::env::var("GDK_BACKEND").is_ok_and(|b| b != "wayland") || std::env::var("ASCII_ZOO_SFONDO").is_ok_and(|v| v == "x11") {
+        return None;
+    }
+    chiedi_stato(bus?)
+}
+
+/// Modo Wayland senza l'estensione (spenta, o non prende le finestre): si riparte su X11,
+/// lo stesso programma con gli stessi argomenti (exec: stesso processo, l'icona e le finestre
+/// si rifanno).
+/// Su X11 solo perché all'avvio l'estensione non rispondeva (all'accesso ASCII Zoo può
+/// partire prima che GNOME abbia caricato le estensioni): appena risponde si riparte nel modo
+/// Wayland. Mai se X11 è stato chiesto (GDK_BACKEND, ASCII_ZOO_SFONDO=x11, che l'app stessa
+/// mette quando torna su X11 perché l'estensione non va): niente giri avanti e indietro.
+fn riparti_su_wayland() {
+    use std::os::unix::process::CommandExt;
+    zoo_log!("sfondo: l'estensione di GNOME ora risponde: riparto senza XWayland");
+    let exe = std::env::current_exe().ok().filter(|p| p.exists()).unwrap_or_else(|| "/proc/self/exe".into());
+    let errore = std::process::Command::new(exe).args(std::env::args_os().skip(1)).env_remove("GDK_BACKEND").exec();
+    eprintln!("ascii-zoo: non riesco a ripartire: {errore}");
+}
+
+fn riparti_su_x11(motivo: &str) {
+    use std::os::unix::process::CommandExt;
+    zoo_log!("sfondo: {motivo}: riparto su X11 (XWayland)");
+    let exe = std::env::current_exe().ok().filter(|p| p.exists()).unwrap_or_else(|| "/proc/self/exe".into());
+    let errore = std::process::Command::new(exe)
+        .args(std::env::args_os().skip(1))
+        .env("ASCII_ZOO_SFONDO", "x11")
+        .env_remove("GDK_BACKEND")
+        .exec();
+    eprintln!("ascii-zoo: non riesco a ripartire su X11: {errore}");
+    std::process::exit(1);
 }
 
 /// Clic sul desktop. Sotto Wayland un programma non vede i clic fatti sulle altre finestre,
@@ -121,6 +272,8 @@ struct Screen {
     pos: PhysicalPosition<i32>,
     size: PhysicalSize<u32>,
     scala: f64,
+    /// lo schermo in pixel logici (quelli di GNOME e della pagina): x, y, larghezza, altezza
+    logico: [i32; 4],
     /// nome e posizione dello schermo: le impostazioni per schermo si legano a questo
     id: String,
     paused: bool,
@@ -245,6 +398,44 @@ impl Sonda {
     }
 }
 
+/// Modo Wayland: i messaggi dell'estensione di GNOME (stato degli schermi) e di GNOME Shell
+/// (l'estensione spenta: si riparte su X11)
+fn ascolta_estensione(bus: &gio::DBusConnection, proxy: &EventLoopProxy<Evento>) {
+    let p = std::sync::Mutex::new(proxy.clone());
+    bus.signal_subscribe(
+        Some("org.gnome.Shell"),
+        Some(SFONDO_INTERFACCIA),
+        Some("Cambiato"),
+        Some(SFONDO_PERCORSO),
+        None,
+        gio::DBusSignalFlags::NONE,
+        move |_, _, _, _, _, parametri| {
+            if let (Some(stato), Ok(p)) = (leggi_stato(parametri), p.lock()) {
+                let _ = p.send_event(Evento::Shell(stato));
+            }
+        },
+    );
+    let p = std::sync::Mutex::new(proxy.clone());
+    bus.signal_subscribe(
+        Some("org.gnome.Shell"),
+        Some("org.gnome.Shell.Extensions"),
+        Some("ExtensionStateChanged"),
+        Some("/org/gnome/Shell"),
+        Some(ESTENSIONE),
+        gio::DBusSignalFlags::NONE,
+        move |_, _, _, _, _, parametri| {
+            // (uuid, informazioni): "state" 1 = accesa
+            let Some((uuid, info)) = parametri.get::<(String, std::collections::HashMap<String, glib::Variant>)>() else { return };
+            let stato = info.get("state").and_then(|v| v.get::<f64>());
+            if uuid == ESTENSIONE {
+                if let (Some(s), Ok(p)) = (stato, p.lock()) {
+                    let _ = p.send_event(if s == 1.0 { Evento::EstensioneAccesa } else { Evento::EstensioneSpenta });
+                }
+            }
+        },
+    );
+}
+
 /// Schermo bloccato o spento (salvaschermo di GNOME, o quello standard di KDE e altri):
 /// lo sfondo non lo vede nessuno.
 fn schermo_bloccato(bus: Option<&gio::DBusConnection>) -> bool {
@@ -285,6 +476,17 @@ struct App {
     salva: salvaschermo::Salvaschermo,
     /// schermo bloccato o spento, all'ultimo controllo
     bloccato: bool,
+    /// modo Wayland (vedi l'inizio del file)
+    wayland: bool,
+    /// modo Wayland: gli schermi come li vede GNOME Shell, dall'estensione
+    shell: Vec<StatoSchermo>,
+    /// modo Wayland: da quando si aspetta che l'estensione prenda le finestre
+    da_adottare: Option<Instant>,
+    /// modo Wayland: da quando l'estensione risulta spenta (vedi ATTESA_SPENTA)
+    spenta_da: Option<Instant>,
+    /// su X11 solo perché l'estensione all'avvio non rispondeva: si passa al modo Wayland
+    /// appena risponde (vedi riparti_su_wayland)
+    x11_in_attesa: bool,
 }
 
 impl App {
@@ -339,6 +541,47 @@ impl App {
         }
     }
 
+    /// Modo Wayland, a ogni giro: l'estensione deve prendere le finestre entro
+    /// ATTESA_ESTENSIONE, se no resterebbero finestre normali davanti al desktop e si riparte
+    /// su X11
+    /// su X11 in attesa dell'estensione: risponde adesso?
+    fn prova_wayland(&self) {
+        if self.x11_in_attesa && self.bus.as_ref().and_then(chiedi_stato).is_some() {
+            riparti_su_wayland();
+        }
+    }
+
+    fn giro_wayland(&mut self) {
+        if let Some(da) = self.spenta_da {
+            if da.elapsed() < ATTESA_SPENTA {
+                return;
+            }
+            match self.bus.as_ref().and_then(chiedi_stato) {
+                Some(stato) => {
+                    zoo_log!("sfondo: l'estensione di GNOME è di nuovo accesa");
+                    self.spenta_da = None;
+                    self.shell = stato;
+                    // riaccesa, riprende le finestre: si ricontrolla come all'inizio
+                    self.da_adottare = Some(Instant::now());
+                }
+                None => riparti_su_x11("l'estensione di GNOME è stata spenta"),
+            }
+            return;
+        }
+        let Some(da) = self.da_adottare else { return };
+        let tutte = !self.screens.is_empty()
+            && self.screens.iter().all(|s| stato_di(&self.shell, &s.logico).is_some_and(|st| st.adottata));
+        if tutte {
+            zoo_log!("sfondo: l'estensione ha messo le finestre al posto dello sfondo");
+            self.da_adottare = None;
+        } else if da.elapsed() > ATTESA_ESTENSIONE {
+            riparti_su_x11("l'estensione di GNOME non ha preso le finestre");
+        } else if let Some(stato) = self.bus.as_ref().and_then(chiedi_stato) {
+            // il segnale Cambiato può essere partito prima che ci fossimo: si chiede
+            self.shell = stato;
+        }
+    }
+
     /// manda a ogni schermo le impostazioni che dipendono dallo schermo
     fn push_schermi(&self) {
         for s in &self.screens {
@@ -358,6 +601,27 @@ impl App {
         let bloccato = schermo_bloccato(self.bus.as_ref());
         self.bloccato = bloccato;
         let salvaschermo = self.salva.in_corso();
+        // modo Wayland: schermo intero e finestre che coprono li dice l'estensione, e qui si
+        // distinguono (come su Windows e macOS)
+        if self.wayland {
+            for s in &mut self.screens {
+                let st = stato_di(&self.shell, &s.logico);
+                let (intero, coperto) = st.map_or((false, false), |st| (st.intero, st.coperto));
+                s.coperto = intero || coperto;
+                let nascosto = (intero && cfg.pausa_schermo_intero) || (coperto && cfg.pausa_coperto);
+                let pause = batteria || bloccato || salvaschermo || nascosto;
+                if pause != s.paused {
+                    s.paused = pause;
+                    zoo_log!(
+                        "schermo {}: {} (batteria {batteria}, bloccato {bloccato}, screensaver {salvaschermo}, schermo intero {intero}, coperto {coperto})",
+                        s.id,
+                        if pause { "in pausa" } else { "riparte" }
+                    );
+                    let _ = s.webview.evaluate_script(if pause { JS_STOP } else { JS_START });
+                }
+            }
+            return;
+        }
         let display = gtk::gdk::Display::default();
         let nascosto_conta = cfg.pausa_schermo_intero || cfg.pausa_coperto;
         // la sonda serve se lo sfondo coperto è l'unico motivo di pausa che resta, e allo
@@ -414,16 +678,17 @@ impl App {
     fn check_margini(&mut self) {
         let Some(display) = gtk::gdk::Display::default() else { return };
         for s in &mut self.screens {
-            let (cx, cy) = s.centro_logico();
-            let Some(mon) = display.monitor_at_point(cx, cy) else { continue };
-            let (g, w) = (mon.geometry(), mon.workarea());
-            let m = [
-                w.y() - g.y(),
-                (g.x() + g.width()) - (w.x() + w.width()),
-                (g.y() + g.height()) - (w.y() + w.height()),
-                w.x() - g.x(),
-            ]
-            .map(|v| v.max(0));
+            // modo Wayland: GTK non sa l'area di lavoro, la dice l'estensione
+            let (g, w) = if self.wayland {
+                let Some(st) = stato_di(&self.shell, &s.logico) else { continue };
+                (st.geo, st.lavoro)
+            } else {
+                let (cx, cy) = s.centro_logico();
+                let Some(mon) = display.monitor_at_point(cx, cy) else { continue };
+                let (g, w) = (mon.geometry(), mon.workarea());
+                ([g.x(), g.y(), g.width(), g.height()], [w.x(), w.y(), w.width(), w.height()])
+            };
+            let m = [w[1] - g[1], (g[0] + g[2]) - (w[0] + w[2]), (g[1] + g[3]) - (w[1] + w[3]), w[0] - g[0]].map(|v| v.max(0));
             if s.margini == Some(m) {
                 continue;
             }
@@ -466,6 +731,22 @@ impl App {
         if !self.core.cfg.clic_desktop || !(w > 0.0 && h > 0.0) || !x.is_finite() || !y.is_finite() {
             return;
         }
+        // modo Wayland: il punto è già in pixel logici di GNOME, gli stessi della pagina
+        if self.wayland {
+            let Some(s) = self.screens.iter().find(|s| {
+                let [lx, ly, lw, lh] = s.logico.map(f64::from);
+                x >= lx && y >= ly && x < lx + lw && y < ly + lh
+            }) else {
+                return;
+            };
+            if s.paused {
+                return;
+            }
+            let (cx, cy) = (x - s.logico[0] as f64, y - s.logico[1] as f64);
+            zoo_log!("clic sul desktop: {x:.0},{y:.0} → schermo {} ({cx:.0}, {cy:.0})", s.id);
+            let _ = s.webview.evaluate_script(&format!("window.zooPoke && zooPoke({cx:.1}, {cy:.1})"));
+            return;
+        }
         let x0 = self.screens.iter().map(|s| s.pos.x).min().unwrap_or(0) as f64;
         let y0 = self.screens.iter().map(|s| s.pos.y).min().unwrap_or(0) as f64;
         let x1 = self.screens.iter().map(|s| s.pos.x + s.size.width as i32).max().unwrap_or(0) as f64;
@@ -491,6 +772,9 @@ impl App {
     /// in fondo alla pila, anche sotto la finestra delle icone del desktop (che su
     /// GNOME è anche lei di tipo "desktop")
     fn tieni_sotto(&self) {
+        if self.wayland {
+            return; // ci pensa l'estensione
+        }
         for s in &self.screens {
             if let Some(w) = s.window.gtk_window().window() {
                 w.lower();
@@ -500,7 +784,13 @@ impl App {
 
     /// se gli schermi sono cambiati (collegati, scollegati, risoluzione) rifà gli sfondi
     fn check_screens(&mut self, target: &EventLoopWindowTarget<Evento>, proxy: &EventLoopProxy<Evento>) {
-        let now = schermi(target);
+        // modo Wayland: i connettori dall'estensione, se no da mutter
+        let mutter = if self.wayland && self.shell.iter().any(|st| st.connettore.is_empty()) {
+            self.bus.as_ref().map(connettori_mutter).unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        let now = schermi(target, self.wayland.then_some(self.shell.as_slice()), &mutter);
         self.core.set_schermi(now.iter().map(|m| m.3.clone()).collect());
         // anche la scala: GNOME può cambiarla dopo che le finestre ci sono (all'accesso l'app
         // può partire prima che arrivi la scala dello schermo, ed è 1; poi diventa 2). La
@@ -520,29 +810,62 @@ impl App {
             self.screens.clear();
             self.screens = now
                 .into_iter()
-                .filter_map(|(pos, size, scala, sc)| make_screen(target, proxy, pos, size, scala, sc.id))
+                .filter_map(|(pos, size, scala, sc)| make_screen(target, proxy, pos, size, scala, sc.id, self.wayland))
                 .collect();
             for s in &self.screens {
                 zoo_log!("schermo {}: {}×{} a {},{}, scala {}", s.id, s.size.width, s.size.height, s.pos.x, s.pos.y, s.scala);
+            }
+            if self.wayland {
+                // l'estensione deve prendere le finestre nuove: si controlla in `giro_wayland`
+                self.da_adottare = Some(Instant::now());
             }
         }
     }
 }
 
-/// posizione e dimensione (pixel fisici) e scala di ogni schermo, il principale per primo
-fn schermi(target: &EventLoopWindowTarget<Evento>) -> Vec<(PhysicalPosition<i32>, PhysicalSize<u32>, f64, Schermo)> {
+/// posizione e dimensione (pixel fisici) e scala di ogni schermo, il principale per primo.
+/// Il nome è quello del connettore ("eDP-1"): sotto X11 lo dà GTK, sotto Wayland GTK 3 dà solo
+/// il modello e il connettore lo dice l'estensione di GNOME (`shell`), così le impostazioni
+/// per schermo restano le stesse nei due modi.
+fn schermi(
+    target: &EventLoopWindowTarget<Evento>,
+    shell: Option<&[StatoSchermo]>,
+    mutter: &[([i32; 2], String)],
+) -> Vec<(PhysicalPosition<i32>, PhysicalSize<u32>, f64, Schermo)> {
     let principale = target.primary_monitor().map(|m| m.position());
     let mut v: Vec<_> = target
         .available_monitors()
         .map(|m| {
             let (pos, size) = (m.position(), m.size());
-            let nome = m.name().unwrap_or_else(|| "schermo".into());
+            let geo = logico(pos, size, m.scale_factor());
+            let connettore = shell
+                .and_then(|sh| stato_di(sh, &geo))
+                .map(|st| st.connettore.clone())
+                .filter(|c| !c.is_empty())
+                .or_else(|| mutter.iter().find(|(xy, _)| *xy == [geo[0], geo[1]]).map(|(_, c)| c.clone()))
+                .filter(|c| !c.is_empty());
+            let nome = connettore.or_else(|| m.name()).unwrap_or_else(|| "schermo".into());
             let id = format!("{nome}@{},{}", pos.x, pos.y);
             (pos, size, m.scale_factor(), Schermo { id, larghezza: size.width, altezza: size.height })
         })
         .collect();
     v.sort_by_key(|(pos, _, _, _)| (Some(*pos) != principale, pos.x, pos.y));
     v
+}
+
+/// lo schermo in pixel logici, da posizione e misura in pixel fisici
+fn logico(pos: PhysicalPosition<i32>, size: PhysicalSize<u32>, scala: f64) -> [i32; 4] {
+    let sc = if scala > 0.0 { scala } else { 1.0 };
+    [pos.x as f64, pos.y as f64, size.width as f64, size.height as f64].map(|v| (v / sc).round() as i32)
+}
+
+/// lo stato che GNOME Shell dà per uno schermo: quello con la stessa geometria, se no quello
+/// che contiene il suo centro (la scala è appena cambiata e la finestra non è ancora rifatta)
+fn stato_di<'a>(shell: &'a [StatoSchermo], logico: &[i32; 4]) -> Option<&'a StatoSchermo> {
+    shell.iter().find(|st| st.geo == *logico).or_else(|| {
+        let (cx, cy) = (logico[0] + logico[2] / 2, logico[1] + logico[3] / 2);
+        shell.iter().find(|st| cx >= st.geo[0] && cy >= st.geo[1] && cx < st.geo[0] + st.geo[2] && cy < st.geo[1] + st.geo[3])
+    })
 }
 
 fn make_screen(
@@ -552,16 +875,21 @@ fn make_screen(
     size: PhysicalSize<u32>,
     scala: f64,
     id: String,
+    wayland: bool,
 ) -> Option<Screen> {
-    let window = WindowBuilder::new()
-        .with_title("ASCII Zoo")
-        .with_decorations(false)
-        .with_resizable(false)
-        .with_visible(false)
-        .with_position(pos)
-        .with_inner_size(size)
-        .build(target)
-        .ok()?;
+    let logico = logico(pos, size, scala);
+    // modo Wayland: il titolo dice all'estensione di GNOME che è lo sfondo e di quale
+    // schermo; la misura è in pixel logici (sotto Wayland GTK non sa ancora la scala)
+    let builder = WindowBuilder::new().with_decorations(false).with_resizable(false).with_visible(false);
+    let builder = if wayland {
+        let [x, y, w, h] = logico;
+        builder
+            .with_title(format!("{TITOLO_WAYLAND}{x},{y},{w},{h}"))
+            .with_inner_size(tao::dpi::LogicalSize::new(w as f64, h as f64))
+    } else {
+        builder.with_title("ASCII Zoo").with_position(pos).with_inner_size(size)
+    };
+    let window = builder.build(target).ok()?;
     // va detto prima che la finestra compaia: il gestore delle finestre lo legge allora
     let gw = window.gtk_window();
     gw.set_type_hint(gtk::gdk::WindowTypeHint::Desktop);
@@ -601,7 +929,7 @@ fn make_screen(
     window.set_visible(true);
     // trasparente ai clic: vanno alle icone del desktop o a quello che c'è sotto
     gw.input_shape_combine_region(Some(&gtk::cairo::Region::create()));
-    if let Some(w) = gw.window() {
+    if let Some(w) = gw.window().filter(|_| !wayland) {
         w.lower();
     }
     Some(Screen {
@@ -610,6 +938,7 @@ fn make_screen(
         pos,
         size,
         scala,
+        logico,
         id,
         paused: false,
         margini: None,
@@ -687,10 +1016,33 @@ pub fn run() {
     let Some(_una_sola) = una_sola_copia() else { return };
     autostart::aggiorna();
 
-    // Wayland non permette a un programma di mettersi al posto dello sfondo: si usa
-    // XWayland, dove le finestre di tipo "desktop" funzionano
-    if std::env::var_os("WAYLAND_DISPLAY").is_some() && std::env::var_os("GDK_BACKEND").is_none() {
-        std::env::set_var("GDK_BACKEND", "x11");
+    // Wayland non permette a un programma di mettersi al posto dello sfondo: su GNOME lo fa
+    // l'estensione (modo Wayland), se no si usa XWayland, dove le finestre di tipo "desktop"
+    // funzionano. Si decide prima che parta GTK
+    let bus = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE).ok();
+    let shell = modo_wayland(bus.as_ref());
+    let wayland = shell.is_some();
+    // su X11 solo perché l'estensione non risponde (non chiesto): la si aspetta
+    let x11_in_attesa = !wayland
+        && std::env::var_os("WAYLAND_DISPLAY").is_some()
+        && std::env::var_os("GDK_BACKEND").is_none()
+        && std::env::var_os("ASCII_ZOO_SFONDO").is_none()
+        && std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|d| d.split(':').any(|x| x.eq_ignore_ascii_case("gnome")));
+    if wayland {
+        std::env::set_var("GDK_BACKEND", "wayland");
+        zoo_log!("sfondo: Wayland, al posto dello sfondo lo mette l'estensione di GNOME");
+    } else if std::env::var_os("WAYLAND_DISPLAY").is_some() {
+        let perche = if std::env::var("ASCII_ZOO_SFONDO").is_ok_and(|v| v == "x11") {
+            "chiesto con ASCII_ZOO_SFONDO=x11"
+        } else if std::env::var_os("GDK_BACKEND").is_some() {
+            "chiesto con GDK_BACKEND"
+        } else {
+            "l'estensione di GNOME per lo sfondo non risponde"
+        };
+        if std::env::var_os("GDK_BACKEND").is_none() {
+            std::env::set_var("GDK_BACKEND", "x11");
+        }
+        zoo_log!("sfondo: X11 (XWayland): {perche}");
     }
     // con i driver NVIDIA proprietari WebKitGTK a volte mostra una pagina vuota
     if std::path::Path::new("/proc/driver/nvidia").exists() && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
@@ -707,10 +1059,12 @@ pub fn run() {
 
     // false: niente "Usa come screensaver…" (Windows e macOS); qui c'è il sottomenu Screensaver
     let (core, menu) = Core::new(false);
-    let bus = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE).ok();
     if let Some(bus) = &bus {
         if !registra_clic(bus, &proxy) {
             zoo_log!("clic sul desktop: non riesco a registrare l'oggetto D-Bus");
+        }
+        if wayland || x11_in_attesa {
+            ascolta_estensione(bus, &proxy);
         }
     }
     // lo screensaver: il suo sottomenu va dopo "Apri al login"
@@ -733,6 +1087,11 @@ pub fn run() {
         nome_clic: None,
         salva,
         bloccato: false,
+        wayland,
+        shell: shell.unwrap_or_default(),
+        da_adottare: None,
+        spenta_da: None,
+        x11_in_attesa,
     };
     app.sync_clic();
     let mut giro: u32 = 0;
@@ -756,6 +1115,12 @@ pub fn run() {
         }
         Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
             giro = giro.wrapping_add(1);
+            app.giro_wayland();
+            // il segnale dell'estensione accesa potrebbe essere arrivato prima che lo si
+            // ascoltasse: si chiede comunque dopo 10 e dopo 30 secondi
+            if giro == 20 || giro == 60 {
+                app.prova_wayland();
+            }
             let coperto = app.screens.iter().any(|s| s.coperto);
             app.salva.giro(&app.core.cfg, app.bus.as_ref(), app.bloccato, coperto);
             if giro % GIRI_CONTROLLO == 0 {
@@ -773,6 +1138,21 @@ pub fn run() {
             *control_flow = ControlFlow::WaitUntil(prossimo_giro());
         }
         Event::UserEvent(Evento::PaginaPronta) => app.push_settings(),
+        Event::UserEvent(Evento::Shell(stato)) => {
+            if stato != app.shell {
+                zoo_log!("sfondo: da GNOME Shell {stato:?}");
+                app.shell = stato;
+                app.check_pause();
+                app.check_margini();
+            }
+        }
+        Event::UserEvent(Evento::EstensioneAccesa) => app.prova_wayland(),
+        Event::UserEvent(Evento::EstensioneSpenta) if app.wayland => {
+            if app.spenta_da.is_none() {
+                zoo_log!("sfondo: l'estensione di GNOME risulta spenta, vediamo se si riaccende");
+                app.spenta_da = Some(Instant::now());
+            }
+        }
         Event::UserEvent(Evento::Clic(x, y, w, h)) => app.clic(x, y, w, h),
         Event::UserEvent(Evento::Salvaschermo(s)) => {
             let coperto = app.screens.iter().any(|s| s.coperto);

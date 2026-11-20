@@ -550,6 +550,11 @@ impl Salvaschermo {
         let exe = std::env::current_exe().ok().filter(|p| p.exists()).unwrap_or_else(|| "/proc/self/exe".into());
         let mut cmd = Command::new(exe);
         cmd.args(["--salvaschermo", "--scena", scena]);
+        // lo screensaver resta su XWayland anche quando lo sfondo è nel modo Wayland
+        // (GDK_BACKEND=wayland nell'ambiente dell'app): sopra tutto e a schermo intero
+        if std::env::var_os("WAYLAND_DISPLAY").is_some() {
+            cmd.env("GDK_BACKEND", "x11");
+        }
         // se l'app si chiude (o la chiude una copia nuova) lo screensaver non resta lì da solo
         // SAFETY: prctl si può chiamare tra fork ed exec
         unsafe {
