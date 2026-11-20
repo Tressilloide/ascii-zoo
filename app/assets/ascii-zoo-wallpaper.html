@@ -332,7 +332,7 @@ h1 {
   function steer(c, target, rate, dt) {
     c.th += clamp(angDiff(target, c.th), -rate * dt, rate * dt);
   }
-  // distanza punto-segmento; _t = posizione lungo il segmento (0..1)
+  // distanza punto-segmento; segT() dà poi la posizione lungo il segmento (0..1)
   var _t = 0;
   function segD(px, py, ax, ay, bx, by) {
     var vx = bx - ax, vy = by - ay;
@@ -342,6 +342,7 @@ h1 {
     var dx = px - ax - vx * t, dy = py - ay - vy * t;
     return Math.sqrt(dx * dx + dy * dy);
   }
+  function segT() { return _t; }
   function advance(c, dt) {
     c.x += Math.cos(c.th) * c.sp * dt;
     c.y += Math.sin(c.th) * c.sp * dt;
@@ -369,6 +370,7 @@ h1 {
 
   var SPECIES = [];
 
+  // ==== animale: farfalle ====
   SPECIES.push({
     id: 'farfalle', label: 'Farfalle', dot: '#5aa7ff',
     pal: ['#eaf4ff', '#a9d6ff', '#58a4ff', '#2f66d0'],
@@ -406,7 +408,9 @@ h1 {
       }
     }
   });
+  // ==== fine farfalle ====
 
+  // ==== animale: meduse ====
   SPECIES.push({
     id: 'meduse', label: 'Meduse', dot: '#e45bd0',
     pal: ['#ffd9f7', '#ee6fdc', '#b03aa6', '#8d86a6'],
@@ -446,7 +450,9 @@ h1 {
       }
     }
   });
+  // ==== fine meduse ====
 
+  // ==== animale: libellule ====
   SPECIES.push({
     id: 'libellule', label: 'Libellule', dot: '#3fe0b0',
     pal: ['#f2fff9', '#62f0b4', '#27b99a', '#8fe6cf', '#3d8f86'],
@@ -498,7 +504,9 @@ h1 {
       }
     }
   });
+  // ==== fine libellule ====
 
+  // ==== animale: koi ====
   SPECIES.push({
     id: 'koi', label: 'Koi', dot: '#ffb347',
     // 7-8 = acqua, 9-10 = ninfee, 11 = fiore di loto
@@ -652,7 +660,9 @@ h1 {
       }
     }
   });
+  // ==== fine koi ====
 
+  // ==== animale: rane ====
   SPECIES.push({
     id: 'rane', label: 'Rane', dot: '#6fdc44',
     pal: ['#f6ffe9', '#a2ec6c', '#62cf3c', '#3c9a2c'],
@@ -734,7 +744,9 @@ h1 {
       }
     }
   });
+  // ==== fine rane ====
 
+  // ==== animale: aironi ====
   SPECIES.push({
     id: 'aironi', label: 'Aironi', dot: '#e6e9f0',
     pal: ['#fbfcff', '#cfd4de', '#858b99', '#f0483e', '#5d6270'],
@@ -768,14 +780,16 @@ h1 {
       var f = Math.cos(c.ph), fold = c.fold || 0;
       var span = 0.72 * (0.74 + 0.26 * Math.abs(f)) * (1 - 0.62 * fold);
       var d = segD(x, ay, 0.02, 0.05, -0.12 - 0.13 * f * (1 - fold) - 0.22 * fold, span);
-      var t = _t, chord = Math.max(lerp(0.13, 0.05, t), mt);
+      var t = segT(), chord = Math.max(lerp(0.13, 0.05, t), mt);
       if (d < chord) {
         o.v = 0.92 - 0.3 * t - 0.25 * (d / chord);
         o.c = t > 0.66 ? 2 : (d / chord > 0.6 ? 1 : 0);
       }
     }
   });
+  // ==== fine aironi ====
 
+  // ==== animale: granchi ====
   SPECIES.push({
     id: 'granchi', label: 'Granchi', dot: '#ff6a52',
     pal: ['#fff0e6', '#ff9a78', '#ee5540', '#b0342c'],
@@ -835,7 +849,9 @@ h1 {
       }
     }
   });
+  // ==== fine granchi ====
 
+  // ==== animale: cavalli ====
   // Cavalli: visti di profilo, come in una prateria guardata da lontano. Non ruotano
   // come gli altri: c.face (1 = verso destra, -1 = verso sinistra) dice dove guardano,
   // c.mv è la pendenza del cammino (vanno quasi in orizzontale) e c.th resta
@@ -900,12 +916,12 @@ h1 {
   }
   function horseLeg(x, y, c, o, k, near) {
     var G = c.G, b = 23 + k * 6, K = COATS[c.kind2], mt = c.mt;
-    if (segD(x, y, G[b], G[b + 1], G[b + 2], G[b + 3]) < Math.max(0.058 - 0.02 * _t, mt * 0.8)) {
+    if (segD(x, y, G[b], G[b + 1], G[b + 2], G[b + 3]) < Math.max(0.058 - 0.02 * segT(), mt * 0.8)) {
       o.v = near ? 0.85 : 0.55; o.c = near ? K[1] : K[2]; return true;
     }
     if (segD(x, y, G[b + 2], G[b + 3], G[b + 4], G[b + 5]) < Math.max(0.034, mt * 0.8)) {
       o.v = near ? 0.8 : 0.52;
-      o.c = _t > 0.84 ? K[5] : (c.socks >> k) & 1 ? 0 : K[4];
+      o.c = segT() > 0.84 ? K[5] : (c.socks >> k) & 1 ? 0 : K[4];
       return true;
     }
     return false;
@@ -1090,7 +1106,7 @@ h1 {
       if (x < -0.28) {
         for (k = 0; k < 3; k++) {
           b = 15 + k * 2;
-          if (segD(x, y, G[b], G[b + 1], G[b + 2], G[b + 3]) < Math.max(0.03 + 0.016 * (k + _t), mt * 0.7)) {
+          if (segD(x, y, G[b], G[b + 1], G[b + 2], G[b + 3]) < Math.max(0.03 + 0.016 * (k + segT()), mt * 0.7)) {
             o.v = 0.72 - 0.06 * k; o.c = K[3]; return;
           }
         }
@@ -1098,7 +1114,9 @@ h1 {
       if (y > -0.02 && !horseLeg(x, y, c, o, 1, false)) horseLeg(x, y, c, o, 3, false);
     }
   });
+  // ==== fine cavalli ====
 
+  // ==== animale: anatre ====
   // Anatre: viste dall'alto, in uno stagno. Ogni mamma (germano reale) guida i suoi
   // anatroccoli in fila: ognuno segue quello davanti. Qualche maschio gira da solo.
   // c.role: 0 mamma, 1 maschio, 2 anatroccolo. Al clic arriva il pane.
@@ -1294,6 +1312,7 @@ h1 {
       }
     }
   });
+  // ==== fine anatre ====
 
   /* ------------------------------------------------------------------ */
   /* Scenografie: lo sfondo di ogni specie. Hanno uno stato proprio      */
@@ -1350,6 +1369,7 @@ h1 {
 
   var SCENES = {};
 
+  // ==== animale: farfalle ====
   // Farfalle: un prato visto dall'alto. I fiori ondeggiano al vento, si scostano
   // e si aprono quando una farfalla ci passa vicino; ci si posano sopra.
   SCENES.farfalle = {
@@ -1412,7 +1432,9 @@ h1 {
     spots: function (w, s) { return s.flowers; },
     kick: function (f, w) { f.vx += (w.rnd() - 0.5) * 5; f.vy += (w.rnd() - 0.5) * 5; }
   };
+  // ==== fine farfalle ====
 
+  // ==== animale: libellule ====
   // Libellule: canne palustri che salgono dal bordo in basso, sopra una
   // striscia d'acqua. Ondeggiano; quando una libellula si posa la punta si piega.
   SCENES.libellule = {
@@ -1475,7 +1497,9 @@ h1 {
     spots: function (w, s) { return s.reeds; },
     kick: function (r) { r.vb += (r.lean >= 0 ? -1 : 1) * 3; }
   };
+  // ==== fine libellule ====
 
+  // ==== animale: rane ====
   // Rane: prato con ciuffi d'erba, sassi (ci si siedono), pozzanghere (schizzi
   // quando ci atterrano) e lucciole che scappano dalle rane, o finiscono mangiate.
   SCENES.rane = {
@@ -1580,7 +1604,9 @@ h1 {
     },
     spots: function (w, s) { return s.stones; }
   };
+  // ==== fine rane ====
 
+  // ==== animale: aironi ====
   // Aironi: nidi di rametti con le uova. Gli aironi ci tornano, chiudono le ali
   // e covano; dopo un po' di cova le uova si schiudono.
   SCENES.aironi = {
@@ -1630,7 +1656,9 @@ h1 {
     },
     spots: function (w, s) { return s.nests; }
   };
+  // ==== fine aironi ====
 
+  // ==== animale: meduse ====
   // Meduse: fondale con raggi di luce che scendono e bolle che salgono.
   // Le meduse spostano le bolle; contro l'orologio le bolle scoppiano.
   SCENES.meduse = {
@@ -1689,7 +1717,9 @@ h1 {
       }
     }
   };
+  // ==== fine meduse ====
 
+  // ==== animale: granchi ====
   // Granchi: sabbia con le increspature, conchiglie, sassi (da aggirare) e
   // le impronte che i granchi lasciano camminando, che il tempo cancella.
   SCENES.granchi = {
@@ -1742,7 +1772,9 @@ h1 {
     },
     obstacles: function (w, s) { return s.rocks; }
   };
+  // ==== fine granchi ====
 
+  // ==== animale: cavalli ====
   // Cavalli: prateria con l'erba mossa dal vento (le raffiche passano come onde
   // chiare che piegano i fili), fiori di campo e una staccionata in basso, a tratti.
   // Al galoppo i cavalli alzano la polvere.
@@ -1829,7 +1861,9 @@ h1 {
       }
     }
   };
+  // ==== fine cavalli ====
 
+  // ==== animale: anatre ====
   // Anatre: lo stagno visto dall'alto. In basso la riva (fango, erba e canne con le
   // pannocchie che ondeggiano); sull'acqua riflessi, ninfee che si scostano quando
   // un'anatra ci passa in mezzo, e la scia a V dietro ogni anatra.
@@ -1955,59 +1989,113 @@ h1 {
       }
     }
   };
+  // ==== fine anatre ====
 
   /* ------------------------------------------------------------------ */
-  /* Scene dell'utente. L'app mette in window.ZOO_SCENE i file .js della  */
-  /* cartella "scene" (vedi app/src/scene.rs): ognuno chiama scena({...}) */
-  /* e diventa una voce in più del menu, dopo gli animali, senza animali: */
-  /* solo lo sfondo. Nel browser e nelle estensioni la lista è vuota.     */
+  /* File dell'utente. L'app mette in window.ZOO_SCENE i file .js della   */
+  /* cartella "scene" (vedi app/src/scene.rs). Due tipi:                  */
+  /*  - una scena senza animali, che chiama scena({ colori, init, ... }); */
+  /*  - un animale, scritto come quelli qui sopra (tra le righe "====",   */
+  /*    che l'app copia in scene/di-serie): SPECIES.push({...}) e, se ha  */
+  /*    uno sfondo, SCENES.x = {...}.                                     */
+  /* L'id è il nome del file: un file con l'id di un animale di serie lo  */
+  /* sostituisce, gli altri sono voci in più del menu dopo gli animali.   */
+  /* Nel browser e nelle estensioni la lista è vuota.                     */
   /* ------------------------------------------------------------------ */
+  // sp.base: l'animale di serie da cui viene (il motore ne guarda alcuni per nome)
+  SPECIES.forEach(function (sp) { sp.base = sp.id; });
   (function () {
     var lista = global.ZOO_SCENE;
     if (!lista || !lista.length) return;
     var COLORE = /^#[0-9a-f]{6}$/i;
     function niente() {}
-    // una funzione della scena che va in errore smette di essere chiamata (la
-    // scena resta vuota), invece di fermare l'animazione di tutto lo sfondo
-    function protetta(sp, fn) {
-      if (typeof fn !== 'function') return niente;
+    // una funzione del file che va in errore smette di essere chiamata (e non
+    // nascono più animali di quel tipo), invece di fermare tutto lo sfondo
+    function protetta(sp, fn, vuoto) {
+      if (typeof fn !== 'function') return fn;
       return function () {
-        if (sp.rotta) return;
+        if (sp.rotta) return vuoto;
         try { return fn.apply(this, arguments); }
-        catch (e) { sp.rotta = true; if (global.console) console.error('ASCII Zoo, scena "' + sp.id + '":', e); }
+        catch (e) {
+          sp.rotta = true; sp.min = sp.max = 0; sp.dens = 1e9;
+          if (global.console) console.error('ASCII Zoo, file "' + sp.id + '.js":', e);
+          return vuoto;
+        }
       };
     }
-    // init deve restituire lo stato della scena: un oggetto anche se non lo fa (o va in errore)
+    // init deve restituire lo stato: un oggetto anche se non lo fa (o va in errore)
     function conStato(init) {
+      if (typeof init !== 'function') return init;
       return function (w) { return init.call(this, w) || {}; };
     }
-    for (var n = 0; n < lista.length; n++) {
-      var voce = lista[n], def = null;
-      if (!voce || typeof voce.f !== 'function' || byId(voce.id)) continue;
-      try {
-        voce.f(function (d) { if (!def) def = d; }, hash2, clamp, lerp, TAU, drawCells);
-      } catch (e) {
-        if (global.console) console.error('ASCII Zoo, scena "' + voce.id + '":', e);
-        continue;
+    function proteggi(sp, o) {
+      for (var k in o) {
+        if (typeof o[k] !== 'function') continue;
+        o[k] = protetta(sp, o[k], k === 'obstacles' ? [] : undefined);
+        if (k === 'init') o[k] = conStato(o[k]);
       }
-      if (!def || typeof def !== 'object') continue;
+    }
+    // una scena senza animali, da scena({...}): un animale che non nasce mai
+    function daScena(def) {
       var pal = (Array.isArray(def.colori) ? def.colori : []).filter(function (c) { return COLORE.test(c); }).slice(0, 16);
       if (!pal.length) pal = ['#aab3c5'];
       var sp = {
-        id: voce.id, label: String(voce.nome || voce.id), dot: COLORE.test(def.puntino) ? def.puntino : pal[0], pal: pal,
-        dens: 1e9, min: 0, max: 0, smin: 4, smax: 8, off: 0, rad: 1, utente: true,
-        spawn: niente, update: niente, shape: niente
+        dot: COLORE.test(def.puntino) ? def.puntino : pal[0], pal: pal,
+        dens: 1e9, min: 0, max: 0, smin: 4, smax: 8, off: 0, rad: 1,
+        spawn: niente, update: niente, shape: niente,
+        init: def.init, tick: def.tick, under: def.disegna || niente
       };
-      // `this` nelle funzioni è la scena: this.c0 è il primo dei suoi colori
-      sp.init = conStato(protetta(sp, def.init));
-      sp.tick = protetta(sp, def.tick);
-      sp.under = protetta(sp, def.disegna);
-      if (typeof def.sopra === 'function') sp.over = protetta(sp, def.sopra);
+      if (typeof def.sopra === 'function') sp.over = def.sopra;
       // altre funzioni della scena (es. una che crea una goccia): si chiamano con this.nome()
       for (var k in def) {
         if (typeof def[k] === 'function' && !(k in sp) && k !== 'disegna' && k !== 'sopra') sp[k] = def[k];
       }
-      SPECIES.push(sp);
+      return sp;
+    }
+    // quello che un file può usare: le funzioni comuni del motore (i nomi sono in scene.rs)
+    function api(voce, preso) {
+      return {
+        scena: function (d) { if (!preso.scena && d && typeof d === 'object') preso.scena = d; },
+        SPECIES: { push: function (d) { if (!preso.specie && d && typeof d === 'object') preso.specie = d; } },
+        SCENES: preso.sfondi,
+        byId: byId, TAU: TAU, FLOW: FLOW, clamp: clamp, lerp: lerp, angDiff: angDiff, hash2: hash2,
+        steer: steer, segD: segD, segT: segT, advance: advance, goTo: goTo, defaultPoke: defaultPoke,
+        place: place, drawCells: drawCells, celle: drawCells, rockCells: rockCells, spring: spring
+      };
+    }
+    var usati = {};
+    for (var n = 0; n < lista.length; n++) {
+      var voce = lista[n], preso = { sfondi: {} };
+      if (!voce || typeof voce.f !== 'function' || usati[voce.id]) continue;
+      try {
+        voce.f(api(voce, preso));
+      } catch (e) {
+        preso = { sfondi: {} };
+        if (global.console) console.error('ASCII Zoo, file "' + voce.id + '.js":', e);
+      }
+      var sp = preso.specie || (preso.scena ? daScena(preso.scena) : null);
+      // un file che non va: un animale di serie resta com'è, se no una voce vuota
+      // (il menu dell'app conta i file: le voci dopo devono restare al loro posto)
+      if (!sp) { if (byId(voce.id)) continue; sp = daScena({}); }
+      var sfondo = null;
+      for (var k in preso.sfondi) { if (preso.sfondi[k] && typeof preso.sfondi[k] === 'object') { sfondo = preso.sfondi[k]; break; } }
+      if (!Array.isArray(sp.pal) || !sp.pal.every(function (c) { return COLORE.test(c); })) sp.pal = ['#aab3c5'];
+      if (!COLORE.test(sp.dot)) sp.dot = sp.pal[0];
+      if (sfondo && (!Array.isArray(sfondo.pal) || !sfondo.pal.every(function (c) { return COLORE.test(c); }))) sfondo.pal = [];
+      // copia di un animale di serie (con un altro nome): si comporta come lui
+      var vecchio = byId(sp.id);
+      sp.base = vecchio && !vecchio.utente ? vecchio.base : voce.id;
+      sp.id = voce.id;
+      sp.label = String(voce.nome || voce.id);
+      sp.utente = true;
+      proteggi(sp, sp);
+      if (sfondo) proteggi(sp, sfondo);
+      usati[voce.id] = true;
+      // lo stesso id di un animale di serie: prende il suo posto
+      var i = SPECIES.indexOf(byId(voce.id));
+      if (i >= 0) { SPECIES[i] = sp; delete SCENES[voce.id]; }
+      else SPECIES.push(sp);
+      if (sfondo) SCENES[voce.id] = sfondo;
     }
   })();
 
@@ -2021,7 +2109,7 @@ h1 {
     sp.pal = sp.pal.concat(sc.pal);
     ['init', 'tick', 'under', 'over', 'spots', 'kick', 'obstacles'].forEach(function (k) { if (sc[k]) sp[k] = sc[k]; });
   });
-  SPECIES.forEach(function (sp) { sp.nameUp = NAME_UP[sp.id] || 0.5; });
+  SPECIES.forEach(function (sp) { sp.nameUp = NAME_UP[sp.base] || 0.5; });
 
   SPECIES.forEach(function (sp) {
     sp.c0 = PALETTE.length;
@@ -2473,7 +2561,7 @@ h1 {
       if (!k) return null;
       k._bright = k.bright;
       k.bright = 1; // ben visibile
-      if (sp.id === 'koi') k.kind2 = 0; // KARPISA è bianca e rossa
+      if (sp.base === 'koi') k.kind2 = 0; // KARPISA è bianca e rossa
     }
     return { txt: txt, row: Math.round(k.y - k.S * sp.nameUp - 1.4), col0: Math.round(k.x - txt.length / 2), a: clamp(k.a, 0, 1) };
   };
@@ -2840,8 +2928,8 @@ h1 {
       if (dx * dx + dy * dy < 0.4 && !(c.air > 0)) {
         c.perched = true; c.x = c.goal.x; c.y = c.goal.y; c.sp = 0;
         if (c.spot && c.spot.th !== undefined) c.th = c.spot.th;
-        c.ptime = c.spot ? (sp.id === 'aironi' ? 8 + this.rnd() * 14 : 5 + this.rnd() * 12) : 4 + this.rnd() * 9;
-      } else if ((c.gtime += dt) > (sp.id === 'aironi' ? 25 : 15)) { this.release(c); c.cool = 8; }
+        c.ptime = c.spot ? (sp.base === 'aironi' ? 8 + this.rnd() * 14 : 5 + this.rnd() * 12) : 4 + this.rnd() * 9;
+      } else if ((c.gtime += dt) > (sp.base === 'aironi' ? 25 : 15)) { this.release(c); c.cool = 8; }
       return;
     }
     if (c.cool > 0) { c.cool -= dt; return; }
@@ -2868,7 +2956,7 @@ h1 {
       best.taken = c; c.spot = best; c.goal = best;
     } else return;
     c.gtime = 0;
-    if (sp.id === 'rane' && c.state === 0) c.timer = Math.min(c.timer, 0.3);
+    if (sp.base === 'rane' && c.state === 0) c.timer = Math.min(c.timer, 0.3);
   };
 
   // Tutti gli altri girano intorno all'orologio invece di passarci sopra,
@@ -2892,13 +2980,13 @@ h1 {
     var sp = c.kind, zone = R + 3;
     if (dist >= zone) return;
     var s = 1 - dist / zone, over = R * 0.6 - dist;
-    if (sp.id === 'rane') {
+    if (sp.base === 'rane') {
       if (c.air > 0) return; // in volo: lo scavalca (l'atterraggio è già fuori)
-    } else if (sp.id === 'granchi') {
+    } else if (sp.base === 'granchi') {
       // il granchio inverte il passo laterale
       var mx = -Math.sin(c.th) * c.dir, my = Math.cos(c.th) * c.dir;
       if (mx * nx + my * ny < -0.2 && c.sp > 0.1) c.dir = -c.dir;
-    } else if (sp.id === 'cavalli') {
+    } else if (sp.base === 'cavalli') {
       // di profilo non girano il muso: cambiano pendenza (davanti all'orologio, vedi update)
       if (ny > 0.3 || ny < -0.3) c.mvT = ny > 0 ? 0.45 : -0.45;
     } else {
@@ -2906,7 +2994,7 @@ h1 {
       var hx = Math.cos(c.th), hy = Math.sin(c.th), dot = hx * nx + hy * ny;
       if (dot < 0.3) {
         var a = Math.atan2(hy - ny * dot + ny * 1.1 * s, hx - nx * dot + nx * 1.1 * s);
-        if (sp.id === 'libellule') c.next = a;
+        if (sp.base === 'libellule') c.next = a;
         steer(c, a, 2 + 6 * s, dt);
       }
     }

@@ -93,7 +93,9 @@ scena({
 
 `w.cols` and `w.rows` are the grid size, `w.rnd()` a random number, and `hash2`, `clamp`, `lerp`, `TAU` and `celle(w, cells, color, A)` are ready to use.
 
-Scenes are code written by someone else, so inside the app the wallpaper page can't use the network or open other pages, and a scene that throws an error just stops drawing. Scenes only run in the app, not in the browser version.
+The animals are files too. The app writes them into the `di-serie` subfolder (rewritten every time it starts): copy one into the scene folder to change it. With the same file name (`koi.js`) it takes the place of the built-in animal; with a new name (and a new `// nome:` line) it's one more animal in the menu, and it still behaves like the one it was copied from. Animal files are written like the code in [`wallpaper/index.html`](wallpaper/index.html): `SPECIES.push({...})` for the animal, `SCENES.x = {...}` for its backdrop.
+
+Scene and animal files are code written by someone else, so inside the app the wallpaper page can't use the network or open other pages, and a file that throws an error just stops drawing. They only run in the app, not in the browser version.
 
 ## Download
 

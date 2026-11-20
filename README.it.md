@@ -130,6 +130,8 @@ Oltre agli animali si possono aggiungere **scene**: uno sfondo senza animali (pi
 
 C'è un esempio commentato in [`scene/lucciole.js`](scene/lucciole.js): lucciole sopra l'erba. La prima riga `// nome: …` dà il nome nel menu (se manca, il nome del file); il file chiama `scena({ colori, init, tick, disegna })`. `w.put(colonna, riga, intensità, colore, alfa)` accende una cella; `this.c0` è il primo dei colori della scena; `hash2`, `clamp`, `lerp`, `TAU` e `celle` sono già pronti.
 
+Anche gli animali sono file: l'app li scrive nella sottocartella `di-serie` (riscritta a ogni avvio). Per cambiarne uno lo si copia nella cartella delle scene: con lo stesso nome (`koi.js`) prende il posto dell'animale di serie, con un nome nuovo (e una nuova riga `// nome:`) è un animale in più nel menu, che si comporta come quello da cui è copiato. I file degli animali sono scritti come il codice di [`wallpaper/index.html`](wallpaper/index.html): `SPECIES.push({...})` per l'animale, `SCENES.x = {...}` per il suo sfondo.
+
 Le scene sono codice scritto da altri: nell'app la pagina dello sfondo non può usare la rete né aprire altre pagine, e una scena che va in errore smette di disegnare senza fermare il resto. Funzionano solo nel programma, non nella versione per il browser.
 
 ## Struttura

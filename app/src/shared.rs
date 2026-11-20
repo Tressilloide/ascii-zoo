@@ -42,7 +42,12 @@ pub fn specie() -> &'static [(&'static str, &'static str)] {
         SPECIE
             .iter()
             .copied()
-            .chain(crate::scene::tutte().iter().map(|s| (s.id.as_str(), s.nome.as_str())))
+            // un file con l'id di un animale di serie ne prende il posto (e il nome)
+            .map(|(id, nome)| match crate::scene::tutte().iter().find(|s| s.sostituisce && s.id == id) {
+                Some(s) => (id, s.nome.as_str()),
+                None => (id, nome),
+            })
+            .chain(crate::scene::tutte().iter().filter(|s| !s.sostituisce).map(|s| (s.id.as_str(), s.nome.as_str())))
             .collect()
     })
 }

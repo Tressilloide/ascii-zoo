@@ -2,9 +2,16 @@
 //! (Windows `%APPDATA%\AsciiZoo\scene`, macOS `~/Library/Application Support/AsciiZoo/scene`,
 //! Linux `~/.config/AsciiZoo/scene`).
 //!
-//! Ogni file è una scena senza animali (pioggia, un paesaggio…): chiama `scena({...})`
-//! con i colori e le funzioni che disegnano. L'id è il nome del file, il nome nel menu
-//! la prima riga `// nome: …` (se manca, il nome del file). Come scriverne una: README.
+//! Ogni file è una scena senza animali (pioggia, un paesaggio…), che chiama `scena({...})`
+//! con i colori e le funzioni che disegnano, oppure un animale scritto come quelli di
+//! serie. L'id è il nome del file, il nome nel menu la prima riga `// nome: …` (se
+//! manca, il nome del file). Come scriverne uno: README.
+//!
+//! Gli animali di serie sono anche file: l'app li copia dalla pagina (i pezzi tra le
+//! righe `// ==== animale: id ====` e `// ==== fine id ====`) nella sottocartella
+//! `di-serie`, riscritta a ogni avvio. Da lì si copiano nella cartella delle scene:
+//! con lo stesso nome prendono il posto dell'animale di serie, con un nome nuovo sono
+//! un animale in più.
 //!
 //! Si leggono una volta all'avvio, nell'ordine dei nomi dei file, e vanno nel menu
 //! "Animale" dopo gli animali di serie: per vederne una nuova si riavvia l'app.
@@ -24,8 +31,16 @@ const NOME_MAX: usize = 40;
 pub struct Scena {
     pub id: String,
     pub nome: String,
+    /// ha l'id di un animale di serie e ne prende il posto (non è una voce in più)
+    pub sostituisce: bool,
     codice: String,
 }
+
+/// i nomi del motore che un file può usare (la pagina li mette nell'oggetto `api`)
+const NOMI: [&str; 21] = [
+    "scena", "SPECIES", "SCENES", "byId", "TAU", "FLOW", "clamp", "lerp", "angDiff", "hash2", "steer", "segD",
+    "segT", "advance", "goTo", "defaultPoke", "place", "drawCells", "celle", "rockCells", "spring",
+];
 
 /// la cartella delle scene (può non esistere)
 pub fn cartella() -> PathBuf {
@@ -72,6 +87,9 @@ fn nome_scena(codice: &str, stem: &str) -> String {
 }
 
 fn carica() -> Vec<Scena> {
+    if cartella().is_dir() {
+        scrivi_di_serie();
+    }
     let Ok(dir) = std::fs::read_dir(cartella()) else {
         return Vec::new();
     };
@@ -88,8 +106,9 @@ fn carica() -> Vec<Scena> {
         }
         let Some(stem) = p.file_stem().and_then(|s| s.to_str()) else { continue };
         let Some(id) = id_da_file(stem) else { continue };
-        // un id già usato (da un animale o da un'altra scena) si salta
-        if crate::shared::SPECIE.iter().any(|s| s.0 == id) || scene.iter().any(|s| s.id == id) {
+        // lo stesso id di un animale di serie: lo sostituisce; di un'altra scena: si salta
+        let sostituisce = crate::shared::SPECIE.iter().any(|s| s.0 == id);
+        if scene.iter().any(|s| s.id == id) {
             crate::shared::zoo_log!("scena {id}: id già usato, saltata");
             continue;
         }
@@ -103,7 +122,7 @@ fn carica() -> Vec<Scena> {
             continue;
         }
         crate::shared::zoo_log!("scena {id}: \"{nome}\"");
-        scene.push(Scena { id, nome, codice: codice.trim_start_matches('\u{feff}').to_string() });
+        scene.push(Scena { id, nome, sostituisce, codice:codice.trim_start_matches('\u{feff}').to_string() });
     }
     scene
 }
@@ -117,28 +136,81 @@ pub fn script() -> String {
         let codice = s.codice.replace("</script", "<\\/script").replace("</SCRIPT", "<\\/SCRIPT");
         let id = serde_json::to_string(&s.id).unwrap_or_default();
         let nome = serde_json::to_string(&s.nome).unwrap_or_default();
+        let nomi: Vec<String> = NOMI.iter().map(|n| format!("{n} = api.{n}")).collect();
+        let nomi = nomi.join(", ");
         out.push_str(&format!(
             "<script>(window.ZOO_SCENE = window.ZOO_SCENE || []).push({{ id: {id}, nome: {nome}, \
-             f: function (scena, hash2, clamp, lerp, TAU, celle) {{\n{codice}\n}} }});</script>\n"
+             f: function (api) {{ var {nomi};\n{codice}\n}} }});</script>\n"
         ));
     }
     out
+}
+
+/// gli animali di serie come file, (id, codice): i pezzi della pagina tra le righe
+/// `// ==== animale: id ====` e `// ==== fine id ====`, uno dopo l'altro
+fn di_serie() -> Vec<(&'static str, String)> {
+    crate::shared::SPECIE
+        .iter()
+        .map(|&(id, nome)| {
+            let inizio = format!("  // ==== animale: {id} ====");
+            let fine = format!("  // ==== fine {id} ====");
+            let mut pezzi: Vec<String> = Vec::new();
+            let mut dentro: Option<Vec<&str>> = None;
+            for riga in crate::shared::HTML.lines() {
+                let riga = riga.trim_end_matches('\r');
+                if riga == inizio {
+                    dentro = Some(Vec::new());
+                } else if riga == fine {
+                    if let Some(p) = dentro.take() {
+                        pezzi.push(p.join("\n"));
+                    }
+                } else if let Some(p) = dentro.as_mut() {
+                    p.push(riga.strip_prefix("  ").unwrap_or(riga));
+                }
+            }
+            let codice = format!(
+                "// nome: {nome}\n\
+                 // {nome} di ASCII Zoo. La cartella di-serie viene riscritta a ogni avvio: per\n\
+                 // cambiare questo animale copia il file nella cartella scene. Con lo stesso nome\n\
+                 // ({id}.js) prende il posto di quello di serie; con un nome nuovo (cambia anche\n\
+                 // la prima riga) è un animale in più nel menu. Come funziona: README, \"Your own scenes\".\n\n{}\n",
+                pezzi.join("\n\n")
+            );
+            (id, codice)
+        })
+        .collect()
+}
+
+/// scrive (o aggiorna) gli animali di serie nella sottocartella di-serie
+fn scrivi_di_serie() {
+    let dir = cartella().join("di-serie");
+    if std::fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+    for (id, codice) in di_serie() {
+        let p = dir.join(format!("{id}.js"));
+        if std::fs::read_to_string(&p).ok().as_deref() != Some(codice.as_str()) {
+            let _ = std::fs::write(&p, codice);
+        }
+    }
 }
 
 /// apre la cartella delle scene nel file manager (la crea se manca, con due righe di aiuto)
 pub fn apri_cartella() {
     let dir = cartella();
     let _ = std::fs::create_dir_all(&dir);
+    scrivi_di_serie();
     let leggimi = dir.join("LEGGIMI.txt");
-    if !leggimi.exists() {
-        let _ = std::fs::write(
-            &leggimi,
-            "Scene di ASCII Zoo\r\n\r\n\
-             Ogni file .js in questa cartella è uno sfondo in più nel menu \"Animale\".\r\n\
-             Per vederne uno nuovo esci da ASCII Zoo e riaprilo.\r\n\
-             Come si scrive una scena, con un esempio:\r\n\
-             https://github.com/ascii-things/ascii-zoo#your-own-scenes\r\n",
-        );
+    let testo = "Scene di ASCII Zoo\r\n\r\n\
+                 Ogni file .js in questa cartella è uno sfondo in più nel menu \"Animale\".\r\n\
+                 Per vederne uno nuovo esci da ASCII Zoo e riaprilo.\r\n\r\n\
+                 In di-serie ci sono gli animali di ASCII Zoo come file (quella cartella viene\r\n\
+                 riscritta a ogni avvio). Copiane uno qui per cambiarlo: con lo stesso nome\r\n\
+                 prende il posto dell'animale di serie, con un nome nuovo è un animale in più.\r\n\r\n\
+                 Come si scrive una scena, con un esempio:\r\n\
+                 https://github.com/ascii-things/ascii-zoo#your-own-scenes\r\n";
+    if std::fs::read_to_string(&leggimi).ok().as_deref() != Some(testo) {
+        let _ = std::fs::write(&leggimi, testo);
     }
     #[cfg(windows)]
     let prog = "explorer";
@@ -159,5 +231,17 @@ mod test {
         assert_eq!(id_da_file("--").as_deref(), None);
         assert_eq!(nome_scena("// nome: Campo di grano\nscena({})", "x"), "Campo di grano");
         assert_eq!(nome_scena("scena({})", "lucciole-blu"), "Lucciole blu");
+    }
+
+    #[test]
+    fn animali_di_serie() {
+        let tutti = di_serie();
+        assert_eq!(tutti.len(), crate::shared::SPECIE.len());
+        for (id, codice) in tutti {
+            // la forma dell'animale c'è, e nessuna riga "====" è rimasta dentro
+            assert!(codice.contains(&format!("id: '{id}'")), "{id}");
+            assert!(!codice.contains("// ===="), "{id}");
+            assert_eq!(nome_scena(&codice, id), crate::shared::SPECIE.iter().find(|s| s.0 == id).unwrap().1);
+        }
     }
 }
