@@ -1,8 +1,9 @@
 // ASCII Zoo: sfondo sotto Wayland e clic sul desktop (GNOME Shell 45 e successivi).
 //
-// Due cose:
+// Tre cose:
 //   1. lo sfondo vero e proprio senza XWayland: vedi sfondo.js;
-//   2. i clic sul desktop, qui sotto.
+//   2. il menu dell'icona, con i sottomenu a tutta altezza: vedi menu.js;
+//   3. i clic sul desktop, qui sotto.
 // Resta accesa anche con lo schermo bloccato ("session-modes" in metadata.json): GNOME
 // altrimenti la spegnerebbe a ogni blocco e lo sfondo sparirebbe e tornerebbe a ogni sblocco.
 // Con lo schermo bloccato i clic non si guardano.
@@ -32,6 +33,7 @@ import Meta from 'gi://Meta';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import {Sfondo} from './sfondo.js';
+import {MenuZoo} from './menu.js';
 
 const NOME = 'io.github.tressilloide.AsciiZoo';
 const PERCORSO = '/io/github/tressilloide/AsciiZoo';
@@ -60,6 +62,8 @@ export default class ZooClic extends Extension {
     enable() {
         this._sfondo = new Sfondo(finestraDelDesktop);
         this._protetto(() => this._sfondo.enable());
+        this._menu = new MenuZoo();
+        this._protetto(() => this._menu.enable());
         this._giro = 0;
         this._fermo = 0;
         this._attivo = 0;
@@ -76,6 +80,8 @@ export default class ZooClic extends Extension {
     disable() {
         this._protetto(() => this._sfondo?.disable());
         this._sfondo = null;
+        this._protetto(() => this._menu?.disable());
+        this._menu = null;
         if (this._osserva)
             Gio.bus_unwatch_name(this._osserva);
         this._osserva = 0;
