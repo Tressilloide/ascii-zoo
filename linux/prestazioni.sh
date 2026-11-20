@@ -2,18 +2,17 @@
 # Misura quanto pesa ASCII Zoo su questo PC Linux e scrive un rapporto da mandare a chi
 # lo sviluppa: sistema, scheda video, WebKitGTK, schermi, le impostazioni dell'app che
 # contano per le prestazioni (mai la nota, il conto alla rovescia o i nomi), e la CPU di
-# ogni processo che c'entra in quattro situazioni:
+# ogni processo che c'entra in queste situazioni:
 #   1. app chiusa (quanto lavora già GNOME Shell da solo)
-#   2. app normale
-#   3. app con WebKitGTK tutto in software (WEBKIT_DISABLE_COMPOSITING_MODE=1)
-#   4. app con l'altra modalità di WebKitGTK per la GPU (WEBKIT_DISABLE_DMABUF_RENDERER)
-# Ognuna: 10 secondi per partire, poi 20 di misura. Alla fine l'app riparte come prima.
-# Con --wayland, sotto Wayland, anche:
-#   5. app in Wayland nativo, senza XWayland (GDK_BACKEND=wayland): Wayland non permette di
-#      fare da sfondo, quindi per quei 30 secondi è una finestra normale, sopra le altre.
-#      Serve solo a misurare quanto costa passare da XWayland
+#   2. app normale: su GNOME sotto Wayland con l'estensione dello sfondo, senza XWayland
+#      (il rapporto dice quale modo ha usato)
+#   3. solo se la 2 era senza XWayland: la stessa app su XWayland (ASCII_ZOO_SFONDO=x11), per
+#      confrontare i due modi
+#   4. app con WebKitGTK tutto in software (WEBKIT_DISABLE_COMPOSITING_MODE=1)
+# Ognuna: 10 secondi per partire, poi 20 di misura, con i fotogrammi che la pagina ha fatto
+# davvero. Alla fine l'app riparte come prima.
 #
-# Uso:  bash prestazioni.sh [--wayland] [percorso di ascii-zoo]
+# Uso:  bash prestazioni.sh [percorso di ascii-zoo]
 # Durante la prova il desktop deve vedersi: niente finestre a schermo intero o massimizzate
 # (lo sfondo coperto va in pausa e la misura non direbbe niente).
 set -u
@@ -24,8 +23,8 @@ DURATA=${DURATA:-20}
 LOG=$(mktemp)
 trap 'rm -f "$LOG"' EXIT
 
-WAYLAND=no
-if [ "${1:-}" = --wayland ]; then WAYLAND=si; shift; fi
+# --wayland c'era fino alla 0.6.0 (Wayland nativo come finestra normale): ora è il modo normale
+if [ "${1:-}" = --wayland ]; then shift; fi
 BIN="${1:-}"
 if [ -z "$BIN" ]; then
   pid=$(pgrep -x ascii-zoo | head -1)
@@ -89,8 +88,8 @@ prova() {
     return
   fi
   misura | tee -a "$RAPPORTO"
-  # le righe del log che dicono se lo sfondo era in pausa
-  grep -E "pausa|riparte|schermo .*×" "$LOG" | tail -6 | sed 's/^/    log: /' >> "$RAPPORTO"
+  # le righe del log che dicono in che modo (Wayland o X11) e se lo sfondo era in pausa
+  grep -E "sfondo: (Wayland|X11|l'estensione)|pausa|riparte|schermo .*×" "$LOG" | tail -8 | sed 's/^/    log: /' >> "$RAPPORTO"
   # quanti fotogrammi ha fatto davvero (dalla versione dopo la 0.6.0, ogni 10 secondi): se
   # sono meno di quelli scelti nel menu, qualcosa non ce la fa
   grep -E "fotogrammi al secondo|ridisegnata" "$LOG" | tail -2 | sed 's/^/    log: /' >> "$RAPPORTO"
@@ -128,6 +127,14 @@ prova() {
     [ "$(cat "$s/status" 2>/dev/null)" = connected ] && echo "  ${s##*/}: $(head -1 "$s/modes" 2>/dev/null)"
   done
   echo "  scala GNOME: $(gsettings get org.gnome.desktop.interface scaling-factor 2>/dev/null), testo $(gsettings get org.gnome.desktop.interface text-scaling-factor 2>/dev/null), funzioni sperimentali $(gsettings get org.gnome.mutter experimental-features 2>/dev/null)"
+  # l'estensione di GNOME (sfondo senza XWayland e clic): installata, accesa, quella nuova?
+  e="${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell/extensions/zoo-click@tressilloide.github.io"
+  if [ -d "$e" ]; then
+    stato=$(gnome-extensions info zoo-click@tressilloide.github.io 2>/dev/null | grep -iE "state|stato" | sed 's/^ *//')
+    echo "estensione di GNOME: installata$( [ -f "$e/sfondo.js" ] && echo ", con lo sfondo senza XWayland" ), ${stato:-stato ?}"
+  else
+    echo "estensione di GNOME: non installata"
+  fi
   echo "impostazioni dell'app (solo quelle che contano per le prestazioni):"
   conf="${XDG_CONFIG_HOME:-$HOME/.config}/AsciiZoo/config.json"
   if [ -f "$conf" ] && command -v python3 >/dev/null; then
@@ -155,17 +162,11 @@ sleep 3
 misura | tee -a "$RAPPORTO"
 
 prova "app normale"
+# senza XWayland? allora anche su XWayland, per confrontare
+if grep -q "sfondo: Wayland" "$LOG"; then
+  prova "la stessa app su XWayland (ASCII_ZOO_SFONDO=x11), per confronto" ASCII_ZOO_SFONDO=x11
+fi
 prova "WebKitGTK tutto in software" WEBKIT_DISABLE_COMPOSITING_MODE=1
-if [ -e /proc/driver/nvidia ]; then
-  # con NVIDIA l'app lo spegne da sola (schermo nero con certi driver): qui si prova acceso
-  prova "WebKitGTK con DMA-BUF acceso (NVIDIA: se lo sfondo era nero, dimmelo)" WEBKIT_DISABLE_DMABUF_RENDERER=0
-else
-  prova "WebKitGTK senza DMA-BUF" WEBKIT_DISABLE_DMABUF_RENDERER=1
-fi
-if [ "$WAYLAND" = si ] && [ -n "${WAYLAND_DISPLAY:-}" ]; then
-  echo "   (Wayland nativo: per 30 secondi ASCII Zoo è una finestra normale sopra le altre)" >&2
-  prova "Wayland nativo, senza XWayland (finestra normale, non sfondo)" GDK_BACKEND=wayland
-fi
 
 chiudi_app
 if [ "$c_era" = si ]; then
