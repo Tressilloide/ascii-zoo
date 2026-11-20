@@ -127,22 +127,39 @@ fn carica() -> Vec<Scena> {
     scene
 }
 
-/// i `<script>` da mettere nella pagina prima del motore: uno per scena, così un
-/// errore di sintassi in un file non ferma le altre
+/// i `<script>` da mettere nella pagina prima del motore. Per ogni scena due: il primo
+/// mette la voce (id e nome) in `ZOO_SCENE`, il secondo le dà la funzione con il codice del
+/// file. Un errore di sintassi in un file ferma solo il suo secondo `<script>`: la voce c'è
+/// lo stesso (vuota) e le voci dopo restano al posto che il menu dell'app conta.
 pub fn script() -> String {
     let mut out = String::new();
-    for s in tutte() {
-        // "</script" dentro il codice chiuderebbe il tag
-        let codice = s.codice.replace("</script", "<\\/script").replace("</SCRIPT", "<\\/SCRIPT");
+    let nomi: Vec<String> = NOMI.iter().map(|n| format!("{n} = api.{n}")).collect();
+    let nomi = nomi.join(", ");
+    for (n, s) in tutte().iter().enumerate() {
         let id = serde_json::to_string(&s.id).unwrap_or_default();
         let nome = serde_json::to_string(&s.nome).unwrap_or_default();
-        let nomi: Vec<String> = NOMI.iter().map(|n| format!("{n} = api.{n}")).collect();
-        let nomi = nomi.join(", ");
         out.push_str(&format!(
-            "<script>(window.ZOO_SCENE = window.ZOO_SCENE || []).push({{ id: {id}, nome: {nome}, \
-             f: function (api) {{ var {nomi};\n{codice}\n}} }});</script>\n"
+            "<script>(window.ZOO_SCENE = window.ZOO_SCENE || []).push({{ id: {id}, nome: {nome} }});</script>\n\
+             <script>window.ZOO_SCENE[{n}].f = function (api) {{ var {nomi};\n{}\n}};</script>\n",
+            per_script(&s.codice)
         ));
     }
+    out
+}
+
+/// il codice di un file dentro un `<script>`: "</script" lo chiuderebbe prima, e "<!--"
+/// (con "<script" dopo) cambia il modo in cui il browser cerca la fine del tag
+fn per_script(codice: &str) -> String {
+    let mut out = String::with_capacity(codice.len());
+    let mut resto = codice;
+    while let Some(i) = resto.find('<') {
+        out.push_str(&resto[..i]);
+        let dopo = &resto[i + 1..];
+        let chiude = dopo.len() >= 7 && dopo.is_char_boundary(7) && dopo[..7].eq_ignore_ascii_case("/script");
+        out.push_str(if chiude || dopo.starts_with("!--") { "<\\" } else { "<" });
+        resto = dopo;
+    }
+    out.push_str(resto);
     out
 }
 
@@ -231,6 +248,13 @@ mod test {
         assert_eq!(id_da_file("--").as_deref(), None);
         assert_eq!(nome_scena("// nome: Campo di grano\nscena({})", "x"), "Campo di grano");
         assert_eq!(nome_scena("scena({})", "lucciole-blu"), "Lucciole blu");
+    }
+
+    #[test]
+    fn codice_nel_tag() {
+        assert_eq!(per_script("a</script>b</SCRIPT x"), "a<\\/script>b<\\/SCRIPT x");
+        assert_eq!(per_script("x <!-- y < 3 <scr"), "x <\\!-- y < 3 <scr");
+        assert_eq!(per_script("è<"), "è<");
     }
 
     #[test]

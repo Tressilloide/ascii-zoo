@@ -2066,8 +2066,10 @@ h1 {
     var usati = {};
     for (var n = 0; n < lista.length; n++) {
       var voce = lista[n], preso = { sfondi: {} };
-      if (!voce || typeof voce.f !== 'function' || usati[voce.id]) continue;
+      if (!voce || usati[voce.id]) continue;
       try {
+        // senza f il file non si è nemmeno letto (errore di sintassi, nella console)
+        if (typeof voce.f !== 'function') throw new Error('il file non si legge');
         voce.f(api(voce, preso));
       } catch (e) {
         preso = { sfondi: {} };

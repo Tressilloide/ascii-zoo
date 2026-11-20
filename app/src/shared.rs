@@ -276,7 +276,14 @@ const JS_ANIMALE: &str = "(function () { try { return window.AsciiZoo && window.
 impl Core {
     /// `solo_windows`: se mostrare la voce dello screensaver (Windows e macOS)
     pub fn new(solo_windows: bool) -> (Self, Menu) {
-        let cfg = Config::load();
+        let mut cfg = Config::load();
+        // posizioni nel menu "Animale": un file di scena tolto dalla cartella può lasciarle
+        // fuori lista, e allora si torna alla rotazione (solo in memoria finché non cambia altro)
+        let voci = specie().len() as u32;
+        if cfg.animale > voci {
+            cfg.animale = 0;
+        }
+        cfg.animale_schermi.retain(|_, a| *a <= voci);
         let (menu, menus) = build_menu(&cfg, solo_windows);
         let pomodoro = Pomodoro::new(durate(&cfg));
         let mut core = Self {
@@ -490,7 +497,7 @@ impl Core {
         let mostrato = self.animale_mostrato.clone();
         let fatto = webview.evaluate_script_with_callback(JS_ANIMALE, move |r| {
             let i = r.trim().parse::<u32>().unwrap_or(0);
-            if (1..=SPECIE.len() as u32).contains(&i) {
+            if (1..=specie().len() as u32).contains(&i) {
                 if let Ok(mut m) = mostrato.lock() {
                     *m = Some(i);
                 }
@@ -505,7 +512,7 @@ impl Core {
     /// sceglierlo in "Animale"). true = le pagine vanno aggiornate (`js_schermo`)
     pub fn risposta_animale(&mut self) -> bool {
         let Some(i) = self.animale_mostrato.lock().ok().and_then(|mut m| m.take()) else { return false };
-        zoo_log!("rotazione spenta: resta {}", SPECIE[i as usize - 1].0);
+        zoo_log!("rotazione spenta: resta {}", specie().get(i as usize - 1).map(|s| s.0).unwrap_or("?"));
         self.cfg.animale = i;
         self.segna_animale();
         self.cfg.save();
