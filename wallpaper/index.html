@@ -80,8 +80,10 @@ body {
 
 canvas { position: fixed; top: 0; left: 0; display: block; }
 /* il bagliore è già sfocato e saturato dal motore (vedi sfocaBagliore): un filtro blur()
-   qui costerebbe molto dove la grafica non è accelerata */
-#glow { opacity: 0.55; pointer-events: none; }
+   qui costerebbe molto dove la grafica non è accelerata. Il canvas è piccolo (una cella per
+   pixel) e lo ingrandisce transform su un suo livello (will-change): il compositor lo stira
+   sulla GPU. Grande quanto lo schermo, WebKitGTK lo ridipingeva tutto a ogni aggiornamento */
+#glow { opacity: 0.55; pointer-events: none; will-change: transform; }
 /* chiaro: la luce sulla carta non si vede; resta un alone colorato morbido, come acquerello */
 [data-tema="chiaro"] #glow { opacity: 0.32; mix-blend-mode: multiply; }
 #zoo { cursor: crosshair; touch-action: manipulation; }
@@ -2143,8 +2145,11 @@ h1 {
     if (this.glow) {
       this.glow.width = this.cols;
       this.glow.height = this.rows;
-      this.glow.style.width = this.cols * this.cell + 'px';
-      this.glow.style.height = this.rows * this.cell + 'px';
+      // grande una cella per pixel e ingrandito con transform (vedi #glow nel CSS)
+      this.glow.style.width = this.cols + 'px';
+      this.glow.style.height = this.rows + 'px';
+      this.glow.style.transformOrigin = '0 0';
+      this.glow.style.transform = 'scale(' + this.cell + ')';
       this.gimg = this.gctx.createImageData(this.cols, this.rows);
     }
     this.buildAtlas();
@@ -2187,6 +2192,21 @@ h1 {
       }
     }
     this.atlas = a;
+    // Per disegnare si usa una copia dell'atlante come immagine (un PNG decodificato), non il
+    // canvas: in WebKitGTK disegnare da un canvas accelerato crea, aspetta e distrugge un
+    // fence della GPU a ogni drawImage (un migliaio a fotogramma, circa un quarto della CPU
+    // della pagina), un'immagine va sulla GPU una volta sola. Finché non è pronta si usa il
+    // canvas. MAI un canvas con willReadFrequently al suo posto: WebKitGTK ricaricherebbe
+    // l'atlante intero sulla GPU a ogni drawImage (gigabyte di memoria in pochi secondi).
+    var self = this, img = new Image();
+    img.onload = function () {
+      if (self.atlas !== a) return; // nel frattempo l'atlante è stato rifatto
+      self.atlas = img;
+      self.invalidate();
+      // in pausa non arrivano fotogrammi: si ridisegna subito (vedi setTema)
+      if (!self.running) { self.render(); self.render(); }
+    };
+    img.src = a.toDataURL('image/png');
     this.invalidate(); // caratteri nuovi (es. il font è arrivato): si ridisegna tutto
   };
 
