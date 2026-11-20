@@ -65,7 +65,7 @@ It's a small example of what two people and an AI can ship together in a short t
 | ![Starfield](dreams/docs/stars.png) **Starfield** | ![Rain and lightning](dreams/docs/rain.png) **Rain & lightning** | ![Campfire](dreams/docs/fire.png) **Campfire** |
 | ![Aurora](dreams/docs/aurora.png) **Aurora** | ![Game of Life](dreams/docs/life.png) **Game of Life** | ![Night sea](dreams/docs/sea.png) **Night sea** |
 
-In the tray menu choose **Usa come screensaver…** (use as screensaver): Windows opens its screensaver settings with ASCII Zoo already picked. Choose the wait time, and tick *On resume, display logon screen* if you want the PC to lock. In **Settings** you pick the scene (or all of them in rotation), how often it changes, the character size and the big drifting clock.
+In the tray menu open **Screensaver**: pick the scene there (or *Tutte, una dopo l'altra* for all of them in rotation), and **Prova adesso** shows it right away. **Attiva come screensaver di Windows…** opens the Windows screensaver settings with ASCII Zoo already picked: choose the wait time, and tick *On resume, display logon screen* if you want the PC to lock. Its **Settings** button also has how often the scene changes, the character size and the big drifting clock.
 
 The screensaver is the same `ascii-zoo.exe`, copied as `%LOCALAPPDATA%\AsciiZoo\ascii-zoo.scr` and kept up to date by the app. It doesn't use the WebView: a small native renderer in [`dreams/`](dreams/) draws every frame in about 1–2 ms, on every monitor, at 30 fps (15 on battery).
 

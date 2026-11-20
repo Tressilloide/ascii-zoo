@@ -218,6 +218,11 @@ pub struct Menus {
     pub avvio: CheckMenuItem,
     /// "Usa come screensaver…" (Windows e macOS)
     pub salvaschermo: MenuItem,
+    /// Windows, sottomenu "Screensaver": la scena (id, voce; "rotazione" = tutte) e "Prova adesso"
+    #[cfg(windows)]
+    salva_scene: Vec<(&'static str, CheckMenuItem)>,
+    #[cfg(windows)]
+    salva_prova: MenuItem,
     pub foto: MenuItem,
     pub ricarica: MenuItem,
     pub esci: MenuItem,
@@ -541,6 +546,32 @@ impl Core {
             crate::scene::apri_cartella();
             return Esito::Niente;
         }
+        #[cfg(windows)]
+        if let Some(i) = m.salva_scene.iter().position(|(_, v)| v.id().0 == id) {
+            // la scena dello screensaver: va nelle sue impostazioni (screensaver.json)
+            for (k, (_, v)) in m.salva_scene.iter().enumerate() {
+                v.set_checked(k == i);
+            }
+            let mut c = ascii_dreams::Config::carica();
+            c.scena = m.salva_scene[i].0.to_string();
+            if let Err(e) = c.salva() {
+                zoo_log!("screensaver: impostazioni non salvate: {e}");
+            }
+            return Esito::Niente;
+        }
+        #[cfg(windows)]
+        if id == m.salva_prova.id().0 {
+            // lo screensaver si chiude se non è in primo piano: dopo il clic sul menu
+            // l'app può darglielo
+            if let Ok(exe) = std::env::current_exe() {
+                if let Ok(figlio) = std::process::Command::new(exe).arg("/s").spawn() {
+                    unsafe {
+                        let _ = windows::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow(figlio.id());
+                    }
+                }
+            }
+            return Esito::Niente;
+        }
         if let Some(i) = m.animali.iter().position(|x| x.id().0 == id) {
             self.cfg.animale = i as u32;
             for (k, item) in self.menus.animali.iter().enumerate() {
@@ -855,6 +886,20 @@ pub fn etichetta_nome(label: &str, nome: &str) -> String {
     format!("{label}: {nome}…")
 }
 
+/// i nomi italiani delle scene dello screensaver
+#[cfg(windows)]
+fn nome_salvaschermo(id: &str) -> Option<&'static str> {
+    const NOMI: [(&str, &str); 6] = [
+        ("stelle", "Stelle"),
+        ("pioggia", "Pioggia e lampi"),
+        ("fuoco", "Falò"),
+        ("aurora", "Aurora"),
+        ("vita", "Gioco della vita"),
+        ("mare", "Mare di notte"),
+    ];
+    NOMI.iter().find(|n| n.0 == id).map(|n| n.1)
+}
+
 fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     let menu = Menu::new();
 
@@ -1040,7 +1085,22 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         schermo: CheckMenuItem::new("Pausa con app a schermo intero", true, cfg.pausa_schermo_intero, None),
         coperto: CheckMenuItem::new("Pausa quando le finestre coprono il desktop", true, cfg.pausa_coperto, None),
         avvio: CheckMenuItem::new(avvio_label, true, autostart::enabled(), None),
+        #[cfg(not(windows))]
         salvaschermo: MenuItem::new("Usa come screensaver…", true, None),
+        // su Windows sta nel sottomenu "Screensaver", sotto la scelta della scena
+        #[cfg(windows)]
+        salvaschermo: MenuItem::new("Attiva come screensaver di Windows…", true, None),
+        #[cfg(windows)]
+        salva_scene: {
+            let scelta = ascii_dreams::Config::carica().scena;
+            let scelta = if ascii_dreams::scene().iter().any(|s| s.0 == scelta) { scelta } else { "rotazione".into() };
+            std::iter::once(("rotazione", "Tutte, una dopo l'altra"))
+                .chain(ascii_dreams::scene().iter().map(|&(id, nome)| (id, nome_salvaschermo(id).unwrap_or(nome))))
+                .map(|(id, nome)| (id, CheckMenuItem::new(nome, true, id == scelta, None)))
+                .collect()
+        },
+        #[cfg(windows)]
+        salva_prova: MenuItem::new("Prova adesso", true, None),
         foto: MenuItem::new("Salva una foto dello sfondo", true, None),
         ricarica: MenuItem::new("Ricarica sfondo", true, None),
         esci: MenuItem::new("Esci", true, None),
@@ -1061,8 +1121,21 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     let _ = menu.append(&m.schermo);
     let _ = menu.append(&m.coperto);
     let _ = menu.append(&m.avvio);
+    // Windows: un sottomenu, la scena si sceglie da qui
+    #[cfg(windows)]
     if solo_windows {
-        // lo screensaver c'è su Windows e macOS
+        let salva_sub = Submenu::new("Screensaver", true);
+        for (_, v) in &m.salva_scene {
+            let _ = salva_sub.append(v);
+        }
+        let _ = salva_sub.append(&PredefinedMenuItem::separator());
+        let _ = salva_sub.append(&m.salva_prova);
+        let _ = salva_sub.append(&m.salvaschermo);
+        let _ = menu.append(&salva_sub);
+    }
+    // macOS: lo screensaver gira in una sandbox che non legge le impostazioni, quindi solo la voce
+    #[cfg(not(windows))]
+    if solo_windows {
         let _ = menu.append(&m.salvaschermo);
     }
     let _ = menu.append(&PredefinedMenuItem::separator());

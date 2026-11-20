@@ -71,8 +71,8 @@ Mette lo sfondo animato (`wallpaper/index.html`) dietro le icone del desktop, su
     `-schermo-N` con più schermi, senza mai sovrascrivere (`create_new`, poi ` (2)`, ` (3)`…).
     Poi la si mostra: Esplora risorse `/select,`, Finder `open -R`, su Linux
     `org.freedesktop.FileManager1.ShowItems` oppure `xdg-open` sulla cartella
-  - **Screensaver** (solo Linux; su Windows c'è **Usa come screensaver…**, che apre le
-    impostazioni di Windows): spento o dopo 1–30 minuti senza input, la scena, **Prova
+  - **Screensaver** (Linux; su Windows il sottomenu ha la scena, **Prova adesso** e
+    **Attiva come screensaver di Windows…**, che apre le impostazioni di Windows): spento o dopo 1–30 minuti senza input, la scena, **Prova
     adesso**. GNOME non accetta più screensaver di altri: l'app lancia sé stessa come
     `ascii-zoo --salvaschermo` (un processo a parte, come il .scr su Windows, con
     `PR_SET_PDEATHSIG` perché non resti lì se l'app si chiude). Quando partire lo dice il
