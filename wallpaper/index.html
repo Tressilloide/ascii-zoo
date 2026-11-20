@@ -2003,6 +2003,10 @@ h1 {
       sp.tick = protetta(sp, def.tick);
       sp.under = protetta(sp, def.disegna);
       if (typeof def.sopra === 'function') sp.over = protetta(sp, def.sopra);
+      // altre funzioni della scena (es. una che crea una goccia): si chiamano con this.nome()
+      for (var k in def) {
+        if (typeof def[k] === 'function' && !(k in sp) && k !== 'disegna' && k !== 'sopra') sp[k] = def[k];
+      }
       SPECIES.push(sp);
     }
   })();
