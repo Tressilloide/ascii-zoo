@@ -91,6 +91,9 @@ prova() {
   misura | tee -a "$RAPPORTO"
   # le righe del log che dicono se lo sfondo era in pausa
   grep -E "pausa|riparte|schermo .*×" "$LOG" | tail -6 | sed 's/^/    log: /' >> "$RAPPORTO"
+  # quanti fotogrammi ha fatto davvero (dalla versione dopo la 0.6.0, ogni 10 secondi): se
+  # sono meno di quelli scelti nel menu, qualcosa non ce la fa
+  grep -E "fotogrammi al secondo|ridisegnata" "$LOG" | tail -2 | sed 's/^/    log: /' >> "$RAPPORTO"
   # statistiche per nerd (con la GPU): ci sono dalla versione dopo la 0.5.0. Una versione
   # che non conosce --statistiche partirebbe e basta: la si riconosce dal nome della
   # libreria NVIDIA che legge la GPU, che c'è nel programma solo da quella versione

@@ -129,6 +129,10 @@ struct Screen {
     sonda: Sonda,
     /// l'ultima risposta della sonda: un'app a schermo intero (o finestre) copre tutto
     coperto: bool,
+    /// con ASCII_ZOO_LOG: quante volte GTK ha ridisegnato la finestra, e l'ultimo numero di
+    /// fotogrammi della pagina (per scrivere nel log quanti al secondo, vedi `log_fotogrammi`)
+    disegni: Rc<Cell<u32>>,
+    fotogrammi_pagina: std::sync::Arc<std::sync::Mutex<Option<(i64, Instant)>>>,
 }
 
 impl Screen {
@@ -304,6 +308,35 @@ impl App {
             s.margini = None;
         }
         self.check_margini();
+    }
+
+    /// Con ASCII_ZOO_LOG, ogni 10 secondi: quante volte al secondo GTK ha davvero ridisegnato
+    /// la finestra di ogni schermo e quanti fotogrammi ha fatto la pagina. Serve a capire,
+    /// dal rapporto di prestazioni.sh, se qualcosa ridisegna lo sfondo più spesso del dovuto.
+    fn log_fotogrammi(&mut self, da: Instant) {
+        let secondi = da.elapsed().as_secs_f64().max(0.001);
+        for s in &self.screens {
+            let disegni = s.disegni.replace(0);
+            if let Some(x) = s.window.gtk_window().window().and_then(|w| w.downcast::<gdkx11::X11Window>().ok()) {
+                zoo_log!("schermo {}: finestra X11 0x{:x}", s.id, x.xid());
+            }
+            zoo_log!("schermo {}: finestra ridisegnata {:.1} volte al secondo", s.id, disegni as f64 / secondi);
+            let (id, prima) = (s.id.clone(), s.fotogrammi_pagina.clone());
+            let _ = s.webview.evaluate_script_with_callback(
+                "window.asciiZoo ? window.asciiZoo.frameNo : -1",
+                move |r| {
+                    let Ok(n) = r.trim().parse::<i64>() else { return };
+                    let ora = Instant::now();
+                    let Ok(mut p) = prima.lock() else { return };
+                    if let Some((n0, t0)) = p.replace((n, ora)) {
+                        let dt = (ora - t0).as_secs_f64();
+                        if n >= n0 && dt > 0.5 {
+                            zoo_log!("schermo {id}: la pagina ha fatto {:.1} fotogrammi al secondo", (n - n0) as f64 / dt);
+                        }
+                    }
+                },
+            );
+        }
     }
 
     /// manda a ogni schermo le impostazioni che dipendono dallo schermo
@@ -543,6 +576,14 @@ fn make_screen(
     // schermo: con la scala di GNOME al 125%, 3072×1728). Misurato con GNOME Shell 51 e
     // una GPU Intel: il processo dell'app da 0,26 a 0,13 core
     gw.set_app_paintable(true);
+    let disegni = Rc::new(Cell::new(0u32));
+    if shared::log_attivo() {
+        let d = disegni.clone();
+        gw.connect_draw(move |_, _| {
+            d.set(d.get() + 1);
+            glib::Propagation::Proceed
+        });
+    }
 
     let pronta = proxy.clone();
     let webview = WebViewBuilder::new()
@@ -574,6 +615,8 @@ fn make_screen(
         margini: None,
         sonda: Sonda::default(),
         coperto: false,
+        disegni,
+        fotogrammi_pagina: Default::default(),
     })
 }
 
@@ -693,6 +736,7 @@ pub fn run() {
     };
     app.sync_clic();
     let mut giro: u32 = 0;
+    let mut conteggio = Instant::now();
     // sveglia il ciclo ogni mezzo secondo anche con lo sfondo in pausa (vedi prossimo_giro)
     glib::timeout_add_local(GIRO, || glib::ControlFlow::Continue);
 
@@ -719,6 +763,10 @@ pub fn run() {
                 app.check_power(); // ricontrolla anche le pause
                 app.check_margini();
                 app.tieni_sotto();
+                if shared::log_attivo() && giro % (GIRI_CONTROLLO * 5) == 0 {
+                    app.log_fotogrammi(conteggio);
+                    conteggio = Instant::now();
+                }
             } else {
                 app.check_pause();
             }
