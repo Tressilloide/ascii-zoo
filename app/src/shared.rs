@@ -21,7 +21,7 @@ pub const URL: &str = "http://zoo.localhost/";
 #[cfg(not(windows))]
 pub const URL: &str = "zoo://localhost/";
 
-/// le specie, nello stesso ordine della pagina: (id, nome nel menu)
+/// gli animali di serie, nello stesso ordine della pagina: (id, nome nel menu)
 pub const SPECIE: [(&str, &str); 9] = [
     ("farfalle", "Farfalle"),
     ("meduse", "Meduse"),
@@ -33,6 +33,19 @@ pub const SPECIE: [(&str, &str); 9] = [
     ("cavalli", "Cavalli"),
     ("anatre", "Anatre"),
 ];
+
+/// tutto quello che c'è nel menu "Animale": gli animali di serie e poi le scene
+/// dell'utente (cartella `scene`), nello stesso ordine in cui la pagina le aggiunge
+pub fn specie() -> &'static [(&'static str, &'static str)] {
+    static TUTTE: std::sync::OnceLock<Vec<(&'static str, &'static str)>> = std::sync::OnceLock::new();
+    TUTTE.get_or_init(|| {
+        SPECIE
+            .iter()
+            .copied()
+            .chain(crate::scene::tutte().iter().map(|s| (s.id.as_str(), s.nome.as_str())))
+            .collect()
+    })
+}
 /// ogni quanto cambia animale "a rotazione"
 pub const INTERVALLI: [(u32, &str); 7] = [
     (30, "Ogni 30 secondi"),
@@ -90,12 +103,40 @@ pub(crate) use zoo_log;
 pub const JS_STOP: &str = "window.asciiZoo && window.asciiZoo.stop()";
 pub const JS_START: &str = "window.asciiZoo && window.asciiZoo.start()";
 
+/// Regole per la pagina dentro l'app: niente rete e niente moduli verso fuori. Le scene
+/// dell'utente sono codice scritto da altri e la pagina conosce la nota e le statistiche
+/// del PC: così non possono mandarle da nessuna parte. Tutto quello che serve allo
+/// sfondo (caratteri, atlante) è già nella pagina o fatto al volo (data:, blob:).
+const CSP: &str = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; \
+                   img-src data: blob:; font-src data:; connect-src 'none'; media-src 'none'; \
+                   frame-src 'none'; worker-src 'none'; form-action 'none'; base-uri 'none'";
+
+/// lo sfondo con le regole qui sopra e, prima del motore, le scene dell'utente
+fn html_app() -> &'static str {
+    static PAGINA: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    PAGINA.get_or_init(|| {
+        let meta = format!("<meta charset=\"utf-8\">\n<meta http-equiv=\"Content-Security-Policy\" content=\"{CSP}\">");
+        let mut html = HTML.replacen("<meta charset=\"utf-8\">", &meta, 1);
+        let scene = crate::scene::script();
+        if let Some(i) = html.find("<script>") {
+            html.insert_str(i, &scene);
+        }
+        html
+    })
+}
+
 /// risposta della pagina: la richiesta del protocollo "zoo" restituisce sempre lo sfondo
 pub fn pagina() -> wry::http::Response<std::borrow::Cow<'static, [u8]>> {
     wry::http::Response::builder()
         .header("Content-Type", "text/html; charset=utf-8")
-        .body(std::borrow::Cow::Borrowed(HTML.as_bytes()))
+        .header("Content-Security-Policy", CSP)
+        .body(std::borrow::Cow::Borrowed(html_app().as_bytes()))
         .unwrap()
+}
+
+/// la WebView resta sulla pagina dello sfondo: nessun link o script la porta altrove
+pub fn navigazione_permessa(url: String) -> bool {
+    url.starts_with(URL) || url.starts_with("zoo://")
 }
 
 pub fn js_in_carica(ac: bool) -> String {
@@ -130,6 +171,8 @@ pub struct Menus {
     pub rot_tempi: Vec<CheckMenuItem>,
     pub rot_specie: Vec<CheckMenuItem>,
     pub nomi: Vec<MenuItem>,
+    /// "Apri la cartella delle scene…" in fondo al menu "Animale"
+    pub scene_cartella: MenuItem,
     pub nota: MenuItem,
     pub conto: MenuItem,
     pub statistiche: CheckMenuItem,
@@ -279,7 +322,7 @@ impl Core {
     }
 
     pub fn js_rotazione(&self) -> String {
-        let specie: Vec<&str> = SPECIE
+        let specie: Vec<&str> = specie()
             .iter()
             .map(|s| s.0)
             .filter(|id| !self.cfg.rotazione_escluse.iter().any(|e| e == id))
@@ -458,7 +501,7 @@ impl Core {
             let attuale = self.cfg.animale_schermi.get(&s.id).map(|a| *a as usize + 1).unwrap_or(0);
             let voci: Vec<CheckMenuItem> = std::iter::once("Come in \"Animale\"")
                 .chain(std::iter::once("A rotazione"))
-                .chain(SPECIE.iter().map(|s| s.1))
+                .chain(specie().iter().map(|s| s.1))
                 .enumerate()
                 .map(|(k, name)| CheckMenuItem::new(name, true, k == attuale, None))
                 .collect();
@@ -489,6 +532,10 @@ impl Core {
 
     pub fn on_menu(&mut self, id: &str) -> Esito {
         let m = &self.menus;
+        if id == m.scene_cartella.id().0 {
+            crate::scene::apri_cartella();
+            return Esito::Niente;
+        }
         if let Some(i) = m.animali.iter().position(|x| x.id().0 == id) {
             self.cfg.animale = i as u32;
             for (k, item) in self.menus.animali.iter().enumerate() {
@@ -530,7 +577,7 @@ impl Core {
             if !m.rot_specie.iter().any(|x| x.is_checked()) {
                 m.rot_specie[i].set_checked(true);
             }
-            self.cfg.rotazione_escluse = SPECIE
+            self.cfg.rotazione_escluse = specie()
                 .iter()
                 .zip(&self.menus.rot_specie)
                 .filter(|(_, item)| !item.is_checked())
@@ -538,7 +585,7 @@ impl Core {
                 .collect();
             Some(self.js_rotazione())
         } else if let Some(i) = m.nomi.iter().position(|x| x.id().0 == id) {
-            let (sid, label) = SPECIE[i];
+            let (sid, label) = specie()[i];
             let attuale = self.cfg.nomi.get(sid).cloned().unwrap_or_default();
             let domanda = format!("Nome per {} (vuoto = nessun nome):", label.to_lowercase());
             let Some(nuovo) = dialog::chiedi_nome("ASCII Zoo", &domanda, &attuale, NOME_MAX) else {
@@ -808,13 +855,16 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
 
     let sub = Submenu::new("Animale", true);
     let animali: Vec<CheckMenuItem> = std::iter::once("A rotazione")
-        .chain(SPECIE.iter().map(|s| s.1))
+        .chain(specie().iter().map(|s| s.1))
         .enumerate()
         .map(|(i, name)| CheckMenuItem::new(name, true, i as u32 == cfg.animale, None))
         .collect();
     for item in &animali {
         let _ = sub.append(item);
     }
+    let _ = sub.append(&PredefinedMenuItem::separator());
+    let scene_cartella = MenuItem::new("Apri la cartella delle scene…", true, None);
+    let _ = sub.append(&scene_cartella);
 
     let rot = Submenu::new("Rotazione", true);
     let rot_tempi: Vec<CheckMenuItem> = INTERVALLI
@@ -826,7 +876,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     }
     let _ = rot.append(&PredefinedMenuItem::separator());
     let _ = rot.append(&MenuItem::new("Animali in rotazione:", false, None));
-    let rot_specie: Vec<CheckMenuItem> = SPECIE
+    let rot_specie: Vec<CheckMenuItem> = specie()
         .iter()
         .map(|(id, name)| CheckMenuItem::new(*name, true, !cfg.rotazione_escluse.iter().any(|e| e == id), None))
         .collect();
@@ -835,7 +885,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     }
 
     let nomi_sub = Submenu::new("Nomi degli animali", true);
-    let nomi: Vec<MenuItem> = SPECIE
+    let nomi: Vec<MenuItem> = specie()
         .iter()
         .map(|(id, name)| MenuItem::new(etichetta_nome(name, cfg.nomi.get(*id).map(String::as_str).unwrap_or("")), true, None))
         .collect();
@@ -953,6 +1003,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         rot_tempi,
         rot_specie,
         nomi,
+        scene_cartella,
         nota,
         conto,
         statistiche,

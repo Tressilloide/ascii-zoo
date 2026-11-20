@@ -1956,6 +1956,57 @@ h1 {
     }
   };
 
+  /* ------------------------------------------------------------------ */
+  /* Scene dell'utente. L'app mette in window.ZOO_SCENE i file .js della  */
+  /* cartella "scene" (vedi app/src/scene.rs): ognuno chiama scena({...}) */
+  /* e diventa una voce in più del menu, dopo gli animali, senza animali: */
+  /* solo lo sfondo. Nel browser e nelle estensioni la lista è vuota.     */
+  /* ------------------------------------------------------------------ */
+  (function () {
+    var lista = global.ZOO_SCENE;
+    if (!lista || !lista.length) return;
+    var COLORE = /^#[0-9a-f]{6}$/i;
+    function niente() {}
+    // una funzione della scena che va in errore smette di essere chiamata (la
+    // scena resta vuota), invece di fermare l'animazione di tutto lo sfondo
+    function protetta(sp, fn) {
+      if (typeof fn !== 'function') return niente;
+      return function () {
+        if (sp.rotta) return;
+        try { return fn.apply(this, arguments); }
+        catch (e) { sp.rotta = true; if (global.console) console.error('ASCII Zoo, scena "' + sp.id + '":', e); }
+      };
+    }
+    // init deve restituire lo stato della scena: un oggetto anche se non lo fa (o va in errore)
+    function conStato(init) {
+      return function (w) { return init.call(this, w) || {}; };
+    }
+    for (var n = 0; n < lista.length; n++) {
+      var voce = lista[n], def = null;
+      if (!voce || typeof voce.f !== 'function' || byId(voce.id)) continue;
+      try {
+        voce.f(function (d) { if (!def) def = d; }, hash2, clamp, lerp, TAU, drawCells);
+      } catch (e) {
+        if (global.console) console.error('ASCII Zoo, scena "' + voce.id + '":', e);
+        continue;
+      }
+      if (!def || typeof def !== 'object') continue;
+      var pal = (Array.isArray(def.colori) ? def.colori : []).filter(function (c) { return COLORE.test(c); }).slice(0, 16);
+      if (!pal.length) pal = ['#aab3c5'];
+      var sp = {
+        id: voce.id, label: String(voce.nome || voce.id), dot: COLORE.test(def.puntino) ? def.puntino : pal[0], pal: pal,
+        dens: 1e9, min: 0, max: 0, smin: 4, smax: 8, off: 0, rad: 1, utente: true,
+        spawn: niente, update: niente, shape: niente
+      };
+      // `this` nelle funzioni è la scena: this.c0 è il primo dei suoi colori
+      sp.init = conStato(protetta(sp, def.init));
+      sp.tick = protetta(sp, def.tick);
+      sp.under = protetta(sp, def.disegna);
+      if (typeof def.sopra === 'function') sp.over = protetta(sp, def.sopra);
+      SPECIES.push(sp);
+    }
+  })();
+
   // quanto in alto, rispetto alla taglia, va il nome dell'animale
   var NAME_UP = { farfalle: 0.62, meduse: 0.55, libellule: 0.75, koi: 0.45, rane: 0.45, aironi: 0.8, granchi: 0.5,
                   cavalli: 0.6, anatre: 0.45 };

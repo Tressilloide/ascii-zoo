@@ -390,6 +390,8 @@ unsafe fn make_screen(hinst: HINSTANCE, rect: RECT, id: String) -> Option<Screen
 
     let built = WebViewBuilder::new()
         .with_custom_protocol("zoo".into(), |_id, _req| shared::pagina())
+        .with_navigation_handler(shared::navigazione_permessa)
+        .with_new_window_req_handler(|_, _| wry::NewWindowResponse::Deny)
         .with_url(URL)
         .with_background_color((9, 10, 15, 255))
         .with_devtools(false)

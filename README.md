@@ -73,6 +73,28 @@ On macOS the same menu item copies the `ASCII Zoo.saver` module into `~/Library/
 
 On Linux GNOME has no way to plug in a third-party screensaver, so the app starts the same scenes itself after a few minutes without mouse or keyboard: tray menu **Screensaver** (off by default). It only shows up if its delay is shorter than GNOME's *Blank Screen* delay (Settings > Power). Details in the [Italian README](README.it.md#sfondo-animato-per-linux).
 
+## Your own scenes
+
+Besides the animals you can add **scenes**: a backdrop without animals (rain, a landscape, fireflies…) written as a small JavaScript file. Tray menu **Animale** > **Apri la cartella delle scene…** opens the folder (`%APPDATA%\AsciiZoo\scene` on Windows, `~/Library/Application Support/AsciiZoo/scene` on macOS, `~/.config/AsciiZoo/scene` on Linux). Every `.js` file in it becomes one more entry in the **Animale** menu, after the animals; quit and reopen ASCII Zoo to see a new one. To share a scene, send the file.
+
+[`scene/lucciole.js`](scene/lucciole.js) is a commented example (fireflies over the grass). In short:
+
+```js
+// nome: Lucciole                   <- the name in the menu (else the file name)
+scena({
+  colori: ['#2f7a3a', '#d8ff6a'],   // the scene's colors: this.c0 + 0, this.c0 + 1, …
+  init: function (w) { return {}; },              // state, rebuilt when the grid changes
+  tick: function (w, dt, t, s) { },               // move things (dt, t in seconds)
+  disegna: function (w, t, A, s) {                // draw one frame
+    w.put(10, 5, 0.8, this.c0 + 1, A);            // column, row, intensity 0..1, color, alpha
+  }
+});
+```
+
+`w.cols` and `w.rows` are the grid size, `w.rnd()` a random number, and `hash2`, `clamp`, `lerp`, `TAU` and `celle(w, cells, color, A)` are ready to use.
+
+Scenes are code written by someone else, so inside the app the wallpaper page can't use the network or open other pages, and a scene that throws an error just stops drawing. Scenes only run in the app, not in the browser version.
+
 ## Download
 
 | | |
@@ -105,7 +127,7 @@ The app only writes its settings file (and an autostart entry or the screensaver
 
 ### Privacy
 
-This program will not transfer any information to other networked systems unless specifically requested by the user. It has no telemetry, no accounts and no update checks; the only network request is the web search you type yourself in the browser version of the page.
+This program will not transfer any information to other networked systems unless specifically requested by the user. It has no telemetry, no accounts and no update checks; the only network request is the web search you type yourself in the browser version of the page. In the app the wallpaper page is not allowed to use the network at all, so [your own scenes](#your-own-scenes) can't either.
 
 ### Code signing policy
 

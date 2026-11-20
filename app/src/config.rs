@@ -397,3 +397,8 @@ pub mod autostart {
         }
     }
 }
+
+/// la cartella delle impostazioni (quella di config.json)
+pub fn cartella() -> PathBuf {
+    path().parent().map(std::path::Path::to_path_buf).unwrap_or_default()
+}
