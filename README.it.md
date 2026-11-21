@@ -15,7 +15,7 @@
 
 ## Gli animali
 
-Nove specie, una alla volta, ognuna con il suo ambiente. Di serie lo sfondo passa alla successiva ogni 2 minuti; dal menu del programma (**Rotazione**) si sceglie ogni quanto (da 30 secondi a un'ora) e quali animali far girare, oppure la si spegne: **Spenta** tiene lo sfondo che si vede in quel momento (lo stesso che sceglierlo in **Sfondo**). Quando il PC è in carica restano le koi nel loro stagno (si può disattivare).
+Nove specie, una alla volta, ognuna con il suo ambiente (e sei [paesaggi](#i-paesaggi) senza animali). Di serie lo sfondo passa al successivo ogni 2 minuti, paesaggi compresi; dal menu del programma (**Rotazione**) si sceglie ogni quanto (da 30 secondi a un'ora) e quali animali far girare, oppure la si spegne: **Spenta** tiene lo sfondo che si vede in quel momento (lo stesso che sceglierlo in **Sfondo**). Quando il PC è in carica restano le koi nel loro stagno (si può disattivare).
 
 <p align="center">
   <img src="docs/animals.png" alt="Le nove specie, ognuna nel suo ambiente: farfalle sul prato fiorito, meduse tra le bolle, libellule sulle canne, koi nello stagno, rane nel prato con sassi e lucciole, aironi con i nidi, cavalli nella prateria, anatre con gli anatroccoli nello stagno, granchi sulla sabbia; più l'orologio" width="100%">
