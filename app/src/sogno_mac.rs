@@ -13,6 +13,7 @@
 use std::cell::Cell;
 use std::path::Path;
 use std::ptr::NonNull;
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use block2::RcBlock;
@@ -24,7 +25,9 @@ use objc2_app_kit::{
     NSCursor, NSEvent, NSEventMask, NSEventType, NSResponder, NSScreen, NSView, NSWindow, NSWindowCollectionBehavior,
     NSWindowStyleMask,
 };
-use objc2_foundation::{MainThreadMarker, NSBundle, NSNotification, NSNotificationCenter, NSObject, NSPoint, NSRect, NSString};
+use objc2_foundation::{
+    MainThreadMarker, NSBundle, NSNotification, NSNotificationCenter, NSObject, NSPoint, NSRect, NSString, NSTimer,
+};
 
 use crate::shared::zoo_log;
 
@@ -83,22 +86,25 @@ pub fn esegui(args: &[String], modulo: Option<&Path>) -> ! {
     }
     zoo_log!("screensaver: prova su {} schermi", finestre.len());
 
-    // la prima finestra prende la tastiera; il cursore sparisce finché non si muove
-    finestre[0].makeKeyWindow();
-    #[allow(deprecated)]
-    app.activateIgnoringOtherApps(true);
-    NSCursor::setHiddenUntilMouseMoves(true);
+    // appena parte il ciclo degli eventi: davanti a tutti, con la tastiera alla prima finestra
+    let attiva = {
+        let (app, prima) = (app.clone(), finestre[0].clone());
+        RcBlock::new(move |_: NonNull<NSTimer>| {
+            #[allow(deprecated)]
+            app.activateIgnoringOtherApps(true);
+            prima.makeKeyAndOrderFront(None);
+            NSCursor::setHiddenUntilMouseMoves(true);
+        })
+    };
+    let _timer = unsafe { NSTimer::scheduledTimerWithTimeInterval_repeats_block(0.1, false, &attiva) };
 
+    // Si esce al primo tasto, clic, rotella o movimento del mouse. Il monitor locale vede
+    // gli eventi che arrivano a questo processo; quello globale gli eventi del mouse che
+    // vanno alle altre app, nel caso macOS non lo lasci passare davanti (i tasti delle
+    // altre app un monitor globale li vede solo con il permesso Accessibilità).
     let inizio = Instant::now();
-    let mosso = Cell::new(0.0f64);
-    let maschera = NSEventMask::KeyDown
-        | NSEventMask::LeftMouseDown
-        | NSEventMask::RightMouseDown
-        | NSEventMask::OtherMouseDown
-        | NSEventMask::MouseMoved
-        | NSEventMask::ScrollWheel;
-    let blocco = RcBlock::new(move |e: NonNull<NSEvent>| -> *mut NSEvent {
-        let e = unsafe { e.as_ref() };
+    let mosso = Rc::new(Cell::new(0.0f64));
+    let esci_se = move |e: &NSEvent| {
         let esci = match e.r#type() {
             NSEventType::MouseMoved => {
                 if inizio.elapsed() >= CALMA {
@@ -112,9 +118,23 @@ pub fn esegui(args: &[String], modulo: Option<&Path>) -> ! {
         if esci {
             std::process::exit(0);
         }
-        e as *const NSEvent as *mut NSEvent
-    });
-    let _monitor = unsafe { NSEvent::addLocalMonitorForEventsMatchingMask_handler(maschera, &blocco) };
+    };
+    let maschera = NSEventMask::KeyDown
+        | NSEventMask::LeftMouseDown
+        | NSEventMask::RightMouseDown
+        | NSEventMask::OtherMouseDown
+        | NSEventMask::MouseMoved
+        | NSEventMask::ScrollWheel;
+    let locale = {
+        let esci_se = esci_se.clone();
+        RcBlock::new(move |e: NonNull<NSEvent>| -> *mut NSEvent {
+            esci_se(unsafe { e.as_ref() });
+            e.as_ptr()
+        })
+    };
+    let globale = RcBlock::new(move |e: NonNull<NSEvent>| esci_se(unsafe { e.as_ref() }));
+    let _monitor = unsafe { NSEvent::addLocalMonitorForEventsMatchingMask_handler(maschera, &locale) };
+    let _globale = NSEvent::addGlobalMonitorForEventsMatchingMask_handler(maschera, &globale);
     // se un'altra app passa davanti (Cmd-Tab, una notifica cliccata) la prova finisce
     let davanti = RcBlock::new(|_: NonNull<NSNotification>| std::process::exit(0));
     let _osservatore = unsafe {

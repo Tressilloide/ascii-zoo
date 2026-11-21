@@ -77,7 +77,7 @@ On Linux GNOME has no way to plug in a third-party screensaver, so the app start
 
 Besides the animals you can add **scenes**: a backdrop without animals (rain, a landscape, fireflies…) written as a small JavaScript file. Tray menu **Animale** > **Apri la cartella delle scene…** opens the folder (`%APPDATA%\AsciiZoo\scene` on Windows, `~/Library/Application Support/AsciiZoo/scene` on macOS, `~/.config/AsciiZoo/scene` on Linux). Every `.js` file in it becomes one more entry in the **Animale** menu, after the animals; quit and reopen ASCII Zoo to see a new one. To share a scene, send the file.
 
-[`scene/lucciole.js`](scene/lucciole.js) is a commented example (fireflies over the grass). In short:
+[`scene/lucciole.js`](scene/lucciole.js) is a commented example (fireflies over the grass); [`scene/neve.js`](scene/neve.js) a bigger one (snow falling and piling up on a village at night, with wind and windows lighting up). In short:
 
 ```js
 // nome: Lucciole                   <- the name in the menu (else the file name)
