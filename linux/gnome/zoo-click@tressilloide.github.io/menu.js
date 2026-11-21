@@ -12,7 +12,10 @@
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {InjectionManager} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-// il menu di ASCII Zoo: ha "Esci" e "Sfondo" (fino alla 0.7 "Animale")
+// Il menu di ASCII Zoo: dalla 0.8.1 lo si riconosce dall'id dell'icona (tray-icon lo fa
+// "tray-icon tray app ascii-zoo"), che non cambia quando cambiano i nomi delle voci; per le
+// versioni prima, dalle voci "Esci" e "Sfondo" (fino alla 0.7 "Animale").
+const ID_ZOO = 'ascii-zoo';
 const VOCI_ZOO = ['Esci'];
 const PRIMA_VOCE = ['Sfondo', 'Animale'];
 
@@ -21,6 +24,11 @@ function etichetta(voce) {
 }
 
 function menuZoo(menu) {
+    // l'icona dell'estensione AppIndicator (ubuntu-appindicators o quella di GNOME) tiene
+    // l'indicatore in _indicator
+    const id = menu?.sourceActor?._indicator?.id;
+    if (typeof id === 'string' && (id === ID_ZOO || id.endsWith(` ${ID_ZOO}`)))
+        return true;
     const voci = menu?._getMenuItems?.() ?? [];
     return VOCI_ZOO.every(n => voci.some(v => etichetta(v) === n)) &&
         PRIMA_VOCE.some(n => voci.some(v => etichetta(v) === n));

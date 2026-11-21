@@ -636,7 +636,8 @@ impl Core {
 
             let sub = Submenu::new(&nome, true);
             let attuale = self.cfg.animale_schermi.get(&s.id).map(|a| *a as usize + 1).unwrap_or(0);
-            let voci = voci_sfondo(&sub, &["Come in \"Sfondo\"", "A rotazione"], |k| k == attuale);
+            let come = format!("Come in \"{}\"", titolo_sfondo());
+            let voci = voci_sfondo(&sub, &[come.as_str(), "A rotazione"], |k| k == attuale);
             let _ = m.animali_sub.append(&sub);
             m.animali_schermi.push((s.id.clone(), sub, voci));
         }
@@ -1025,11 +1026,36 @@ pub fn nome_salvaschermo(id: &str) -> Option<&'static str> {
     PAESAGGI.iter().find(|n| n.0 == id).map(|n| n.1)
 }
 
+/// Linux con GNOME: l'app è stata aggiornata ma GNOME usa ancora l'estensione di prima (la
+/// carica solo all'accesso). Quella della 0.7.0 riconosce il menu di ASCII Zoo solo dalla voce
+/// "Animale" (linux/gnome/…/menu.js), e senza di lei i sottomenu si aprono in una striscia di
+/// pochi pixel: finché non si esce e rientra il sottomenu "Sfondo" si chiama come allora, e in
+/// cima al menu c'è una riga che lo dice. Si sceglie prima di Core::new (vedi linux.rs).
+static ESTENSIONE_VECCHIA: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+
+#[cfg(target_os = "linux")]
+pub fn estensione_vecchia() {
+    let _ = ESTENSIONE_VECCHIA.set(());
+}
+
+/// il titolo del sottomenu "Sfondo" (vedi ESTENSIONE_VECCHIA)
+fn titolo_sfondo() -> &'static str {
+    if ESTENSIONE_VECCHIA.get().is_some() {
+        "Animale"
+    } else {
+        "Sfondo"
+    }
+}
+
 fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     let menu = Menu::new();
+    if ESTENSIONE_VECCHIA.get().is_some() {
+        let _ = menu.append(&MenuItem::new("Esci e rientra nella sessione per finire l'aggiornamento", false, None));
+        let _ = menu.append(&PredefinedMenuItem::separator());
+    }
 
     // "Sfondo": a rotazione, oppure uno fisso da "Animali" o da "Paesaggi"
-    let sub = Submenu::new("Sfondo", true);
+    let sub = Submenu::new(titolo_sfondo(), true);
     let animali = voci_sfondo(&sub, &["A rotazione"], |i| i as u32 == cfg.animale);
     let _ = sub.append(&PredefinedMenuItem::separator());
     let scene_cartella = MenuItem::new("Apri la cartella delle scene…", true, None);

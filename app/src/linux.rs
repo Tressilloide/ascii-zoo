@@ -183,6 +183,34 @@ fn chiedi_stato(bus: &gio::DBusConnection) -> Option<Vec<StatoSchermo>> {
     leggi_stato(&v)
 }
 
+/// La versione dell'estensione di GNOME che questa app si aspetta (VERSIONE in
+/// linux/gnome/…/sfondo.js). GNOME carica il codice delle estensioni solo all'accesso: dopo
+/// un aggiornamento, fino al prossimo accesso gira quella di prima.
+const ESTENSIONE_VERSIONE: u32 = 2;
+
+/// La versione dell'estensione che GNOME sta usando adesso: None se non c'è (o è spenta, o non
+/// è GNOME); 1 per quelle fino alla 0.8.0, che non sanno dirla (ma rispondono a `Stato`).
+fn versione_estensione(bus: &gio::DBusConnection) -> Option<u32> {
+    let chiama = |metodo: &str, tipo: &str| {
+        bus.call_sync(
+            Some("org.gnome.Shell"),
+            SFONDO_PERCORSO,
+            SFONDO_INTERFACCIA,
+            metodo,
+            None,
+            Some(glib::VariantTy::new(tipo).ok()?),
+            gio::DBusCallFlags::NO_AUTO_START,
+            2000,
+            gio::Cancellable::NONE,
+        )
+        .ok()
+    };
+    if let Some(v) = chiama("Versione", "(u)") {
+        return v.get::<(u32,)>().map(|(n,)| n);
+    }
+    chiama("Stato", SFONDO_TIPO).map(|_| 1)
+}
+
 /// Il modo Wayland si usa sotto Wayland, se l'estensione di GNOME risponde e nessuno ha
 /// chiesto X11 (GDK_BACKEND=x11, oppure ASCII_ZOO_SFONDO=x11: lo mette l'app stessa quando
 /// riparte perché l'estensione non c'è più). Restituisce lo stato degli schermi.
@@ -1059,6 +1087,14 @@ pub fn run() {
         let _ = menu_proxy.send_event(Evento::Menu(e.id.0));
     }));
 
+    // un aggiornamento senza uscire e rientrare: GNOME usa ancora l'estensione di prima, e il
+    // menu si adatta a lei (vedi shared::estensione_vecchia)
+    if let Some(v) = bus.as_ref().and_then(versione_estensione) {
+        if v < ESTENSIONE_VERSIONE {
+            zoo_log!("menu: GNOME usa ancora l'estensione di prima (versione {v}, questa app vuole la {ESTENSIONE_VERSIONE}): esci e rientra");
+            shared::estensione_vecchia();
+        }
+    }
     // false: niente "Usa come screensaver…" (Windows e macOS); qui c'è il sottomenu Screensaver
     let (core, menu) = Core::new(false);
     if let Some(bus) = &bus {
@@ -1105,7 +1141,10 @@ pub fn run() {
         Event::NewEvents(StartCause::Init) => {
             app.check_screens(target, &proxy);
             if let Some(menu) = menu.take() {
+                // l'id dell'icona ("tray-icon tray app ascii-zoo") fa riconoscere il menu
+                // all'estensione di GNOME (linux/gnome/…/menu.js) senza guardare le voci
                 app.tray = TrayIconBuilder::new()
+                    .with_id("ascii-zoo")
                     .with_menu(Box::new(menu))
                     .with_tooltip("ASCII Zoo")
                     .with_icon(shared::tray_icon_image())
@@ -1199,4 +1238,15 @@ pub fn run() {
         },
         _ => {}
     });
+}
+
+#[cfg(test)]
+mod prove {
+    /// l'estensione nella repo è quella che questa app si aspetta (se no, dopo ogni accesso,
+    /// il menu direbbe di uscire e rientrare)
+    #[test]
+    fn versione_estensione() {
+        let js = include_str!("../../linux/gnome/zoo-click@tressilloide.github.io/sfondo.js");
+        assert!(js.contains(&format!("export const VERSIONE = {};", super::ESTENSIONE_VERSIONE)));
+    }
 }

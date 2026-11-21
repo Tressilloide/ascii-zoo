@@ -393,9 +393,12 @@ installa_estensione() {
   fi
   if [ "$(gsettings get org.gnome.shell disable-user-extensions 2>/dev/null)" = true ]; then
     avviso "Le estensioni di GNOME sono spente (Estensioni → Estensioni dell'utente): senza, lo sfondo passa da XWayland (più pesante) e niente clic sul desktop."
-  elif [ "$prima" != "$(cat "$dest"/*.js)" ]; then
+  elif [ -z "$prima" ]; then
     say "Estensione di GNOME $ESTENSIONE installata (sfondo più leggero sotto Wayland e clic sul desktop)."
     say "Funziona dal prossimo accesso (esci e rientra): fino ad allora lo sfondo passa da XWayland, come prima."
+  elif [ "$prima" != "$(cat "$dest"/*.js)" ]; then
+    # GNOME tiene in memoria quella di prima fino al prossimo accesso
+    avviso "Estensione di GNOME aggiornata: ESCI E RIENTRA nella sessione per usarla (fino ad allora GNOME usa quella di prima)."
   fi
 }
 

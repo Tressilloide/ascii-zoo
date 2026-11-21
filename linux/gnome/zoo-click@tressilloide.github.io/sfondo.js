@@ -43,9 +43,14 @@ const INTERFACCIA = 'io.github.tressilloide.AsciiZoo.Sfondo';
 // per quello schermo è al suo posto; il connettore ("eDP-1", "HDMI-1"…: ASCII Zoo lega a
 // questo nome le impostazioni per schermo, come sotto X11)
 const TIPO = 'a(iiiiiiiibbbs)';
+// la versione di questa estensione, per ASCII Zoo (ESTENSIONE_VERSIONE in app/src/linux.rs):
+// GNOME carica il codice nuovo solo all'accesso, e così l'app sa se dopo un aggiornamento
+// gira ancora quello di prima. 1 = fino alla 0.8.0 (senza Versione); 2 = 0.8.1
+export const VERSIONE = 2;
 const XML = `<node>
   <interface name="${INTERFACCIA}">
     <method name="Stato"><arg type="${TIPO}" direction="out" name="schermi"/></method>
+    <method name="Versione"><arg type="u" direction="out" name="versione"/></method>
     <signal name="Cambiato"><arg type="${TIPO}" name="schermi"/></signal>
   </interface>
 </node>`;
@@ -416,5 +421,10 @@ export class Sfondo {
     // D-Bus: lo stato adesso (ASCII Zoo lo chiede all'avvio, e così sa che l'estensione c'è)
     Stato() {
         return this._protetto(() => this._schermi()) ?? [];
+    }
+
+    // D-Bus: la versione dell'estensione caricata (vedi VERSIONE)
+    Versione() {
+        return VERSIONE;
     }
 }
