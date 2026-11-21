@@ -23,9 +23,10 @@ pub fn ha_batteria() -> bool {
     static HA: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *HA.get_or_init(|| {
         let mut s = SYSTEM_POWER_STATUS::default();
-        // BatteryFlag: 128 = nessuna batteria, 255 = non si sa
+        // BatteryFlag: 128 = nessuna batteria, 255 = non si sa (ha anche il bit 128).
+        // Stessa regola del widget della batteria (stats.rs)
         let letto = unsafe { GetSystemPowerStatus(&mut s).is_ok() };
-        letto && s.BatteryFlag != 255 && s.BatteryFlag & 128 == 0
+        letto && s.BatteryLifePercent <= 100 && s.BatteryFlag & 128 == 0
     })
 }
 
