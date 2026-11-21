@@ -116,7 +116,9 @@ export default class ProvaScreensaver extends Extension {
         });
     }
 
-    _stato(w) {
+    // resta: quante volte riprovare, mezzo secondo dopo, se al centro c'è altro (una volta su
+    // cinque, in CI, GNOME ha dato un attore di passaggio con tutto il resto già a posto)
+    _stato(w, resta = 2) {
         const tutte = global.display.sort_windows_by_stacking(global.display.list_all_windows());
         const zenity = tutte.find(f => (f.get_wm_class() ?? '').toLowerCase().includes('zenity'));
         // cosa c'è davvero al centro dello schermo: la finestra dello screensaver?
@@ -130,10 +132,17 @@ export default class ProvaScreensaver extends Extension {
             `monitor-in-fullscreen=${global.display.get_monitor_in_fullscreen(0)}`,
             `barra-in-alto=${Main.layoutManager.panelBox.visible}`,
             `zenity=${zenity ? 'aperta' : 'assente'}`);
-        if (centro === TITOLO && !Main.layoutManager.panelBox.visible)
+        if (centro === TITOLO && !Main.layoutManager.panelBox.visible) {
             log('screensaver VISIBILE sopra a tutto');
-        else
+        } else if (resta > 0) {
+            log('screensaver non ancora visibile sopra a tutto, riprovo');
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+                this._stato(w, resta - 1);
+                return GLib.SOURCE_REMOVE;
+            });
+        } else {
             log('screensaver NON visibile sopra a tutto');
+        }
     }
 
     _foto() {
