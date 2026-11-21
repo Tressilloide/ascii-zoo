@@ -53,7 +53,7 @@ It's a small example of what two people and an AI can ship together in a short t
 - **Dark or light.** Dark by default; the light theme draws the animals as ink on cream paper, or it can follow the system's light/dark setting. Menu **Tema**, or `index.html?tema=chiaro` in the browser.
 - **Frames per second.** 30 by default; menu **Fotogrammi al secondo** goes down to 20 or 15 to save CPU and GPU on laptops.
 - **Snapshots**: save a PNG of the wallpaper exactly as it looks right now, widgets included, into Pictures/ASCII Zoo (menu **Salva una foto dello sfondo**, or `P` in the browser).
-- **Multi-monitor**, with a different wallpaper on each screen if you like (menu **Sfondo per schermo**).
+- **Multi-monitor**, with a different wallpaper on each screen if you like, and its own set of wallpapers in rotation (menu **Sfondo** > *Schermo 1*, *Schermo 2*…).
 - **ASCII widgets**: a sticky note, a countdown, CPU/RAM/battery meters, and stats for nerds (per-core CPU, temperature, frequency, RAM and swap, GPU usage, VRAM and temperature, network speed, disk, uptime, processes, load average), a "now playing" box (MPRIS on Linux, system media controls on Windows, Music and Spotify via AppleScript on macOS), a pomodoro timer run from the tray menu, in three frame styles (`+--+`, `┌──┐`, `╭──╮`) and three sizes.
 - **Names**: the biggest animal of each species can carry a name. Meet **KARPISA**, the koi from Pisa.
 - **A screensaver too** (Windows, macOS and Linux): six ASCII scenes, see below.

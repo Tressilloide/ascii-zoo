@@ -17,6 +17,18 @@ pub fn on_ac() -> bool {
     s.ACLineStatus != 0
 }
 
+/// true se il PC ha una batteria (un PC fisso no: per lui on_ac è sempre vero, e "in carica"
+/// non ha senso). Non cambia mentre l'app gira: si guarda una volta
+pub fn ha_batteria() -> bool {
+    static HA: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *HA.get_or_init(|| {
+        let mut s = SYSTEM_POWER_STATUS::default();
+        // BatteryFlag: 128 = nessuna batteria, 255 = non si sa
+        let letto = unsafe { GetSystemPowerStatus(&mut s).is_ok() };
+        letto && s.BatteryFlag != 255 && s.BatteryFlag & 128 == 0
+    })
+}
+
 /// Se la finestra in primo piano copre tutto il suo monitor (gioco, video…),
 /// restituisce il rettangolo di quel monitor: si mette in pausa solo lo sfondo
 /// di quello schermo.

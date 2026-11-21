@@ -39,7 +39,7 @@ Ogni animale è una forma calcolata cella per cella: ogni cella accesa diventa u
 
 ## I paesaggi
 
-Oltre agli animali, sei paesaggi senza animali: le sei scene dello screensaver, adesso anche come sfondo. Nel menu del programma **Sfondo** ha due sottomenu, **Animali** e **Paesaggi**; lo stesso in **Sfondo per schermo** e in **Rotazione** (dove si sceglie anche quali paesaggi far girare insieme agli animali).
+Oltre agli animali, sei paesaggi senza animali: le sei scene dello screensaver, adesso anche come sfondo. Nel menu del programma **Sfondo** ha due sottomenu, **Animali** e **Paesaggi**, e in **In rotazione** si sceglie quali animali e quali paesaggi far girare.
 
 <p align="center">
   <img src="docs/landscapes.png" alt="I sei paesaggi con l'orologio: stelle, pioggia e lampi, falò, aurora sulle montagne, gioco della vita, mare di notte con la luna" width="100%">
@@ -187,9 +187,8 @@ ascii-zoo/
 
 La cartella `app/` contiene un programma che mette lo sfondo dietro le icone su tutti i monitor, senza bisogno di Lively. Si configura tutto dall'icona a forma di koi nell'area di notifica (vicino all'orologio di Windows), con un clic destro:
 
-- **Sfondo**: a rotazione oppure uno fisso, dal sottomenu **Animali** o **Paesaggi** (anche le [scene tue](#scene-tue));
-- **Rotazione**: ogni quanto cambia animale (o **Spenta**, per tenere quello di adesso) e quali animali far girare;
-- **Sfondo per schermo**: con più monitor, uno sfondo diverso su ognuno (koi sul portatile, aurora sull'altro…);
+- **Sfondo**: a rotazione oppure uno fisso, dal sottomenu **Animali** o **Paesaggi** (anche le [scene tue](#scene-tue)), e in **In rotazione** quali sfondi far girare. Con più monitor queste voci stanno in **Tutti gli schermi**, e ogni schermo ha un sottomenu uguale: uno sfondo diverso su ognuno (koi sul portatile, aurora sull'altro…) e, se vuoi, i suoi sfondi in rotazione;
+- **Rotazione**: ogni quanto cambia sfondo (o **Spenta**, per tenere quello di adesso);
 - **Nomi degli animali**: il nome dell'animale più grande di ogni specie;
 - **Widget**: nota, conto alla rovescia, CPU/RAM/batteria, statistiche per nerd, in riproduzione, aspetto dei riquadri (vedi [I widget](#i-widget));
 - **Pomodoro**: lavoro e pause a tempo, con il conto alla rovescia in un riquadro (vedi [I widget](#i-widget));

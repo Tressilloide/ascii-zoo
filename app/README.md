@@ -27,9 +27,12 @@ Mette lo sfondo animato (`wallpaper/index.html`) dietro le icone del desktop, su
   su Linux con AppIndicator; niente icona nel Dock) con il menu:
   - **Sfondo**: a rotazione oppure uno fisso, dai sottomenu **Animali** e **Paesaggi** (i
     paesaggi sono le scene dello screensaver portate nella pagina, `scena({...})` tra le righe
-    `// ==== paesaggio: id ====`)
-  - **Rotazione**: ogni quanto cambia animale (da 30 secondi a un'ora) e quali animali far girare
-    (almeno uno resta sempre spuntato)
+    `// ==== paesaggio: id ====`), e **In rotazione**: quali sfondi far girare (almeno uno resta
+    sempre spuntato). Con due o più schermi queste voci stanno in **Tutti gli schermi**, e ogni
+    schermo ha un sottomenu uguale con in più **Come "Tutti gli schermi"** (anche dentro **In
+    rotazione**): `animale_schermi` e `rotazione_escluse_schermi` in config.json. Con un solo
+    schermo valgono solo quelle di tutti
+  - **Rotazione**: ogni quanto cambia sfondo (da 30 secondi a un'ora), oppure **Spenta**
   - **Nomi degli animali**: il nome dell'animale più grande di ogni specie, scritto in una
     finestrella (Invio = OK, Esc = annulla, vuoto = nessun nome, al massimo 16 lettere);
     di serie le koi hanno KARPISA
@@ -43,7 +46,9 @@ Mette lo sfondo animato (`wallpaper/index.html`) dietro le icone del desktop, su
     manda `auto` e decide la pagina con `prefers-color-scheme`
   - **Orologio al centro** (di serie acceso): senza, la pagina riceve
     `zooSetting('orologio', false)` e gli animali e la scenografia usano anche il centro
-  - **Koi nello stagno in carica** (vale con "A rotazione")
+  - **Koi nello stagno in carica** (vale con "A rotazione"; un computer senza batteria non è
+    mai "in carica": la pagina riceve `zooSetting('inCarica', …)` e da allora non guarda la
+    batteria del browser)
   - **Clic sul desktop agli animali**: un clic sinistro sul desktop arriva alla pagina con
     `zooPoke(x, y)`. Windows: un hook del mouse (`WH_MOUSE_LL`) che guarda la classe della
     finestra sotto il punto. macOS: un monitor globale di `NSEvent`; la finestra che riceve
@@ -103,9 +108,6 @@ Mette lo sfondo animato (`wallpaper/index.html`) dietro le icone del desktop, su
 Con la variabile d'ambiente `ASCII_ZOO_LOG=1` il programma scrive su stderr cosa succede
 (schermi trovati, pause e ripartenze con il motivo): la CI la usa nelle prove su macOS e Linux.
 
-> Su un computer fisso (senza batteria) il sistema risulta sempre "in carica": con
-> **Koi nello stagno in carica** attivo lo sfondo mostra sempre le koi.
-> Per avere la rotazione degli animali togli la spunta a quella voce.
 
 ## Compilare
 
@@ -207,6 +209,6 @@ loro `.sha256`. Da quella Release in poi `install.sh` scarica il programma invec
 | `src/salvaschermo_linux.rs` | Linux: quando far partire lo screensaver (inattività da mutter o `GetSessionIdleTime`, video, schermo bloccato), il suo sottomenu e il processo `ascii-zoo --salvaschermo` |
 | `src/sogno_linux.rs` | Linux: lo screensaver vero e proprio, le scene di `../dreams` in una finestra GTK a schermo intero per monitor |
 | `src/power_linux.rs`, `src/stats_linux.rs`, `src/dialog_linux.rs` | Linux: batteria e CPU/RAM da `/sys` e `/proc`, finestrella dei nomi (zenity o kdialog) |
-| `src/config.rs` | impostazioni (nomi, rotazione, widget, animale per schermo) e avvio automatico |
+| `src/config.rs` | impostazioni (nomi, rotazione, widget, sfondo e rotazione per schermo) e avvio automatico |
 | `macos/Info.plist` | descrizione dell'app per macOS |
 | `build.rs`, `app.manifest` | incorporano il manifest dei controlli moderni di Windows (solo linker MSVC) |

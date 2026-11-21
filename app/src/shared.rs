@@ -116,6 +116,88 @@ fn voci_sfondo(sub: &Submenu, testa: &[&str], spunta: impl Fn(usize) -> bool) ->
     let _ = sub.append(&paesaggi);
     voci
 }
+/// Mette in `sub` i sottomenu "Animali" e "Paesaggi" di "In rotazione", con una spunta per
+/// sfondo; `dentro(id)`: se è in rotazione. Restituisce le voci nell'ordine di `specie()`.
+fn voci_rotazione(sub: &Submenu, dentro: impl Fn(&str) -> bool) -> Vec<CheckMenuItem> {
+    let animali = Submenu::new("Animali", true);
+    let paesaggi = Submenu::new("Paesaggi", true);
+    let voci = specie()
+        .iter()
+        .map(|s| {
+            let v = CheckMenuItem::new(s.nome, true, dentro(s.id), None);
+            let _ = if s.paesaggio { paesaggi.append(&v) } else { animali.append(&v) };
+            v
+        })
+        .collect();
+    let _ = sub.append(&animali);
+    let _ = sub.append(&paesaggi);
+    voci
+}
+
+/// gli sfondi senza la spunta, cioè quelli tolti dalla rotazione (voci di voci_rotazione)
+fn escluse(voci: &[CheckMenuItem]) -> Vec<String> {
+    specie().iter().zip(voci).filter(|(_, v)| !v.is_checked()).map(|(s, _)| s.id.to_string()).collect()
+}
+
+/// mette le spunte di "In rotazione" (voci di voci_rotazione) secondo `escluse`
+fn segna_rotazione(voci: &[CheckMenuItem], escluse: &[String]) {
+    for (s, v) in specie().iter().zip(voci) {
+        v.set_checked(!escluse.iter().any(|e| e == s.id));
+    }
+}
+
+/// con due o più schermi, il sottomenu per tutti e la prima voce di quelli di ogni schermo
+const TUTTI_GLI_SCHERMI: &str = "Tutti gli schermi";
+const COME_TUTTI: &str = "Come \"Tutti gli schermi\"";
+
+/// "Sfondo" > uno schermo (con due o più schermi): cosa mostra e cosa fa girare
+pub struct SfondoSchermo {
+    id: String,
+    /// "Come \"Tutti gli schermi\"", "A rotazione", poi uno per sfondo (ordine di specie())
+    voci: Vec<CheckMenuItem>,
+    /// "In rotazione" > "Come \"Tutti gli schermi\"": spuntata se lo schermo non ha una lista sua
+    rot_come: CheckMenuItem,
+    /// "In rotazione" > una spunta per sfondo (ordine di specie())
+    rot: Vec<CheckMenuItem>,
+}
+
+/// Riempie il menu "Sfondo" per questi schermi. Con uno solo: "A rotazione", "Animali" e
+/// "Paesaggi" (uno sfondo fisso) e "In rotazione" (quali girano) stanno lì. Con due o più
+/// stanno in "Tutti gli schermi", e ogni schermo ha un sottomenu uguale, con in più "Come
+/// \"Tutti gli schermi\"" (anche dentro "In rotazione"). In fondo la cartella delle scene.
+fn riempi_sfondo(m: &mut Menus, cfg: &Config, schermi: &[Schermo]) {
+    while m.sfondo_sub.remove_at(0).is_some() {}
+    let tutti = (schermi.len() >= 2).then(|| Submenu::new(TUTTI_GLI_SCHERMI, true));
+    let dove = tutti.as_ref().unwrap_or(&m.sfondo_sub);
+    m.animali = voci_sfondo(dove, &["A rotazione"], |i| i as u32 == cfg.animale);
+    let _ = dove.append(&PredefinedMenuItem::separator());
+    let rot = Submenu::new("In rotazione", true);
+    m.rot_specie = voci_rotazione(&rot, |id| !cfg.rotazione_escluse.iter().any(|e| e == id));
+    let _ = dove.append(&rot);
+    m.sfondo_schermi.clear();
+    if let Some(tutti) = &tutti {
+        let _ = m.sfondo_sub.append(tutti);
+        for (n, s) in schermi.iter().enumerate() {
+            let sub = Submenu::new(nome_schermo(n, s), true);
+            let attuale = cfg.animale_schermi.get(&s.id).map(|a| *a as usize + 1).unwrap_or(0);
+            let voci = voci_sfondo(&sub, &[COME_TUTTI, "A rotazione"], |k| k == attuale);
+            let _ = sub.append(&PredefinedMenuItem::separator());
+            let rot = Submenu::new("In rotazione", true);
+            let proprie = cfg.rotazione_escluse_schermi.get(&s.id);
+            let rot_come = CheckMenuItem::new(COME_TUTTI, true, proprie.is_none(), None);
+            let _ = rot.append(&rot_come);
+            let _ = rot.append(&PredefinedMenuItem::separator());
+            let escluse = proprie.unwrap_or(&cfg.rotazione_escluse);
+            let rot_voci = voci_rotazione(&rot, |id| !escluse.iter().any(|e| e == id));
+            let _ = sub.append(&rot);
+            let _ = m.sfondo_sub.append(&sub);
+            m.sfondo_schermi.push(SfondoSchermo { id: s.id.clone(), voci, rot_come, rot: rot_voci });
+        }
+    }
+    let _ = m.sfondo_sub.append(&PredefinedMenuItem::separator());
+    let _ = m.sfondo_sub.append(&m.scene_cartella);
+}
+
 /// ogni quanto cambia animale "a rotazione"
 pub const INTERVALLI: [(u32, &str); 7] = [
     (30, "Ogni 30 secondi"),
@@ -209,8 +291,10 @@ pub fn navigazione_permessa(url: String) -> bool {
     url.starts_with(URL) || url.starts_with("zoo://")
 }
 
-pub fn js_in_carica(ac: bool) -> String {
-    format!("window.zooSetting && zooSetting('inCarica', {ac})")
+/// `in_carica`: alimentatore collegato E c'è una batteria (un PC fisso non è mai "in carica",
+/// se no con "Koi nello stagno in carica" le koi non lascerebbero mai il posto alla rotazione)
+pub fn js_in_carica(in_carica: bool) -> String {
+    format!("window.zooSetting && zooSetting('inCarica', {in_carica})")
 }
 
 /// valori di CPU, RAM e batteria per il widget "pc" e delle statistiche per nerd
@@ -241,9 +325,13 @@ pub struct Menus {
     /// "Rotazione > Spenta": spuntata quando c'è un animale fisso
     pub rot_spenta: CheckMenuItem,
     pub rot_tempi: Vec<CheckMenuItem>,
+    /// "In rotazione" (per tutti gli schermi), ordine di specie()
     pub rot_specie: Vec<CheckMenuItem>,
     pub nomi: Vec<MenuItem>,
-    /// "Apri la cartella delle scene…" in fondo al menu "Animale"
+    /// il menu "Sfondo" (vedi riempi_sfondo) e, con due o più schermi, i sottomenu degli schermi
+    sfondo_sub: Submenu,
+    sfondo_schermi: Vec<SfondoSchermo>,
+    /// "Apri la cartella delle scene…" in fondo al menu "Sfondo"
     pub scene_cartella: MenuItem,
     pub nota: MenuItem,
     pub conto: MenuItem,
@@ -272,10 +360,6 @@ pub struct Menus {
     /// "Widget > Schermo": (valore, voce); i primi due sono principale e tutti
     pub widget_schermi: Vec<(String, CheckMenuItem)>,
     widget_schermi_fissi: Vec<(String, CheckMenuItem)>,
-    /// "Animale per schermo": un sottomenu per schermo
-    pub animali_sub: Submenu,
-    pub animali_schermi: Vec<(String, Submenu, Vec<CheckMenuItem>)>,
-    animali_un_solo: MenuItem,
     pub clic: CheckMenuItem,
     pub orologio: CheckMenuItem,
     pub koi: CheckMenuItem,
@@ -416,12 +500,9 @@ impl Core {
         format!("window.zooSetting && zooSetting('orologio', {})", self.cfg.orologio)
     }
 
-    pub fn js_rotazione(&self) -> String {
-        let specie: Vec<&str> = specie()
-            .iter()
-            .map(|s| s.id)
-            .filter(|id| !self.cfg.rotazione_escluse.iter().any(|e| e == id))
-            .collect();
+    pub fn js_rotazione(&self, schermo: &str) -> String {
+        let escluse = self.escluse_di(schermo);
+        let specie: Vec<&str> = specie().iter().map(|s| s.id).filter(|id| !escluse.iter().any(|e| e == id)).collect();
         let rot = serde_json::json!({ "secondi": self.cfg.rotazione_secondi, "specie": specie });
         format!("window.zooSetting && zooSetting('rotazione', {rot})")
     }
@@ -531,8 +612,17 @@ impl Core {
     }
 
     /// l'animale di uno schermo: il suo, se scelto, se no quello di "Animale"
+    /// (con un solo schermo vale sempre quello di "Sfondo": non c'è un menu per lo schermo)
     pub fn animale_di(&self, schermo: &str) -> u32 {
-        self.cfg.animale_schermi.get(schermo).copied().unwrap_or(self.cfg.animale)
+        let suo = if self.schermi.len() >= 2 { self.cfg.animale_schermi.get(schermo) } else { None };
+        suo.copied().unwrap_or(self.cfg.animale)
+    }
+
+    /// gli sfondi tolti dalla rotazione su uno schermo: i suoi, se li ha (e ci sono due o più
+    /// schermi), se no quelli di tutti
+    fn escluse_di(&self, schermo: &str) -> &[String] {
+        let sue = if self.schermi.len() >= 2 { self.cfg.rotazione_escluse_schermi.get(schermo) } else { None };
+        sue.unwrap_or(&self.cfg.rotazione_escluse)
     }
 
     /// le impostazioni che cambiano da schermo a schermo (e la rotazione, che cambia insieme
@@ -540,7 +630,7 @@ impl Core {
     pub fn js_schermo(&self, schermo: &str) -> [String; 3] {
         [
             self.js_widget(schermo),
-            self.js_rotazione(),
+            self.js_rotazione(schermo),
             format!("window.zooSetting && zooSetting('animale', {})", self.animale_di(schermo)),
         ]
     }
@@ -586,7 +676,8 @@ impl Core {
     }
 
     /// tutte le impostazioni di uno schermo, da mandare quando la sua pagina ha finito di caricare
-    pub fn js_tutto(&self, ac: bool, schermo: &str) -> Vec<String> {
+    /// (`in_carica`: vedi js_in_carica)
+    pub fn js_tutto(&self, in_carica: bool, schermo: &str) -> Vec<String> {
         let mut v = vec![
             self.js_tema(),
             self.js_fotogrammi(),
@@ -594,10 +685,10 @@ impl Core {
             // WebKitGTK è impreciso e l'animazione scattava (vedi _loop nella pagina)
             format!("window.zooSetting && zooSetting('vsync', {})", cfg!(target_os = "linux")),
             self.js_nomi(),
-            self.js_rotazione(),
+            self.js_rotazione(schermo),
             self.js_orologio(),
             format!(
-                "if (window.zooSetting) {{ zooSetting('inCarica', {ac}); zooSetting('koiInCarica', {}); }}",
+                "if (window.zooSetting) {{ zooSetting('inCarica', {in_carica}); zooSetting('koiInCarica', {}); }}",
                 self.cfg.koi_in_carica
             ),
         ];
@@ -623,27 +714,12 @@ impl Core {
             }
         }
         m.widget_schermi.append(&mut m.widget_schermi_fissi);
-        for (_, sub, _) in m.animali_schermi.drain(..) {
-            let _ = m.animali_sub.remove(&sub);
-        }
-        let _ = m.animali_sub.remove(&m.animali_un_solo);
-
         for (n, s) in schermi.iter().enumerate() {
-            let nome = nome_schermo(n, s);
-            let item = CheckMenuItem::new(&nome, true, false, None);
+            let item = CheckMenuItem::new(nome_schermo(n, s), true, false, None);
             let _ = m.widget_sub.append(&item);
             m.widget_schermi.push((s.id.clone(), item));
-
-            let sub = Submenu::new(&nome, true);
-            let attuale = self.cfg.animale_schermi.get(&s.id).map(|a| *a as usize + 1).unwrap_or(0);
-            let come = format!("Come in \"{}\"", titolo_sfondo());
-            let voci = voci_sfondo(&sub, &[come.as_str(), "A rotazione"], |k| k == attuale);
-            let _ = m.animali_sub.append(&sub);
-            m.animali_schermi.push((s.id.clone(), sub, voci));
         }
-        if schermi.len() < 2 {
-            let _ = m.animali_sub.append(&m.animali_un_solo);
-        }
+        riempi_sfondo(m, &self.cfg, &schermi);
         self.schermi = schermi;
         self.segna_widget_schermo();
     }
@@ -726,35 +802,57 @@ impl Core {
             self.cfg.save();
             return Esito::Schermi;
         }
-        if let Some((sid, k, voci)) = m.animali_schermi.iter().find_map(|(sid, _, voci)| {
-            voci.iter().position(|x| x.id().0 == id).map(|k| (sid.clone(), k, voci))
-        }) {
-            for (j, v) in voci.iter().enumerate() {
+        // "Sfondo" > uno schermo: cosa mostra
+        if let Some((ss, k)) = m.sfondo_schermi.iter().find_map(|ss| ss.voci.iter().position(|x| x.id().0 == id).map(|k| (ss, k))) {
+            for (j, v) in ss.voci.iter().enumerate() {
                 v.set_checked(j == k);
             }
             if k == 0 {
-                self.cfg.animale_schermi.remove(&sid);
+                self.cfg.animale_schermi.remove(&ss.id);
             } else {
-                self.cfg.animale_schermi.insert(sid, k as u32 - 1);
+                self.cfg.animale_schermi.insert(ss.id.clone(), k as u32 - 1);
             }
+            self.cfg.save();
+            return Esito::Schermi;
+        }
+        // "In rotazione" per tutti gli schermi: lo seguono anche gli schermi senza una lista sua
+        if let Some(i) = m.rot_specie.iter().position(|x| x.id().0 == id) {
+            // almeno uno sfondo deve restare in rotazione
+            if !m.rot_specie.iter().any(|x| x.is_checked()) {
+                m.rot_specie[i].set_checked(true);
+            }
+            self.cfg.rotazione_escluse = escluse(&m.rot_specie);
+            for ss in m.sfondo_schermi.iter().filter(|ss| !self.cfg.rotazione_escluse_schermi.contains_key(&ss.id)) {
+                segna_rotazione(&ss.rot, &self.cfg.rotazione_escluse);
+            }
+            self.cfg.save();
+            return Esito::Schermi;
+        }
+        // "In rotazione" di uno schermo > "Come \"Tutti gli schermi\"": da spuntata, lo schermo
+        // prende una lista sua (per ora uguale); da tolta, torna a seguire quella di tutti
+        if let Some(ss) = m.sfondo_schermi.iter().find(|ss| ss.rot_come.id().0 == id) {
+            if self.cfg.rotazione_escluse_schermi.remove(&ss.id).is_some() {
+                segna_rotazione(&ss.rot, &self.cfg.rotazione_escluse);
+            } else {
+                self.cfg.rotazione_escluse_schermi.insert(ss.id.clone(), self.cfg.rotazione_escluse.clone());
+            }
+            ss.rot_come.set_checked(!self.cfg.rotazione_escluse_schermi.contains_key(&ss.id));
+            self.cfg.save();
+            return Esito::Schermi;
+        }
+        // "In rotazione" di uno schermo: uno sfondo (lo schermo ha da adesso una lista sua)
+        if let Some((ss, i)) = m.sfondo_schermi.iter().find_map(|ss| ss.rot.iter().position(|x| x.id().0 == id).map(|i| (ss, i))) {
+            if !ss.rot.iter().any(|x| x.is_checked()) {
+                ss.rot[i].set_checked(true);
+            }
+            self.cfg.rotazione_escluse_schermi.insert(ss.id.clone(), escluse(&ss.rot));
+            ss.rot_come.set_checked(false);
             self.cfg.save();
             return Esito::Schermi;
         }
         // i widget cambiano da schermo a schermo: si rimandano a ognuno i suoi
         let mut widget = false;
-        let js = if let Some(i) = m.rot_specie.iter().position(|x| x.id().0 == id) {
-            // almeno un animale deve restare in rotazione
-            if !m.rot_specie.iter().any(|x| x.is_checked()) {
-                m.rot_specie[i].set_checked(true);
-            }
-            self.cfg.rotazione_escluse = specie()
-                .iter()
-                .zip(&self.menus.rot_specie)
-                .filter(|(_, item)| !item.is_checked())
-                .map(|(s, _)| s.id.to_string())
-                .collect();
-            Some(self.js_rotazione())
-        } else if let Some(i) = m.nomi.iter().position(|x| x.id().0 == id) {
+        let js = if let Some(i) = m.nomi.iter().position(|x| x.id().0 == id) {
             let Some(&Sfondo { id: sid, nome: label, .. }) = con_nome().nth(i) else { return Esito::Niente };
             let attuale = self.cfg.nomi.get(sid).cloned().unwrap_or_default();
             let domanda = format!("Nome per {} (vuoto = nessun nome):", label.to_lowercase());
@@ -1054,12 +1152,9 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         let _ = menu.append(&PredefinedMenuItem::separator());
     }
 
-    // "Sfondo": a rotazione, oppure uno fisso da "Animali" o da "Paesaggi"
+    // "Sfondo": cosa si vede e cosa gira (riempi_sfondo, poi di nuovo quando cambiano gli schermi)
     let sub = Submenu::new(titolo_sfondo(), true);
-    let animali = voci_sfondo(&sub, &["A rotazione"], |i| i as u32 == cfg.animale);
-    let _ = sub.append(&PredefinedMenuItem::separator());
     let scene_cartella = MenuItem::new("Apri la cartella delle scene…", true, None);
-    let _ = sub.append(&scene_cartella);
 
     let rot = Submenu::new("Rotazione", true);
     // spenta = uno sfondo fisso (scelto in "Sfondo", o quello che si vede quando si spegne)
@@ -1072,20 +1167,6 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     for item in &rot_tempi {
         let _ = rot.append(item);
     }
-    let _ = rot.append(&PredefinedMenuItem::separator());
-    let _ = rot.append(&MenuItem::new("In rotazione:", false, None));
-    let rot_animali = Submenu::new("Animali", true);
-    let rot_paesaggi = Submenu::new("Paesaggi", true);
-    let rot_specie: Vec<CheckMenuItem> = specie()
-        .iter()
-        .map(|s| {
-            let v = CheckMenuItem::new(s.nome, true, !cfg.rotazione_escluse.iter().any(|e| e == s.id), None);
-            let _ = if s.paesaggio { rot_paesaggi.append(&v) } else { rot_animali.append(&v) };
-            v
-        })
-        .collect();
-    let _ = rot.append(&rot_animali);
-    let _ = rot.append(&rot_paesaggi);
 
     let nomi_sub = Submenu::new("Nomi degli animali", true);
     // solo gli animali: un paesaggio non ha un animale più grande a cui dare un nome
@@ -1196,17 +1277,15 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         let _ = fotogrammi_sub.append(item);
     }
 
-    let animali_sub = Submenu::new("Sfondo per schermo", true);
-    let animali_un_solo = MenuItem::new("(c'è un solo schermo)", false, None);
-    let _ = animali_sub.append(&animali_un_solo);
-
     let avvio_label = if cfg!(windows) { "Avvia con Windows" } else { "Apri al login" };
-    let m = Menus {
-        animali,
+    let mut m = Menus {
+        animali: Vec::new(),
         rot_spenta,
         rot_tempi,
-        rot_specie,
+        rot_specie: Vec::new(),
         nomi,
+        sfondo_sub: sub,
+        sfondo_schermi: Vec::new(),
         scene_cartella,
         nota,
         conto,
@@ -1229,9 +1308,6 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         widget_sub: widget,
         widget_schermi,
         widget_schermi_fissi: Vec::new(),
-        animali_sub,
-        animali_schermi: Vec::new(),
-        animali_un_solo,
         clic: CheckMenuItem::new("Clic sul desktop agli animali", true, cfg.clic_desktop, None),
         orologio: CheckMenuItem::new("Orologio al centro", true, cfg.orologio, None),
         koi: CheckMenuItem::new("Koi nello stagno in carica (con \"A rotazione\")", true, cfg.koi_in_carica, None),
@@ -1261,8 +1337,9 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         ricarica: MenuItem::new("Ricarica sfondo", true, None),
         esci: MenuItem::new("Esci", true, None),
     };
-    let _ = menu.append(&sub);
-    let _ = menu.append(&m.animali_sub);
+    // gli schermi veri arrivano con set_schermi: per ora come con uno solo
+    riempi_sfondo(&mut m, cfg, &[]);
+    let _ = menu.append(&m.sfondo_sub);
     let _ = menu.append(&rot);
     let _ = menu.append(&nomi_sub);
     let _ = menu.append(&m.widget_sub);

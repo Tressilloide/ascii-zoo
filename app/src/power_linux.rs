@@ -23,6 +23,13 @@ pub fn on_ac() -> bool {
     !batteria
 }
 
+/// true se il computer ha una batteria (un fisso no: per lui on_ac è sempre vero, e "in
+/// carica" non ha senso). Non cambia mentre l'app gira: si guarda una volta
+pub fn ha_batteria() -> bool {
+    static HA: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *HA.get_or_init(|| batteria().is_some())
+}
+
 /// carica della batteria del computer in percentuale, se ce n'è una
 pub fn batteria() -> Option<u8> {
     let dir = fs::read_dir("/sys/class/power_supply").ok()?;

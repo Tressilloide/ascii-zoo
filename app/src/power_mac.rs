@@ -13,6 +13,13 @@ pub fn on_ac() -> bool {
     unsafe { IOPSGetTimeRemainingEstimate() == ILLIMITATO }
 }
 
+/// true se il Mac ha una batteria (un Mac fisso no: per lui on_ac è sempre vero, e "in
+/// carica" non ha senso). Non cambia mentre l'app gira: si guarda una volta
+pub fn ha_batteria() -> bool {
+    static HA: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *HA.get_or_init(|| batteria().is_some())
+}
+
 /// Carica della batteria del Mac in percentuale, se ce n'è una (IOPowerSources):
 /// Current Capacity / Max Capacity della batteria interna.
 pub fn batteria() -> Option<u8> {

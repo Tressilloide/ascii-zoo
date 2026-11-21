@@ -27,6 +27,9 @@ pub struct Config {
     pub rotazione_secondi: u32,
     /// specie tolte dalla rotazione
     pub rotazione_escluse: Vec<String>,
+    /// con due o più schermi, gli sfondi tolti dalla rotazione su uno schermo (id dello schermo
+    /// → specie); chi non c'è segue rotazione_escluse
+    pub rotazione_escluse_schermi: BTreeMap<String, Vec<String>>,
     /// widget: nota sul desktop ("" = nessuna)
     pub nota: String,
     /// widget: conto alla rovescia, data "aaaa-mm-gg" ("" = spento)
@@ -85,6 +88,7 @@ impl Default for Config {
             nomi: BTreeMap::from([("koi".to_string(), "KARPISA".to_string())]),
             rotazione_secondi: 120,
             rotazione_escluse: Vec::new(),
+            rotazione_escluse_schermi: BTreeMap::new(),
             nota: String::new(),
             conto_data: String::new(),
             conto_etichetta: String::new(),

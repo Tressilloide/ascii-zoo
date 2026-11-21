@@ -219,7 +219,7 @@ impl App {
         let ac = power::on_ac();
         self.last_ac = Some(ac);
         for s in &mut self.screens {
-            for code in self.core.js_tutto(ac, &s.id) {
+            for code in self.core.js_tutto(ac && power::ha_batteria(), &s.id) {
                 let _ = s.webview.evaluate_script(&code);
             }
             if s.paused {
@@ -296,7 +296,7 @@ impl App {
         let ac = power::on_ac();
         if self.last_ac != Some(ac) {
             self.last_ac = Some(ac);
-            self.js(&shared::js_in_carica(ac));
+            self.js(&shared::js_in_carica(ac && power::ha_batteria()));
         }
         self.check_pause();
         // widget: nuovi valori ogni 2 secondi (statistiche solo se si vedono)

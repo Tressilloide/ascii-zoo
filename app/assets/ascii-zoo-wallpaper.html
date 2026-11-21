@@ -3697,6 +3697,9 @@ h1 {
      0 = a rotazione, 1..9 = un solo animale fisso. */
   /* Con il caricatore collegato: koi nello stagno (se l'opzione è attiva). */
   var pref = 0, koiAC = true, charging = false, hashFixed = fixed;
+  // "in carica" lo dice il programma, se c'è (sa anche se il PC ha una batteria): da allora
+  // la batteria del browser non conta più
+  var caricaDalProgramma = false;
   function applyChoice() {
     // la scelta esplicita nel menu vince; le koi in carica valgono solo "a rotazione"
     if (pref > 0 && pref <= SPECIES.length) { fixed = true; setMode(SPECIES[pref - 1].id, true); }
@@ -3738,15 +3741,26 @@ h1 {
     }
     if (name === 'animale') pref = parseInt(val, 10) || 0;
     else if (name === 'koiInCarica') koiAC = val === true || val === 'true';
-    else if (name === 'inCarica') charging = val === true || val === 'true'; // dal programma Rust
+    else if (name === 'inCarica') { caricaDalProgramma = true; charging = val === true || val === 'true'; } // dal programma Rust
     else return;
     applyChoice();
   };
+  /* Nel browser e in Lively: la batteria del browser. Su un PC senza batteria Chrome dice
+     "in carica, piena, per sempre" (charging, level 1, dischargingTime Infinity), come un
+     portatile carico e attaccato: lo si crede in carica solo dopo averlo visto scendere sotto
+     il 100% o staccato, se no su un PC fisso resterebbero le koi per sempre. */
   if (navigator.getBattery) {
     navigator.getBattery().then(function (b) {
-      charging = b.charging;
-      applyChoice();
-      b.addEventListener('chargingchange', function () { charging = b.charging; applyChoice(); });
+      var vera = false;
+      function leggi() {
+        if (caricaDalProgramma) return;
+        if (!b.charging || b.level < 1 || b.dischargingTime !== Infinity) vera = true;
+        charging = vera && b.charging;
+        applyChoice();
+      }
+      leggi();
+      b.addEventListener('chargingchange', leggi);
+      b.addEventListener('levelchange', leggi);
     }).catch(function () { /* nessuna info batteria: si va avanti normalmente */ });
   }
 
