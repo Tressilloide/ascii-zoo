@@ -221,6 +221,8 @@ jobs:
       # scena di screensaver.json (quello che scrive il menu); la foto deve essere quasi tutta
       # scura (il fondo delle scene) ma con la scena accesa, e un clic lo chiude
       - name: Prova - "Prova adesso" dello screensaver
+        # con un tag non deve fermare il DMG e la Release (foto e clic simulati dipendono dal runner)
+        continue-on-error: ${{ startsWith(github.ref, 'refs/tags/') }}
         run: |
           xcrun swiftc -O -o clic .github/macos-click-test/click.swift || echo "::warning::non si compila il simulatore di clic"
           mkdir -p "$HOME/Library/Application Support/AsciiZoo" prova-screensaver
