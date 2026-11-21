@@ -56,6 +56,28 @@ jobs:
           path: menu-test/
           if-no-files-found: warn
 
+      # scene tue: con la cartella delle scene l'app scrive un file per ogni animale di serie
+      # in scene\di-serie, e un file della cartella (lucciole.js) diventa una voce del menu
+      - name: Prova - scene tue
+        continue-on-error: ${{ startsWith(github.ref, 'refs/tags/') }}
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          $dir = Join-Path $env:APPDATA 'AsciiZoo\scene'
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Copy-Item scene\lucciole.js $dir
+          $env:ASCII_ZOO_LOG = '1'
+          $p = Start-Process app\target\release\ascii-zoo.exe -PassThru -RedirectStandardError scene-win.log
+          Start-Sleep 15
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          Start-Sleep 2
+          Get-Content scene-win.log | Select-String 'scena'
+          $file = @(Get-ChildItem (Join-Path $dir 'di-serie') -Filter *.js)
+          "di-serie: $($file.Count) file: $($file.Name -join ', ')"
+          if ($file.Count -ne 9) { Write-Error "in di-serie ci sono $($file.Count) file invece di 9"; exit 1 }
+          if (-not (Select-String -Path scene-win.log -Pattern 'scena lucciole: "Lucciole"' -Quiet)) { Write-Error "lucciole.js non letta"; exit 1 }
+          Remove-Item -Recurse -Force $dir
+
       - name: Prova lo screensaver - un fotogramma per scena, senza finestra
         working-directory: dreams
         run: |
@@ -306,6 +328,32 @@ jobs:
             exit 1
           fi
           kill "$pid"
+
+      # scene tue: con la cartella delle scene l'app scrive un file per ogni animale di serie in
+      # scene/di-serie, e lucciole.js diventa la voce 10 del menu Animale (dopo "A rotazione" e
+      # i 9 animali): la foto va guardata, deve esserci l'erba con le lucciole
+      - name: Prova - scene tue
+        continue-on-error: ${{ startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          dir="$HOME/Library/Application Support/AsciiZoo"
+          mkdir -p "$dir/scene"
+          cp scene/lucciole.js "$dir/scene/"
+          cp "$dir/config.json" config-prima.json 2>/dev/null || true
+          echo '{"animale": 10, "clic_desktop": false}' > "$dir/config.json"
+          ASCII_ZOO_LOG=1 "build/ASCII Zoo.app/Contents/MacOS/ascii-zoo" 2> scene-macos.log &
+          pid=$!
+          sleep 15
+          screencapture -x prova-screensaver/scene-lucciole.png || echo "::warning::screenshot non riuscito"
+          kill "$pid" || true
+          sleep 1
+          grep "scena" scene-macos.log || true
+          ls "$dir/scene/di-serie"
+          n=$(ls "$dir/scene/di-serie"/*.js | wc -l | tr -d ' ')
+          [ "$n" = 9 ] || { echo "::error::in di-serie ci sono $n file invece di 9"; exit 1; }
+          grep -q 'scena lucciole: "Lucciole"' scene-macos.log || { echo "::error::lucciole.js non letta"; exit 1; }
+          head -3 "$dir/scene/di-serie/koi.js"
+          rm -rf "$dir/scene"
+          if [ -f config-prima.json ]; then mv config-prima.json "$dir/config.json"; else rm -f "$dir/config.json"; fi
 
       # all'avvio l'app ha rimesso la sua versione dello screensaver al posto di quella vecchia
       - name: Prova - l'app aggiorna lo screensaver installato
