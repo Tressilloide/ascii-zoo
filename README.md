@@ -46,17 +46,22 @@ It's a small example of what two people and an AI can ship together in a short t
 </p>
 
 - **9 species, 9 worlds.** Butterflies on a flower meadow, jellyfish among rising bubbles, dragonflies on reeds, koi in a pond with lily pads, frogs and fireflies, herons with nests that hatch, crabs on the sand, a herd of horses on a windswept prairie, a mother duck leading her ducklings across a pond (click to throw them bread). They rotate automatically (menu **Rotazione**: how often, which ones, or **Spenta** to keep the one on screen), or you pick one.
+- **6 landscapes, no animals**: a starfield to fly through, rain with lightning, a campfire, the aurora over mountains and a lake, the Game of Life, a night sea with the moon and a little sailboat. They are the screensaver's six scenes, now as wallpapers too. In the tray menu, **Sfondo** (wallpaper) has two submenus: **Animali** and **Paesaggi**.
 - **An ASCII clock** they interact with: butterflies land on the digits, koi flee when the minute ticks over. Don't want it? Untick **Orologio al centro** (clock in the middle) in the menu, or open `index.html?orologio=0` in the browser.
 - **Click the desktop** to feed the koi and ducks or scatter the other animals (Windows, macOS, and Linux with GNOME 45+ through a tiny GNOME Shell extension, since Wayland doesn't let apps see clicks on other windows).
 - **Light on Linux too.** Wayland doesn't let a normal app become the wallpaper. On GNOME 45+ the same extension does it: the app opens a plain Wayland window, the extension minimizes it and shows its content inside GNOME's own background (desktop and overview), hidden from Alt+Tab and the dash, so every frame stays on the GPU. Without it the app falls back to XWayland, where GTK 3 has to copy every frame through memory: on a laptop (Core i7-8550U with UHD 620, Ubuntu 26.10 with GNOME 51, 1920×1080 at 125%) the app, WebKitGTK, GNOME Shell and Xwayland together take 0.83 cores at a real 30 fps, versus 1.26 cores through XWayland, which only manages 14 fps; `linux/prestazioni.sh` measures your own PC. GNOME loads new extensions at the next login.
 - **Dark or light.** Dark by default; the light theme draws the animals as ink on cream paper, or it can follow the system's light/dark setting. Menu **Tema**, or `index.html?tema=chiaro` in the browser.
 - **Frames per second.** 30 by default; menu **Fotogrammi al secondo** goes down to 20 or 15 to save CPU and GPU on laptops.
 - **Snapshots**: save a PNG of the wallpaper exactly as it looks right now, widgets included, into Pictures/ASCII Zoo (menu **Salva una foto dello sfondo**, or `P` in the browser).
-- **Multi-monitor**, with a different animal on each screen if you like.
+- **Multi-monitor**, with a different wallpaper on each screen if you like (menu **Sfondo per schermo**).
 - **ASCII widgets**: a sticky note, a countdown, CPU/RAM/battery meters, and stats for nerds (per-core CPU, temperature, frequency, RAM and swap, GPU usage, VRAM and temperature, network speed, disk, uptime, processes, load average), a "now playing" box (MPRIS on Linux, system media controls on Windows, Music and Spotify via AppleScript on macOS), a pomodoro timer run from the tray menu, in three frame styles (`+--+`, `┌──┐`, `╭──╮`) and three sizes.
 - **Names**: the biggest animal of each species can carry a name. Meet **KARPISA**, the koi from Pisa.
 - **A screensaver too** (Windows, macOS and Linux): six ASCII scenes, see below.
 - Everything is set from a small koi icon in the tray / menu bar.
+
+<p align="center">
+  <img src="docs/landscapes.png" alt="The six landscapes as wallpapers, with the clock: starfield, rain and lightning, campfire, aurora over the mountains, Game of Life, night sea with the moon" width="100%">
+</p>
 
 ### Screensaver
 
@@ -75,7 +80,7 @@ On Linux GNOME has no way to plug in a third-party screensaver, so the app start
 
 ## Your own scenes
 
-Besides the animals you can add **scenes**: a backdrop without animals (rain, a landscape, fireflies…) written as a small JavaScript file. Tray menu **Animale** > **Apri la cartella delle scene…** opens the folder (`%APPDATA%\AsciiZoo\scene` on Windows, `~/Library/Application Support/AsciiZoo/scene` on macOS, `~/.config/AsciiZoo/scene` on Linux). Every `.js` file in it becomes one more entry in the **Animale** menu, after the animals; quit and reopen ASCII Zoo to see a new one. To share a scene, send the file.
+Besides the animals you can add **scenes**: a backdrop without animals (rain, a landscape, fireflies…) written as a small JavaScript file. Tray menu **Sfondo** > **Apri la cartella delle scene…** opens the folder (`%APPDATA%\AsciiZoo\scene` on Windows, `~/Library/Application Support/AsciiZoo/scene` on macOS, `~/.config/AsciiZoo/scene` on Linux). Every `.js` file in it becomes one more entry in the **Sfondo** menu (under **Paesaggi**, or **Animali** for an animal file); quit and reopen ASCII Zoo to see a new one. To share a scene, send the file.
 
 [`scene/lucciole.js`](scene/lucciole.js) is a commented example (fireflies over the grass); [`scene/neve.js`](scene/neve.js) a bigger one (snow falling and piling up on a village at night, with wind and windows lighting up). In short:
 
@@ -91,9 +96,9 @@ scena({
 });
 ```
 
-`w.cols` and `w.rows` are the grid size, `w.rnd()` a random number, and `hash2`, `clamp`, `lerp`, `TAU` and `celle(w, cells, color, A)` are ready to use.
+`w.cols` and `w.rows` are the grid size, `w.rnd()` a random number, and `hash2`, `clamp`, `lerp`, `TAU`, `rumore(x, y)` and `frattale(x, y, octaves)` (smooth noise) and `celle(w, cells, color, A)` are ready to use.
 
-The animals are files too. The app writes them into the `di-serie` subfolder (rewritten every time it starts): copy one into the scene folder to change it. With the same file name (`koi.js`) it takes the place of the built-in animal; with a new name (and a new `// nome:` line) it's one more animal in the menu, and it still behaves like the one it was copied from. Animal files are written like the code in [`wallpaper/index.html`](wallpaper/index.html): `SPECIES.push({...})` for the animal, `SCENES.x = {...}` for its backdrop.
+The animals and the landscapes are files too. The app writes them into the `di-serie` subfolder (rewritten every time it starts): copy one into the scene folder to change it. With the same file name (`koi.js`, `aurora.js`) it takes the place of the built-in one; with a new name (and a new `// nome:` line) it's one more animal in the menu, and it still behaves like the one it was copied from. Animal files are written like the code in [`wallpaper/index.html`](wallpaper/index.html): `SPECIES.push({...})` for the animal, `SCENES.x = {...}` for its backdrop.
 
 Scene and animal files are code written by someone else, so inside the app the wallpaper page can't use the network or open other pages, and a file that throws an error just stops drawing. They only run in the app, not in the browser version.
 

@@ -12,8 +12,9 @@
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {InjectionManager} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-// il menu di ASCII Zoo: ha queste voci in alto
-const VOCI_ZOO = ['Animale', 'Esci'];
+// il menu di ASCII Zoo: ha "Esci" e "Sfondo" (fino alla 0.7 "Animale")
+const VOCI_ZOO = ['Esci'];
+const PRIMA_VOCE = ['Sfondo', 'Animale'];
 
 function etichetta(voce) {
     return voce?.label?.text ?? '';
@@ -21,7 +22,8 @@ function etichetta(voce) {
 
 function menuZoo(menu) {
     const voci = menu?._getMenuItems?.() ?? [];
-    return VOCI_ZOO.every(n => voci.some(v => etichetta(v) === n));
+    return VOCI_ZOO.every(n => voci.some(v => etichetta(v) === n)) &&
+        PRIMA_VOCE.some(n => voci.some(v => etichetta(v) === n));
 }
 
 export class MenuZoo {

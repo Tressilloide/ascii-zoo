@@ -1,7 +1,7 @@
 // nome: Neve
 //
 // Un'altra scena di esempio per ASCII Zoo (la prima, con le spiegazioni, è lucciole.js):
-// copiala nella cartella delle scene (menu "Animale" > "Apri la cartella delle scene…"),
+// copiala nella cartella delle scene (menu "Sfondo" > "Apri la cartella delle scene…"),
 // esci da ASCII Zoo e riaprilo.
 //
 // Nevica su un paesino di notte. I fiocchi vicini sono più grandi e più veloci di quelli

@@ -25,7 +25,9 @@ Mette lo sfondo animato (`wallpaper/index.html`) dietro le icone del desktop, su
   temporanea, dal DMG o da una .app traslocata da Gatekeeper). Non cancella mai file.
 - Icona a forma di koi (area di notifica su Windows, barra dei menu su macOS, barra in alto
   su Linux con AppIndicator; niente icona nel Dock) con il menu:
-  - **Animale**: a rotazione oppure uno fisso
+  - **Sfondo**: a rotazione oppure uno fisso, dai sottomenu **Animali** e **Paesaggi** (i
+    paesaggi sono le scene dello screensaver portate nella pagina, `scena({...})` tra le righe
+    `// ==== paesaggio: id ====`)
   - **Rotazione**: ogni quanto cambia animale (da 30 secondi a un'ora) e quali animali far girare
     (almeno uno resta sempre spuntato)
   - **Nomi degli animali**: il nome dell'animale più grande di ogni specie, scritto in una

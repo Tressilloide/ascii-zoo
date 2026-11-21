@@ -15,7 +15,7 @@
 
 ## Gli animali
 
-Nove specie, una alla volta, ognuna con il suo ambiente. Di serie lo sfondo passa alla successiva ogni 2 minuti; dal menu del programma (**Rotazione**) si sceglie ogni quanto (da 30 secondi a un'ora) e quali animali far girare, oppure la si spegne: **Spenta** tiene l'animale che si vede in quel momento (lo stesso che sceglierlo in **Animale**). Quando il PC è in carica restano le koi nel loro stagno (si può disattivare).
+Nove specie, una alla volta, ognuna con il suo ambiente. Di serie lo sfondo passa alla successiva ogni 2 minuti; dal menu del programma (**Rotazione**) si sceglie ogni quanto (da 30 secondi a un'ora) e quali animali far girare, oppure la si spegne: **Spenta** tiene lo sfondo che si vede in quel momento (lo stesso che sceglierlo in **Sfondo**). Quando il PC è in carica restano le koi nel loro stagno (si può disattivare).
 
 <p align="center">
   <img src="docs/animals.png" alt="Le nove specie, ognuna nel suo ambiente: farfalle sul prato fiorito, meduse tra le bolle, libellule sulle canne, koi nello stagno, rane nel prato con sassi e lucciole, aironi con i nidi, cavalli nella prateria, anatre con gli anatroccoli nello stagno, granchi sulla sabbia; più l'orologio" width="100%">
@@ -36,6 +36,25 @@ Nove specie, una alla volta, ognuna con il suo ambiente. Di serie lo sfondo pass
 Ogni animale è una forma calcolata cella per cella: ogni cella accesa diventa un carattere (`. : - = + * o x X % # & @`), più denso dove il corpo è più pieno, con un leggero bagliore.
 
 **Nomi.** L'animale più grande di ogni specie può avere un nome, scritto sopra la testa una lettera per casella. Di serie ce l'ha solo una koi: **KARPISA**, la carpa che viene da Pisa. Gli altri nomi si danno dal menu del programma.
+
+## I paesaggi
+
+Oltre agli animali, sei paesaggi senza animali: le sei scene dello screensaver, adesso anche come sfondo. Nel menu del programma **Sfondo** ha due sottomenu, **Animali** e **Paesaggi**; lo stesso in **Sfondo per schermo** e in **Rotazione** (dove si sceglie anche quali paesaggi far girare insieme agli animali).
+
+<p align="center">
+  <img src="docs/landscapes.png" alt="I sei paesaggi con l'orologio: stelle, pioggia e lampi, falò, aurora sulle montagne, gioco della vita, mare di notte con la luna" width="100%">
+</p>
+
+| Paesaggio | Cosa si vede |
+|---|---|
+| **Stelle** | si vola tra le stelle: arrivano dal centro, crescono e lasciano una scia; ogni tanto una stella cadente |
+| **Pioggia e lampi** | la pioggia col vento, i cerchi e gli schizzi nelle pozzanghere, ogni tanto un fulmine che illumina tutto |
+| **Falò** | il fuoco che sale dalla legna incrociata, con le braci che volano su; sta sotto l'orologio |
+| **Aurora** | tende di luce verde e viola sopra le montagne, le stelle che brillano, il lago che riflette tutto |
+| **Gioco della vita** | le cellule di Conway cambiano colore invecchiando e lasciano una scia; se il mondo si ferma ne arrivano di nuove |
+| **Mare di notte** | la luna con i crateri, le nuvole, il riflesso che tremola sulle onde e una barchetta a vela che attraversa |
+
+Sono scritti come le [scene tue](#scene-tue): anche loro si trovano come file in `di-serie` e si possono copiare e cambiare.
 
 ## I widget
 
@@ -126,11 +145,11 @@ Nel browser la foto si scarica con il tasto **P**.
 
 ## Scene tue
 
-Oltre agli animali si possono aggiungere **scene**: uno sfondo senza animali (pioggia, un paesaggio, lucciole…) scritto in un piccolo file JavaScript. Menu **Animale** > **Apri la cartella delle scene…** apre la cartella (`%APPDATA%\AsciiZoo\scene` su Windows, `~/Library/Application Support/AsciiZoo/scene` su macOS, `~/.config/AsciiZoo/scene` su Linux). Ogni file `.js` lì dentro diventa una voce in più del menu **Animale**, dopo gli animali; per vederne una nuova si esce da ASCII Zoo e lo si riapre. Per condividere una scena basta mandare il file.
+Oltre agli animali si possono aggiungere **scene**: uno sfondo senza animali (pioggia, un paesaggio, lucciole…) scritto in un piccolo file JavaScript. Menu **Sfondo** > **Apri la cartella delle scene…** apre la cartella (`%APPDATA%\AsciiZoo\scene` su Windows, `~/Library/Application Support/AsciiZoo/scene` su macOS, `~/.config/AsciiZoo/scene` su Linux). Ogni file `.js` lì dentro diventa una voce in più del menu **Sfondo** (in **Paesaggi**; un file di un animale va in **Animali**); per vederne una nuova si esce da ASCII Zoo e lo si riapre. Per condividere una scena basta mandare il file.
 
-C'è un esempio commentato in [`scene/lucciole.js`](scene/lucciole.js): lucciole sopra l'erba; uno più grande in [`scene/neve.js`](scene/neve.js): la neve che cade e si posa su un paesino di notte, con il vento e le finestre che si accendono. La prima riga `// nome: …` dà il nome nel menu (se manca, il nome del file); il file chiama `scena({ colori, init, tick, disegna })`. `w.put(colonna, riga, intensità, colore, alfa)` accende una cella; `this.c0` è il primo dei colori della scena; `hash2`, `clamp`, `lerp`, `TAU` e `celle` sono già pronti.
+C'è un esempio commentato in [`scene/lucciole.js`](scene/lucciole.js): lucciole sopra l'erba; uno più grande in [`scene/neve.js`](scene/neve.js): la neve che cade e si posa su un paesino di notte, con il vento e le finestre che si accendono. La prima riga `// nome: …` dà il nome nel menu (se manca, il nome del file); il file chiama `scena({ colori, init, tick, disegna })`. `w.put(colonna, riga, intensità, colore, alfa)` accende una cella; `this.c0` è il primo dei colori della scena; `hash2`, `clamp`, `lerp`, `TAU`, `rumore(x, y)` e `frattale(x, y, ottave)` (rumore morbido, per nuvole e onde) e `celle` sono già pronti.
 
-Anche gli animali sono file: l'app li scrive nella sottocartella `di-serie` (riscritta a ogni avvio). Per cambiarne uno lo si copia nella cartella delle scene: con lo stesso nome (`koi.js`) prende il posto dell'animale di serie, con un nome nuovo (e una nuova riga `// nome:`) è un animale in più nel menu, che si comporta come quello da cui è copiato. I file degli animali sono scritti come il codice di [`wallpaper/index.html`](wallpaper/index.html): `SPECIES.push({...})` per l'animale, `SCENES.x = {...}` per il suo sfondo.
+Anche gli animali e i paesaggi sono file: l'app li scrive nella sottocartella `di-serie` (riscritta a ogni avvio). Per cambiarne uno lo si copia nella cartella delle scene: con lo stesso nome (`koi.js`, `aurora.js`) prende il posto di quello di serie, con un nome nuovo (e una nuova riga `// nome:`) è uno sfondo in più nel menu; un animale copiato si comporta come quello da cui viene. I paesaggi sono scritti come le scene, `scena({...})`. I file degli animali sono scritti come il codice di [`wallpaper/index.html`](wallpaper/index.html): `SPECIES.push({...})` per l'animale, `SCENES.x = {...}` per il suo sfondo.
 
 Le scene sono codice scritto da altri: nell'app la pagina dello sfondo non può usare la rete né aprire altre pagine, e una scena che va in errore smette di disegnare senza fermare il resto. Funzionano solo nel programma, non nella versione per il browser.
 
@@ -168,9 +187,9 @@ ascii-zoo/
 
 La cartella `app/` contiene un programma che mette lo sfondo dietro le icone su tutti i monitor, senza bisogno di Lively. Si configura tutto dall'icona a forma di koi nell'area di notifica (vicino all'orologio di Windows), con un clic destro:
 
-- **Animale**: a rotazione oppure uno fisso, anche una delle [scene tue](#scene-tue);
+- **Sfondo**: a rotazione oppure uno fisso, dal sottomenu **Animali** o **Paesaggi** (anche le [scene tue](#scene-tue));
 - **Rotazione**: ogni quanto cambia animale (o **Spenta**, per tenere quello di adesso) e quali animali far girare;
-- **Animale per schermo**: con più monitor, un animale diverso su ognuno (koi sul portatile, meduse sull'altro…);
+- **Sfondo per schermo**: con più monitor, uno sfondo diverso su ognuno (koi sul portatile, aurora sull'altro…);
 - **Nomi degli animali**: il nome dell'animale più grande di ogni specie;
 - **Widget**: nota, conto alla rovescia, CPU/RAM/batteria, statistiche per nerd, in riproduzione, aspetto dei riquadri (vedi [I widget](#i-widget));
 - **Pomodoro**: lavoro e pause a tempo, con il conto alla rovescia in un riquadro (vedi [I widget](#i-widget));

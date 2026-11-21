@@ -56,7 +56,7 @@ jobs:
           path: menu-test/
           if-no-files-found: warn
 
-      # scene tue: con la cartella delle scene l'app scrive un file per ogni animale di serie
+      # scene tue: con la cartella delle scene l'app scrive un file per ogni sfondo di serie
       # in scene\di-serie, e un file della cartella (lucciole.js) diventa una voce del menu
       - name: Prova - scene tue
         continue-on-error: ${{ startsWith(github.ref, 'refs/tags/') }}
@@ -74,7 +74,8 @@ jobs:
           Get-Content scene-win.log | Select-String 'scena'
           $file = @(Get-ChildItem (Join-Path $dir 'di-serie') -Filter *.js)
           "di-serie: $($file.Count) file: $($file.Name -join ', ')"
-          if ($file.Count -ne 9) { Write-Error "in di-serie ci sono $($file.Count) file invece di 9"; exit 1 }
+          # 9 animali e 6 paesaggi
+          if ($file.Count -ne 15) { Write-Error "in di-serie ci sono $($file.Count) file invece di 15"; exit 1 }
           if (-not (Select-String -Path scene-win.log -Pattern 'scena lucciole: "Lucciole"' -Quiet)) { Write-Error "lucciole.js non letta"; exit 1 }
           Remove-Item -Recurse -Force $dir
 
@@ -330,8 +331,8 @@ jobs:
           kill "$pid"
 
       # scene tue: con la cartella delle scene l'app scrive un file per ogni animale di serie in
-      # scene/di-serie, e lucciole.js diventa la voce 10 del menu Animale (dopo "A rotazione" e
-      # i 9 animali): la foto va guardata, deve esserci l'erba con le lucciole
+      # scene/di-serie (9 animali e 6 paesaggi), e lucciole.js diventa la voce 16 del menu Sfondo
+      # (dopo "A rotazione", i 9 animali e i 6 paesaggi): nella foto l'erba con le lucciole
       - name: Prova - scene tue
         continue-on-error: ${{ startsWith(github.ref, 'refs/tags/') }}
         run: |
@@ -339,7 +340,7 @@ jobs:
           mkdir -p "$dir/scene"
           cp scene/lucciole.js "$dir/scene/"
           cp "$dir/config.json" config-prima.json 2>/dev/null || true
-          echo '{"animale": 10, "clic_desktop": false}' > "$dir/config.json"
+          echo '{"animale": 16, "clic_desktop": false}' > "$dir/config.json"
           ASCII_ZOO_LOG=1 "build/ASCII Zoo.app/Contents/MacOS/ascii-zoo" 2> scene-macos.log &
           pid=$!
           sleep 15
@@ -349,7 +350,7 @@ jobs:
           grep "scena" scene-macos.log || true
           ls "$dir/scene/di-serie"
           n=$(ls "$dir/scene/di-serie"/*.js | wc -l | tr -d ' ')
-          [ "$n" = 9 ] || { echo "::error::in di-serie ci sono $n file invece di 9"; exit 1; }
+          [ "$n" = 15 ] || { echo "::error::in di-serie ci sono $n file invece di 15"; exit 1; }
           grep -q 'scena lucciole: "Lucciole"' scene-macos.log || { echo "::error::lucciole.js non letta"; exit 1; }
           head -3 "$dir/scene/di-serie/koi.js"
           rm -rf "$dir/scene"

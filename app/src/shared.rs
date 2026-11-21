@@ -34,22 +34,87 @@ pub const SPECIE: [(&str, &str); 9] = [
     ("anatre", "Anatre"),
 ];
 
-/// tutto quello che c'è nel menu "Animale": gli animali di serie e poi le scene
-/// dell'utente (cartella `scene`), nello stesso ordine in cui la pagina le aggiunge
-pub fn specie() -> &'static [(&'static str, &'static str)] {
-    static TUTTE: std::sync::OnceLock<Vec<(&'static str, &'static str)>> = std::sync::OnceLock::new();
+/// i paesaggi di serie, dopo gli animali nella pagina: sfondi senza animali, gli stessi
+/// dello screensaver (dreams/), con gli stessi id. (id, nome nel menu)
+pub const PAESAGGI: [(&str, &str); 6] = [
+    ("stelle", "Stelle"),
+    ("pioggia", "Pioggia e lampi"),
+    ("fuoco", "Falò"),
+    ("aurora", "Aurora"),
+    ("vita", "Gioco della vita"),
+    ("mare", "Mare di notte"),
+];
+
+/// una voce del menu "Sfondo": un animale o un paesaggio
+#[derive(Clone, Copy, Debug)]
+pub struct Sfondo {
+    pub id: &'static str,
+    pub nome: &'static str,
+    /// true = nel sottomenu "Paesaggi", false = in "Animali"
+    pub paesaggio: bool,
+}
+
+/// tutto quello che c'è nel menu "Sfondo", nello stesso ordine in cui la pagina lo mette in
+/// SPECIES (la posizione è quella che va in `animale` nelle impostazioni): gli animali di
+/// serie, i paesaggi di serie e poi le scene dell'utente (cartella `scene`)
+pub fn specie() -> &'static [Sfondo] {
+    static TUTTE: std::sync::OnceLock<Vec<Sfondo>> = std::sync::OnceLock::new();
     TUTTE.get_or_init(|| {
-        SPECIE
-            .iter()
-            .copied()
-            // un file con l'id di un animale di serie ne prende il posto (e il nome)
-            .map(|(id, nome)| match crate::scene::tutte().iter().find(|s| s.sostituisce && s.id == id) {
-                Some(s) => (id, s.nome.as_str()),
-                None => (id, nome),
+        specie_di_serie()
+            // un file con l'id di uno sfondo di serie ne prende il posto (e il nome)
+            .map(|(id, nome, paesaggio)| match crate::scene::tutte().iter().find(|s| s.sostituisce && s.id == id) {
+                Some(s) => Sfondo { id, nome: s.nome.as_str(), paesaggio },
+                None => Sfondo { id, nome, paesaggio },
             })
-            .chain(crate::scene::tutte().iter().filter(|s| !s.sostituisce).map(|s| (s.id.as_str(), s.nome.as_str())))
+            .chain(
+                crate::scene::tutte()
+                    .iter()
+                    .filter(|s| !s.sostituisce)
+                    .map(|s| Sfondo { id: s.id.as_str(), nome: s.nome.as_str(), paesaggio: s.paesaggio }),
+            )
             .collect()
     })
+}
+
+/// gli sfondi di serie, nell'ordine della pagina: (id, nome, paesaggio)
+pub fn specie_di_serie() -> impl Iterator<Item = (&'static str, &'static str, bool)> {
+    SPECIE.iter().map(|&(id, nome)| (id, nome, false)).chain(PAESAGGI.iter().map(|&(id, nome)| (id, nome, true)))
+}
+
+/// true se l'id è di uno sfondo di serie (animale o paesaggio)
+pub fn di_serie(id: &str) -> bool {
+    specie_di_serie().any(|s| s.0 == id)
+}
+
+/// gli animali (con un nome da dare all'animale più grande): le posizioni di "Nomi degli animali"
+fn con_nome() -> impl Iterator<Item = &'static Sfondo> {
+    specie().iter().filter(|s| !s.paesaggio)
+}
+
+/// Mette in `sub` le voci `testa` (prima la prima, una linea, poi le altre) e poi due
+/// sottomenu, "Animali" e "Paesaggi", con una voce per ogni sfondo. Restituisce tutte le
+/// voci nell'ordine di `testa` e poi di `specie()`, che è quello delle posizioni: la voce
+/// `scelta` ha la spunta. `spunta(i)` dice se lo sfondo i ha la spunta (per la rotazione).
+fn voci_sfondo(sub: &Submenu, testa: &[&str], spunta: impl Fn(usize) -> bool) -> Vec<CheckMenuItem> {
+    let mut voci = Vec::new();
+    for (k, nome) in testa.iter().enumerate() {
+        let v = CheckMenuItem::new(*nome, true, spunta(k), None);
+        let _ = sub.append(&v);
+        if k == 0 {
+            let _ = sub.append(&PredefinedMenuItem::separator());
+        }
+        voci.push(v);
+    }
+    let animali = Submenu::new("Animali", true);
+    let paesaggi = Submenu::new("Paesaggi", true);
+    for (i, s) in specie().iter().enumerate() {
+        let v = CheckMenuItem::new(s.nome, true, spunta(testa.len() + i), None);
+        let _ = if s.paesaggio { paesaggi.append(&v) } else { animali.append(&v) };
+        voci.push(v);
+    }
+    let _ = sub.append(&animali);
+    let _ = sub.append(&paesaggi);
+    voci
 }
 /// ogni quanto cambia animale "a rotazione"
 pub const INTERVALLI: [(u32, &str); 7] = [
@@ -354,7 +419,7 @@ impl Core {
     pub fn js_rotazione(&self) -> String {
         let specie: Vec<&str> = specie()
             .iter()
-            .map(|s| s.0)
+            .map(|s| s.id)
             .filter(|id| !self.cfg.rotazione_escluse.iter().any(|e| e == id))
             .collect();
         let rot = serde_json::json!({ "secondi": self.cfg.rotazione_secondi, "specie": specie });
@@ -513,7 +578,7 @@ impl Core {
     /// sceglierlo in "Animale"). true = le pagine vanno aggiornate (`js_schermo`)
     pub fn risposta_animale(&mut self) -> bool {
         let Some(i) = self.animale_mostrato.lock().ok().and_then(|mut m| m.take()) else { return false };
-        zoo_log!("rotazione spenta: resta {}", specie().get(i as usize - 1).map(|s| s.0).unwrap_or("?"));
+        zoo_log!("rotazione spenta: resta {}", specie().get(i as usize - 1).map(|s| s.id).unwrap_or("?"));
         self.cfg.animale = i;
         self.segna_animale();
         self.cfg.save();
@@ -571,18 +636,7 @@ impl Core {
 
             let sub = Submenu::new(&nome, true);
             let attuale = self.cfg.animale_schermi.get(&s.id).map(|a| *a as usize + 1).unwrap_or(0);
-            let voci: Vec<CheckMenuItem> = std::iter::once("Come in \"Animale\"")
-                .chain(std::iter::once("A rotazione"))
-                .chain(specie().iter().map(|s| s.1))
-                .enumerate()
-                .map(|(k, name)| CheckMenuItem::new(name, true, k == attuale, None))
-                .collect();
-            for (k, v) in voci.iter().enumerate() {
-                let _ = sub.append(v);
-                if k == 0 {
-                    let _ = sub.append(&PredefinedMenuItem::separator());
-                }
-            }
+            let voci = voci_sfondo(&sub, &["Come in \"Sfondo\"", "A rotazione"], |k| k == attuale);
             let _ = m.animali_sub.append(&sub);
             m.animali_schermi.push((s.id.clone(), sub, voci));
         }
@@ -696,11 +750,11 @@ impl Core {
                 .iter()
                 .zip(&self.menus.rot_specie)
                 .filter(|(_, item)| !item.is_checked())
-                .map(|(s, _)| s.0.to_string())
+                .map(|(s, _)| s.id.to_string())
                 .collect();
             Some(self.js_rotazione())
         } else if let Some(i) = m.nomi.iter().position(|x| x.id().0 == id) {
-            let (sid, label) = specie()[i];
+            let Some(&Sfondo { id: sid, nome: label, .. }) = con_nome().nth(i) else { return Esito::Niente };
             let attuale = self.cfg.nomi.get(sid).cloned().unwrap_or_default();
             let domanda = format!("Nome per {} (vuoto = nessun nome):", label.to_lowercase());
             let Some(nuovo) = dialog::chiedi_nome("ASCII Zoo", &domanda, &attuale, NOME_MAX) else {
@@ -968,36 +1022,22 @@ pub fn etichetta_nome(label: &str, nome: &str) -> String {
 /// i nomi italiani delle scene dello screensaver (in dreams/ sono in inglese, per la
 /// finestra delle impostazioni di Windows)
 pub fn nome_salvaschermo(id: &str) -> Option<&'static str> {
-    const NOMI: [(&str, &str); 6] = [
-        ("stelle", "Stelle"),
-        ("pioggia", "Pioggia e lampi"),
-        ("fuoco", "Falò"),
-        ("aurora", "Aurora"),
-        ("vita", "Gioco della vita"),
-        ("mare", "Mare di notte"),
-    ];
-    NOMI.iter().find(|n| n.0 == id).map(|n| n.1)
+    PAESAGGI.iter().find(|n| n.0 == id).map(|n| n.1)
 }
 
 fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     let menu = Menu::new();
 
-    let sub = Submenu::new("Animale", true);
-    let animali: Vec<CheckMenuItem> = std::iter::once("A rotazione")
-        .chain(specie().iter().map(|s| s.1))
-        .enumerate()
-        .map(|(i, name)| CheckMenuItem::new(name, true, i as u32 == cfg.animale, None))
-        .collect();
-    for item in &animali {
-        let _ = sub.append(item);
-    }
+    // "Sfondo": a rotazione, oppure uno fisso da "Animali" o da "Paesaggi"
+    let sub = Submenu::new("Sfondo", true);
+    let animali = voci_sfondo(&sub, &["A rotazione"], |i| i as u32 == cfg.animale);
     let _ = sub.append(&PredefinedMenuItem::separator());
     let scene_cartella = MenuItem::new("Apri la cartella delle scene…", true, None);
     let _ = sub.append(&scene_cartella);
 
     let rot = Submenu::new("Rotazione", true);
-    // spenta = un animale fisso (scelto in "Animale", o quello che si vede quando si spegne)
-    let rot_spenta = CheckMenuItem::new("Spenta: resta l'animale di adesso", true, cfg.animale != 0, None);
+    // spenta = uno sfondo fisso (scelto in "Sfondo", o quello che si vede quando si spegne)
+    let rot_spenta = CheckMenuItem::new("Spenta: resta lo sfondo di adesso", true, cfg.animale != 0, None);
     let _ = rot.append(&rot_spenta);
     let rot_tempi: Vec<CheckMenuItem> = INTERVALLI
         .iter()
@@ -1007,19 +1047,24 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         let _ = rot.append(item);
     }
     let _ = rot.append(&PredefinedMenuItem::separator());
-    let _ = rot.append(&MenuItem::new("Animali in rotazione:", false, None));
+    let _ = rot.append(&MenuItem::new("In rotazione:", false, None));
+    let rot_animali = Submenu::new("Animali", true);
+    let rot_paesaggi = Submenu::new("Paesaggi", true);
     let rot_specie: Vec<CheckMenuItem> = specie()
         .iter()
-        .map(|(id, name)| CheckMenuItem::new(*name, true, !cfg.rotazione_escluse.iter().any(|e| e == id), None))
+        .map(|s| {
+            let v = CheckMenuItem::new(s.nome, true, !cfg.rotazione_escluse.iter().any(|e| e == s.id), None);
+            let _ = if s.paesaggio { rot_paesaggi.append(&v) } else { rot_animali.append(&v) };
+            v
+        })
         .collect();
-    for item in &rot_specie {
-        let _ = rot.append(item);
-    }
+    let _ = rot.append(&rot_animali);
+    let _ = rot.append(&rot_paesaggi);
 
     let nomi_sub = Submenu::new("Nomi degli animali", true);
-    let nomi: Vec<MenuItem> = specie()
-        .iter()
-        .map(|(id, name)| MenuItem::new(etichetta_nome(name, cfg.nomi.get(*id).map(String::as_str).unwrap_or("")), true, None))
+    // solo gli animali: un paesaggio non ha un animale più grande a cui dare un nome
+    let nomi: Vec<MenuItem> = con_nome()
+        .map(|s| MenuItem::new(etichetta_nome(s.nome, cfg.nomi.get(s.id).map(String::as_str).unwrap_or("")), true, None))
         .collect();
     for item in &nomi {
         let _ = nomi_sub.append(item);
@@ -1125,7 +1170,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         let _ = fotogrammi_sub.append(item);
     }
 
-    let animali_sub = Submenu::new("Animale per schermo", true);
+    let animali_sub = Submenu::new("Sfondo per schermo", true);
     let animali_un_solo = MenuItem::new("(c'è un solo schermo)", false, None);
     let _ = animali_sub.append(&animali_un_solo);
 

@@ -120,6 +120,7 @@ button { cursor: pointer; }
   background: var(--dot); box-shadow: 0 0 8px var(--dot);
 }
 .modes button:hover { color: var(--ink); }
+.modes .sep { align-self: stretch; width: 1px; margin: 4px 3px; background: rgba(var(--tinta), 0.18); }
 .modes button[aria-pressed="true"] { background: rgba(var(--tinta), 0.11); color: var(--ink); }
 
 /* saluto e ricerca */
@@ -244,9 +245,13 @@ h1 {
 .widgets[data-sfondo="pieno"][data-cornice="arrotondata"] pre { border-radius: 0.6em; }
 .widgets pre.lampo, .widgets pre.lampo b, .widgets pre.lampo i { color: var(--widget-lampo); }
 
-@media (max-width: 760px) {
+/* con animali e paesaggi i nomi non stanno tutti: sotto i 1600px solo il pallino (il nome
+   di quello scelto resta) */
+@media (max-width: 1600px) {
   .modes button { padding: 7px 9px; }
   .modes button:not([aria-pressed="true"]) span { display: none; }
+}
+@media (max-width: 760px) {
   .hint { font-size: 10px; }
 }
 
@@ -343,6 +348,20 @@ h1 {
     return Math.sqrt(dx * dx + dy * dy);
   }
   function segT() { return _t; }
+  // rumore morbido 2D (0..1) e la sua somma a più ottave: per le cose che ondeggiano
+  // (nuvole, onde, l'aurora). Lo stesso di dreams/src/grid.rs.
+  function liscia(t) { return t * t * (3 - 2 * t); }
+  function rumore(x, y) {
+    var xi = Math.floor(x), yi = Math.floor(y), xf = liscia(x - xi), yf = liscia(y - yi);
+    var a = hash2(xi, yi), b = hash2(xi + 1, yi), c = hash2(xi, yi + 1), d = hash2(xi + 1, yi + 1);
+    var ab = a + (b - a) * xf, cd = c + (d - c) * xf;
+    return ab + (cd - ab) * yf;
+  }
+  function frattale(x, y, ottave) {
+    var tot = 0, amp = 1, freq = 1, norm = 0;
+    for (var i = 0; i < ottave; i++) { tot += rumore(x * freq, y * freq) * amp; norm += amp; amp *= 0.5; freq *= 2; }
+    return tot / norm;
+  }
   function advance(c, dt) {
     c.x += Math.cos(c.th) * c.sp * dt;
     c.y += Math.sin(c.th) * c.sp * dt;
@@ -1992,14 +2011,504 @@ h1 {
   // ==== fine anatre ====
 
   /* ------------------------------------------------------------------ */
+  /* Paesaggi: sfondi senza animali, gli stessi dello screensaver         */
+  /* (dreams/), nel menu "Sfondo > Paesaggi" dopo gli animali. Sono       */
+  /* scritti come le scene dell'utente, scena({ colori, init, tick,       */
+  /* disegna }), così l'app li copia in scene/di-serie (tra le righe      */
+  /* "====") e si possono cambiare come gli animali; id e nome qui        */
+  /* servono solo alla pagina (per un file contano il nome del file e la  */
+  /* riga "// nome:").                                                    */
+  /* ------------------------------------------------------------------ */
+  var COLORE = /^#[0-9a-f]{6}$/i;
+  function niente() {}
+  // una scena senza animali, da scena({...}): un animale che non nasce mai
+  function daScena(def) {
+    var pal = (Array.isArray(def.colori) ? def.colori : []).filter(function (c) { return COLORE.test(c); }).slice(0, 16);
+    if (!pal.length) pal = ['#aab3c5'];
+    var sp = {
+      dot: COLORE.test(def.puntino) ? def.puntino : pal[0], pal: pal,
+      dens: 1e9, min: 0, max: 0, smin: 4, smax: 8, off: 0, rad: 1,
+      spawn: niente, update: niente, shape: niente, paesaggio: true,
+      init: def.init, tick: def.tick, under: def.disegna || niente
+    };
+    if (typeof def.sopra === 'function') sp.over = def.sopra;
+    // altre funzioni della scena (es. una che crea una goccia): si chiamano con this.nome()
+    for (var k in def) {
+      if (typeof def[k] === 'function' && !(k in sp) && k !== 'disegna' && k !== 'sopra') sp[k] = def[k];
+    }
+    return sp;
+  }
+  function scena(def) {
+    var sp = daScena(def);
+    sp.id = def.id;
+    sp.label = def.nome;
+    SPECIES.push(sp);
+  }
+
+  // ==== paesaggio: stelle ====
+  // Stelle: si vola tra le stelle, che arrivano dal centro, crescono e lasciano una scia;
+  // ogni tanto una stella cadente. (Lo stesso paesaggio dello screensaver, dreams/.)
+  scena({
+    id: 'stelle', nome: 'Stelle',
+    colori: ['#dce6ff', '#b4c8ff', '#ffecc8', '#ffd2aa', '#7896ff', '#ffffff'],
+    puntino: '#b4c8ff',
+    init: function (w) {
+      var s = { stelle: [], cadente: null };
+      var n = clamp(Math.round(w.cols * w.rows / 16), 60, 900);
+      for (var k = 0; k < n; k++) s.stelle.push(this.stella(w, 0.05 + 0.95 * w.rnd()));
+      return s;
+    },
+    stella: function (w, z) {
+      return { x: w.rnd() * 2 - 1, y: w.rnd() * 2 - 1, z: z, c: w.rnd() < 0.8 ? Math.floor(w.rnd() * 2) : 2 + Math.floor(w.rnd() * 2) };
+    },
+    tick: function (w, dt, t, s) {
+      var vel = 0.05 * (1 + 0.4 * Math.sin(t * 0.07));
+      s.vel = vel;
+      for (var k = 0; k < s.stelle.length; k++) {
+        var st = s.stelle[k];
+        st.z -= vel * dt;
+        if (st.z <= 0.03) s.stelle[k] = this.stella(w, 1);
+      }
+      if (!s.cadente && w.rnd() < dt / 12) {
+        var sx = w.rnd() < 0.5;
+        s.cadente = { x: (sx ? 0 : 0.5) * w.cols + w.rnd() * w.cols * 0.5, y: w.rnd() * w.rows * 0.3,
+                      vx: (sx ? 1 : -1) * w.cols * 0.5, vy: w.rows * 0.3, vita: 1.3 };
+      }
+      if (s.cadente) {
+        var c = s.cadente;
+        c.x += c.vx * dt; c.y += c.vy * dt; c.vita -= dt;
+        if (c.vita <= 0) s.cadente = null;
+      }
+    },
+    disegna: function (w, t, A, s) {
+      var C = this.c0, cx = w.cols / 2, cy = w.rows / 2, sc = Math.max(w.cols, w.rows) * 0.3;
+      var ang = t * 0.012, sa = Math.sin(ang), ca = Math.cos(ang), vel = s.vel || 0.05;
+      for (var k = 0; k < s.stelle.length; k++) {
+        var st = s.stelle[k], z = Math.max(0.03, st.z);
+        var rx = st.x * ca - st.y * sa, ry = st.x * sa + st.y * ca;
+        var x = cx + rx / z * sc, y = cy + ry / z * sc;
+        if (x < 0 || y < 0 || x >= w.cols || y >= w.rows) { s.stelle[k] = this.stella(w, 1); continue; }
+        var vicino = 1 - z, luce = Math.max(0.35, Math.pow(vicino, 1.1));
+        // pochi gradini di luminosità: le celle cambiano meno spesso
+        var v = z > 0.7 ? 0.3 : z > 0.45 ? 0.55 : z > 0.22 ? 0.8 : 1;
+        if (z < 0.4) {
+          // la scia: da dove era poco fa a dove è adesso
+          var z2 = z + vel * 0.6, px = cx + rx / z2 * sc, py = cy + ry / z2 * sc;
+          var passi = Math.min(8, Math.ceil(Math.max(Math.abs(x - px), Math.abs(y - py))));
+          for (var p = 1; p <= passi; p++) {
+            var f = p / (passi + 1);
+            w.put(Math.floor(px + (x - px) * f), Math.floor(py + (y - py) * f), 0.2, C + 4, A * luce * f * 0.8);
+          }
+        }
+        w.put(Math.floor(x), Math.floor(y), v, C + st.c, A * Math.round(luce * 4) / 4);
+      }
+      if (s.cadente) {
+        var c = s.cadente, l = Math.min(1, c.vita);
+        for (var q = 0; q < 10; q++) {
+          var g = q / 10;
+          w.put(Math.floor(c.x - c.vx * g * 0.1), Math.floor(c.y - c.vy * g * 0.1), q ? 0.5 - g * 0.4 : 0.9, C + (q ? 4 : 5), A * l * (1 - g));
+        }
+      }
+    }
+  });
+  // ==== fine stelle ====
+
+  // ==== paesaggio: pioggia ====
+  // Pioggia e lampi: gocce col vento, schizzi e cerchi nelle pozzanghere, ogni tanto un
+  // fulmine che illumina tutto.
+  scena({
+    id: 'pioggia', nome: 'Pioggia e lampi',
+    colori: ['#96b9eb', '#506e96', '#3c5578', '#bec8ff', '#f0f4ff', '#6f8fbf'],
+    puntino: '#96b9eb',
+    init: function (w) {
+      var s = { gocce: [], cerchi: [], fulmine: null, lampo: 0, prossimo: 6 + 8 * w.rnd() };
+      var n = clamp(Math.round(w.cols * w.rows / 34), 30, 600);
+      for (var k = 0; k < n; k++) {
+        var v = 0.9 + 0.5 * w.rnd();
+        s.gocce.push({ x: w.rnd() * w.cols, y: w.rnd() * w.rows, v: v, lungo: v > 1.2 ? 3 : 2 });
+      }
+      return s;
+    },
+    fulmine: function (w, terra) {
+      var punti = [], x = Math.floor(w.cols * (0.15 + 0.7 * w.rnd())), rami = [];
+      for (var y = 0; y < terra; y++) {
+        x += Math.floor(w.rnd() * 3) - 1;
+        punti.push(x, y);
+        if (w.rnd() < 0.06 && y < terra - 4) rami.push(x, y, w.rnd() < 0.5 ? -1 : 1);
+      }
+      for (var r = 0; r < rami.length; r += 3) {
+        var rx = rami[r], lungo = 3 + Math.floor(w.rnd() * 6);
+        for (var yy = rami[r + 1] + 1; yy < Math.min(terra, rami[r + 1] + lungo); yy++) { rx += rami[r + 2]; punti.push(rx, yy); }
+      }
+      return { punti: punti, vita: 0.45 };
+    },
+    tick: function (w, dt, t, s) {
+      var terra = Math.floor(w.rows * 0.86), caduta = w.rows * 0.8;
+      s.vento = Math.sin(t * 0.05) * 0.35 + Math.sin(t * 0.31) * 0.08;
+      s.lampo = Math.max(0, s.lampo - dt * 2.2);
+      for (var k = 0; k < s.gocce.length; k++) {
+        var g = s.gocce[k];
+        g.y += caduta * g.v * dt;
+        g.x += s.vento * caduta * g.v * dt * 0.5;
+        if (g.y >= terra) {
+          if (s.cerchi.length < 100 && w.rnd() < 0.2) s.cerchi.push({ x: Math.floor(g.x), eta: 0 });
+          g.y = -w.rnd() * w.rows * 0.3;
+          g.x = w.cols * (w.rnd() * 1.4 - 0.2);
+        }
+      }
+      for (var c = s.cerchi.length - 1; c >= 0; c--) { s.cerchi[c].eta += dt; if (s.cerchi[c].eta > 0.9) s.cerchi.splice(c, 1); }
+      s.prossimo -= dt;
+      if (s.prossimo <= 0) { s.fulmine = this.fulmine(w, terra); s.lampo = 1; s.prossimo = 9 + 16 * w.rnd(); }
+      if (s.fulmine) { s.fulmine.vita -= dt; if (s.fulmine.vita <= 0) s.fulmine = null; }
+    },
+    disegna: function (w, t, A, s) {
+      var C = this.c0, terra = Math.floor(w.rows * 0.86), x, y, k;
+      // il lampo: lo schermo si illumina di puntini
+      if (s.lampo > 0.05) {
+        var la = A * Math.round(s.lampo * 4) / 4 * 0.35;
+        for (y = 0; y < terra; y += 2) for (x = (y * 3) % 5; x < w.cols; x += 5) w.put(x, y, 0.1, C + 3, la);
+      }
+      var luce = A * (0.75 + s.lampo * 0.25);
+      for (k = 0; k < s.gocce.length; k++) {
+        var g = s.gocce[k];
+        for (var q = 0; q < g.lungo; q++) {
+          var f = 1 - q / (g.lungo + 0.5);
+          w.put(Math.floor(g.x - s.vento * q * 0.5), Math.floor(g.y) - q, q ? 0.3 : 0.6, C, Math.min(1, luce * f * (g.v - 0.1)));
+        }
+      }
+      // la superficie dell'acqua e il terreno bagnato
+      var chiaro = A * (s.lampo > 0.3 ? 0.75 : 0.45);
+      for (x = 0; x < w.cols; x++) {
+        var n = rumore(x * 0.15, t * 0.6);
+        w.put(x, terra, n > 0.62 ? 0.55 : n > 0.4 ? 0.35 : 0.2, C + 1, chiaro);
+        for (y = terra + 1; y < w.rows; y++) {
+          var d = (y - terra) / (w.rows - terra);
+          if (rumore(x * 0.4, y * 1.3 + Math.floor(t * 2) * 0.2) > 0.55 + d * 0.2) w.put(x, y, 0.15, C + 2, A * 0.5);
+        }
+      }
+      // schizzi e cerchi
+      for (k = 0; k < s.cerchi.length; k++) {
+        var c = s.cerchi[k];
+        if (c.eta < 0.12) {
+          w.put(c.x, terra - 1, 0.6, C, A * 0.8);
+          w.put(c.x - 1, terra - 2, 0.2, C, A * 0.5);
+          w.put(c.x + 1, terra - 2, 0.2, C, A * 0.5);
+        } else {
+          var r = Math.floor(c.eta * 5), fa = A * 0.6 * (1 - c.eta / 0.9);
+          w.put(c.x - r - 1, terra, 0.4, C + 5, fa, true);
+          w.put(c.x + r + 1, terra, 0.4, C + 5, fa, true);
+        }
+      }
+      // il fulmine tremola: acceso, spento, acceso
+      var fu = s.fulmine;
+      if (fu && (fu.vita > 0.3 || (fu.vita > 0.12 && fu.vita < 0.22))) {
+        for (k = 0; k < fu.punti.length; k += 2) w.put(fu.punti[k], fu.punti[k + 1], 0.95, C + 4, A, true);
+      }
+    }
+  });
+  // ==== fine pioggia ====
+
+  // ==== paesaggio: fuoco ====
+  // Falò: il fuoco a propagazione di calore, con le braci che salgono, la legna e i sassi.
+  scena({
+    id: 'fuoco', nome: 'Falò',
+    colori: ['#3c0804', '#aa1e08', '#eb5a14', '#ffa028', '#ffe178', '#fffaeb', '#ff9632', '#784623', '#c8642a', '#6e6e78'],
+    puntino: '#ffa028',
+    init: function (w) {
+      var W = w.cols, H = w.rows;
+      return { calore: new Float32Array(W * (H + 2)), braci: [], resto: 0 };
+    },
+    // un passo della simulazione, a ritmo fisso (30 al secondo)
+    simula: function (w, s, t) {
+      var W = w.cols, H = w.rows, cal = s.calore, base = Math.floor(H * 0.88), centro = W / 2;
+      var largo = Math.max(6, W * 0.15), x, y;
+      for (y = base; y < base + 2; y++) {
+        for (x = 0; x < W; x++) {
+          var d = Math.abs((x - centro) / largo), forza = Math.max(0, 1 - d * d);
+          cal[y * W + x] = w.rnd() < 0.7 ? Math.min(1, forza * (0.7 + 0.6 * rumore(x * 0.35, t * 3))) : 0;
+        }
+      }
+      var raffredda = 2.6 / H, vento = (rumore(t * 0.3, 7) - 0.5) * 1.5;
+      for (y = 0; y < base; y++) {
+        for (x = 0; x < W; x++) {
+          var sx = Math.round(x + vento * w.rnd());
+          var a = clamp(sx - 1, 0, W - 1), b = clamp(sx, 0, W - 1), c = clamp(sx + 1, 0, W - 1);
+          var r1 = (y + 1) * W, r2 = Math.min(H + 1, y + 2) * W;
+          var v = (cal[r1 + a] + cal[r1 + b] + cal[r1 + c] + cal[r2 + b]) / 4 - raffredda * (0.6 + w.rnd() * 0.8);
+          cal[y * W + x] = v > 0 ? v : 0;
+        }
+      }
+      if (w.rnd() < 0.3 && s.braci.length < 60) {
+        s.braci.push({ x: centro + (w.rnd() - 0.5) * largo * 1.2, y: base * 0.75, vx: (w.rnd() - 0.5) * 6, vita: 1.5 + 2.5 * w.rnd() });
+      }
+    },
+    tick: function (w, dt, t, s) {
+      s.resto = Math.min(s.resto + dt, 4 / 30);
+      while (s.resto >= 1 / 30) { this.simula(w, s, t); s.resto -= 1 / 30; }
+      for (var k = s.braci.length - 1; k >= 0; k--) {
+        var b = s.braci[k];
+        b.y -= 6 * dt; b.x += (b.vx + Math.sin(t * 2 + b.y * 0.3) * 2) * dt; b.vita -= dt;
+        if (b.vita <= 0 || b.y < 0) s.braci.splice(k, 1);
+      }
+    },
+    disegna: function (w, t, A, s) {
+      var C = this.c0, W = w.cols, H = w.rows, base = Math.floor(H * 0.88), cal = s.calore, x, y;
+      for (y = 0; y < base; y++) {
+        for (x = 0; x < W; x++) {
+          var v = cal[y * W + x];
+          if (v <= 0.05) continue;
+          // sei colori dal rosso scuro al bianco; la luce a gradini
+          w.put(x, y, Math.round(Math.pow(v, 0.8) * 8) / 8, C + Math.min(5, Math.floor(v * 6)), A * Math.min(1, Math.round(v * 1.6 * 4) / 4 + 0.25));
+        }
+      }
+      for (var k = 0; k < s.braci.length; k++) {
+        var b = s.braci[k], f = Math.min(1, b.vita / 2);
+        w.put(Math.floor(b.x), Math.floor(b.y), f > 0.6 ? 0.7 : 0.3, C + 6, A * f);
+      }
+      // la legna: tronchi incrociati, accesi dalle braci
+      var centro = Math.floor(W / 2), largo = Math.floor(W * 0.11);
+      for (var i = 0; i < 4 && base + i < H; i++) {
+        y = base + i;
+        for (x = centro - largo + i * 2; x < centro + largo - i * 2; x++) {
+          var acceso = cal[base * W + clamp(x, 0, W - 1)];
+          w.put(x, y, (x + y) % 7 === 0 ? 0.45 : i === 0 ? 0.3 : 0.8, acceso > 0.5 ? C + 8 : C + 7, A * (0.6 + acceso * 0.4), true);
+        }
+      }
+      // i sassi intorno
+      var sassi = [centro - largo - 3, centro - largo - 1, centro + largo, centro + largo + 2];
+      for (var q = 0; q < sassi.length; q++) {
+        y = base + 2 + (q % 2);
+        w.put(sassi[q], y, 0.6, C + 9, A * 0.7);
+        w.put(sassi[q] + 1, y, 0.6, C + 9, A * 0.7);
+      }
+    }
+  });
+  // ==== fine fuoco ====
+
+  // ==== paesaggio: aurora ====
+  // Aurora: tende di luce verde e viola che ondeggiano sopra le montagne, stelle che
+  // brillano e un lago che riflette tutto.
+  scena({
+    id: 'aurora', nome: 'Aurora',
+    colori: ['#46ff96', '#28dcbe', '#5a8cff', '#be5ae6', '#c8d2ff', '#788cb4', '#d2dcf0', '#2a3248', '#3c5078'],
+    puntino: '#46ff96',
+    init: function (w) {
+      var s = { stelle: [], creste: [] };
+      var n = Math.round(w.cols * w.rows / 50), x;
+      for (var k = 0; k < n; k++) s.stelle.push(Math.floor(w.rnd() * w.cols), Math.floor(w.rnd() * w.rows * 0.55), w.rnd() * TAU, 0.5 + 2 * w.rnd());
+      // il profilo delle montagne (fisso)
+      var lago = Math.floor(w.rows * 0.78);
+      for (x = 0; x < w.cols; x++) s.creste.push(Math.min(lago - 1, Math.floor(w.rows * 0.58 + (frattale(x * 0.035, 11, 4) - 0.5) * w.rows * 0.36)));
+      return s;
+    },
+    disegna: function (w, t, A, s) {
+      var C = this.c0, W = w.cols, H = w.rows, lago = Math.floor(H * 0.78), x, y, k;
+      for (k = 0; k < s.stelle.length; k += 4) {
+        if (s.stelle[k + 1] >= s.creste[s.stelle[k]]) continue;
+        var l = 0.5 + 0.5 * Math.sin(t * s.stelle[k + 3] + s.stelle[k + 2]);
+        w.put(s.stelle[k], s.stelle[k + 1], l > 0.6 ? 0.35 : 0.12, C + 4, A * (l > 0.6 ? 0.6 : 0.35));
+      }
+      // le tende: per ogni colonna un bordo in basso che ondeggia e una luce che sale;
+      // il cielo acceso si ricorda per il riflesso nel lago
+      var cielo = s.cielo && s.cielo.length === W * H ? s.cielo : (s.cielo = new Float32Array(W * H));
+      cielo.fill(0);
+      var tt = Math.floor(t * 6) / 6; // le tende si muovono a scatti piccoli: meno celle da ridisegnare
+      for (x = 0; x < W; x++) {
+        var forza = clamp((frattale(x * 0.018 + tt * 0.025, tt * 0.04, 3) - 0.3) * 2.8, 0, 1);
+        if (forza <= 0) continue;
+        var bordo = H * 0.4 + (frattale(x * 0.012, tt * 0.05 + 3, 3) - 0.5) * H * 0.3;
+        var lungo = H * (0.16 + 0.26 * forza), raggio = 0.55 + 0.45 * rumore(x * 0.45, tt * 0.8);
+        var tinta = rumore(x * 0.05, tt * 0.1) * 0.15;
+        for (k = 0; k < lungo; k++) {
+          y = Math.floor(bordo) - k;
+          if (y < 0 || y >= s.creste[x]) continue;
+          var f = 1 - k / lungo, luce = forza * Math.pow(f, 1.3) * raggio;
+          if (luce < 0.06) continue;
+          luce = Math.round(luce * 6) / 6;
+          var col = Math.min(3, Math.floor(((1 - f) * 0.9 + tinta) * 4));
+          w.put(x, y, luce, C + col, A * Math.min(1, luce * 2));
+          cielo[y * W + x] = luce + col * 2; // luce (0..1) + colore, per il riflesso
+        }
+      }
+      // le montagne: la cresta, un po' di neve sulle cime più alte, il fianco scuro
+      for (x = 0; x < W; x++) {
+        var cima = s.creste[x], prima = s.creste[Math.max(0, x - 1)], dopo = s.creste[Math.min(W - 1, x + 1)];
+        w.put(x, cima, prima > cima && dopo > cima ? 0.7 : 0.5, C + 5, A * 0.7);
+        if (cima < H * 0.45) w.put(x, cima + 1, 0.35, C + 6, A * 0.5);
+        for (y = cima + 2; y < lago; y += 2) if (hash2(x, y) < 0.35) w.put(x, y, 0.2, C + 7, A * 0.8);
+      }
+      // il lago riflette il cielo capovolto, increspato
+      for (y = lago; y < H; y++) {
+        var src = lago - 1 - (y - lago);
+        for (x = 0; x < W; x++) {
+          var sx = Math.floor(x + (rumore(x * 0.2, y * 0.9 + tt * 0.7) - 0.5) * 3);
+          var c = src >= 0 && sx >= 0 && sx < W ? cielo[src * W + sx] : 0;
+          if (c > 0.06) {
+            var cc = Math.floor(c / 2), lu = c - cc * 2;
+            w.put(x, y, lu * 0.6, C + cc, A * Math.min(1, lu * 0.9));
+          } else if (rumore(x * 0.3, y * 1.7 + tt * 0.5) > 0.72) {
+            w.put(x, y, 0.15, C + 8, A * 0.4);
+          }
+        }
+      }
+    }
+  });
+  // ==== fine aurora ====
+
+  // ==== paesaggio: vita ====
+  // Gioco della vita: le cellule di Conway cambiano colore invecchiando e lasciano una scia
+  // quando muoiono; se il mondo si ferma, arriva una pioggia di cellule nuove.
+  scena({
+    id: 'vita', nome: 'Gioco della vita',
+    colori: ['#78ffe6', '#5adc78', '#e6e65a', '#ff8c50', '#e65ac8', '#5a78a0'],
+    puntino: '#5adc78',
+    init: function (w) {
+      var n = w.cols * w.rows, s = { viva: new Uint8Array(n), eta: new Uint16Array(n), scia: new Float32Array(n),
+                                     resto: 0, storia: [], semina: 25 };
+      for (var i = 0; i < n; i++) s.viva[i] = w.rnd() < 0.18 ? 1 : 0;
+      return s;
+    },
+    // una macchia di cellule a caso in un punto a caso
+    semina: function (w, s) {
+      var W = w.cols, H = w.rows, r = Math.max(3, Math.floor(H / 6)), cx = Math.floor(w.rnd() * W), cy = Math.floor(w.rnd() * H);
+      for (var dy = -r; dy <= r; dy++) {
+        for (var dx = -r; dx <= r; dx++) {
+          if (dx * dx + dy * dy > r * r || w.rnd() >= 0.4) continue;
+          var i = ((cy + dy + H) % H) * W + (cx + dx + W) % W;
+          if (!s.viva[i]) { s.viva[i] = 1; s.eta[i] = 0; }
+        }
+      }
+    },
+    generazione: function (w, s) {
+      var W = w.cols, H = w.rows, viva = s.viva, nuova = new Uint8Array(W * H), quante = 0;
+      for (var y = 0; y < H; y++) {
+        var su = ((y + H - 1) % H) * W, qui = y * W, giu = ((y + 1) % H) * W;
+        for (var x = 0; x < W; x++) {
+          var sx = (x + W - 1) % W, dx = (x + 1) % W;
+          var n = viva[su + sx] + viva[su + x] + viva[su + dx] + viva[qui + sx] + viva[qui + dx] + viva[giu + sx] + viva[giu + x] + viva[giu + dx];
+          nuova[qui + x] = n === 3 || (n === 2 && viva[qui + x]) ? 1 : 0;
+        }
+      }
+      for (var i = 0; i < W * H; i++) {
+        if (nuova[i]) { quante++; s.eta[i] = viva[i] ? Math.min(65535, s.eta[i] + 1) : 0; }
+        else if (viva[i]) s.scia[i] = 1;
+      }
+      s.viva = nuova;
+      s.storia.push(quante);
+      if (s.storia.length > 40) s.storia.shift();
+      var fermo = s.storia.length === 40 && s.storia.every(function (q) { return Math.abs(q - quante) <= 6; });
+      if (fermo || quante < W * H / 60) { this.semina(w, s); s.storia.length = 0; }
+    },
+    tick: function (w, dt, t, s) {
+      s.resto = Math.min(s.resto + dt, 0.5);
+      while (s.resto >= 1 / 8) { this.generazione(w, s); s.resto -= 1 / 8; }
+      s.semina -= dt;
+      if (s.semina <= 0) { this.semina(w, s); s.semina = 15 + 20 * w.rnd(); }
+      for (var i = 0; i < s.scia.length; i++) if (s.scia[i] > 0) s.scia[i] = Math.max(0, s.scia[i] - dt * 0.8);
+    },
+    disegna: function (w, t, A, s) {
+      var C = this.c0, W = w.cols, H = w.rows;
+      for (var y = 0; y < H; y++) {
+        for (var x = 0; x < W; x++) {
+          var i = y * W + x;
+          if (s.viva[i]) {
+            var e = s.eta[i];
+            w.put(x, y, e < 2 ? 0.45 : e < 20 ? 0.7 : 0.9, C + Math.min(4, Math.floor(e / 12)), A * 0.9);
+          } else if (s.scia[i] > 0.05) {
+            w.put(x, y, 0.1, C + 5, A * Math.ceil(s.scia[i] * 3) / 3 * 0.4);
+          }
+        }
+      }
+    }
+  });
+  // ==== fine vita ====
+
+  // ==== paesaggio: mare ====
+  // Mare di notte: la luna con i crateri, nuvole che le passano davanti, il riflesso che
+  // tremola sulle onde e una barchetta a vela che attraversa.
+  scena({
+    id: 'mare', nome: 'Mare di notte',
+    colori: ['#c8d2ff', '#787d96', '#fffae1', '#c8c4aa', '#fff0be', '#4678aa', '#325a8c', '#5a6e96', '#aa9678'],
+    puntino: '#fffae1',
+    init: function (w) {
+      var s = { stelle: [], barca: w.cols * (w.rnd() * 0.5) - 10 };
+      for (var k = 0; k < w.cols * w.rows / 70; k++) s.stelle.push(Math.floor(w.rnd() * w.cols), Math.floor(w.rnd() * w.rows * 0.5), w.rnd() * TAU);
+      return s;
+    },
+    tick: function (w, dt, t, s) {
+      s.barca += dt * 1.2;
+      if (s.barca > w.cols + 12) s.barca = -12 - w.rnd() * w.cols * 0.5;
+    },
+    disegna: function (w, t, A, s) {
+      var C = this.c0, W = w.cols, H = w.rows, oriz = Math.floor(H * 0.55), x, y, k;
+      var lx = W * 0.72, ly = H * 0.22, r = Math.max(3, H * 0.1), tt = Math.floor(t * 8) / 8;
+      for (k = 0; k < s.stelle.length; k += 3) {
+        if (s.stelle[k + 1] >= oriz - 1) continue;
+        var l = Math.sin(t * 1.3 + s.stelle[k + 2]) > 0 ? 0.45 : 0.25;
+        w.put(s.stelle[k], s.stelle[k + 1], 0.12, C, A * l);
+      }
+      // nuvole lente (ricalcolate 8 volte al secondo); la luna resta davanti
+      if (s.tNuvole !== tt || !s.nuvole || s.nuvole.length !== W * oriz) {
+        s.tNuvole = tt;
+        if (!s.nuvole || s.nuvole.length !== W * oriz) s.nuvole = new Float32Array(W * oriz);
+        for (y = 0; y < oriz - 2; y++) for (x = 0; x < W; x++) s.nuvole[y * W + x] = frattale(x * 0.03 - tt * 0.04, y * 0.12, 4);
+      }
+      for (y = 0; y < oriz - 2; y++) {
+        for (x = 0; x < W; x++) {
+          var n = s.nuvole[y * W + x];
+          if (n > 0.62) {
+            var dens = Math.min(1, (n - 0.62) * 4);
+            w.put(x, y, dens > 0.5 ? 0.4 : 0.15, C + 1, A * (dens > 0.5 ? 0.55 : 0.35));
+          }
+        }
+      }
+      // la luna: un disco con i crateri
+      for (y = Math.floor(ly - r); y <= ly + r; y++) {
+        for (x = Math.floor(lx - r); x <= lx + r; x++) {
+          var d = Math.sqrt((x - lx) * (x - lx) + (y - ly) * (y - ly)) / r;
+          if (d > 1) continue;
+          var cratere = frattale(x * 0.35, y * 0.35, 3);
+          w.put(x, y, cratere > 0.62 ? 0.55 : cratere > 0.5 ? 0.75 : 0.95, C + (cratere > 0.6 ? 3 : 2), A * (0.95 * (1 - Math.pow(d, 6)) + 0.05), true);
+        }
+      }
+      // le onde, più grandi e più chiare man mano che si avvicinano, e il riflesso della luna
+      for (y = oriz + 1; y < H; y++) {
+        var dd = (y - oriz) / Math.max(1, H - oriz), freq = 0.5 - dd * 0.35, largo = r * (1 + dd * 2.5);
+        for (x = 0; x < W; x++) {
+          var dx = Math.abs(x - lx);
+          if (dx < largo) {
+            var trem = rumore(x * 0.6, y * 1.1 + tt * 2.2);
+            if (trem > 0.42 + dx / largo * 0.4) { w.put(x, y, trem > 0.7 ? 0.7 : 0.4, C + 4, A * (trem > 0.7 ? 0.95 : 0.7)); continue; }
+          }
+          var v = Math.sin(x * freq + tt * (0.8 + dd) + y * 1.7) * 0.6 + (rumore(x * 0.08, y * 0.5 + tt * 0.3) - 0.5) * 1.2;
+          if (v > 0.55) w.put(x, y, 0.35, C + 5, A * (0.35 + 0.35 * dd));
+          else if (v > 0.2) w.put(x, y, 0.15, C + 6, A * (0.25 + 0.3 * dd));
+        }
+      }
+      for (x = 0; x < W; x++) if (Math.abs(x - lx) > r * 1.2) w.put(x, oriz, 0.2, C + 7, A * 0.6);
+      // la barchetta, scura contro il riflesso
+      var barca = ['    |\\    ', '    | \\   ', '  __|__\\_ ', '  \\_____/ '];
+      var by = oriz + Math.floor((H - oriz) * 0.3) - barca.length, dondolo = Math.round(Math.sin(t * 1.1) * 0.6);
+      for (var i = 0; i < barca.length; i++) {
+        for (var j = 0; j < barca[i].length; j++) {
+          var ch = barca[i].charAt(j), bx = Math.floor(s.barca) + j, yy = by + i + (i >= 2 ? 0 : Math.min(0, dondolo));
+          if (ch !== ' ') w.put(bx, yy, ch === '_' ? 0.45 : 0.75, C + 8, A * 0.9, true);
+          else if (i >= 2 && j > 1 && j < 9) w.put(bx, yy, 0.05, C + 6, 0, true);
+        }
+      }
+    }
+  });
+  // ==== fine mare ====
+
+  /* ------------------------------------------------------------------ */
   /* File dell'utente. L'app mette in window.ZOO_SCENE i file .js della   */
   /* cartella "scene" (vedi app/src/scene.rs). Due tipi:                  */
   /*  - una scena senza animali, che chiama scena({ colori, init, ... }); */
   /*  - un animale, scritto come quelli qui sopra (tra le righe "====",   */
   /*    che l'app copia in scene/di-serie): SPECIES.push({...}) e, se ha  */
   /*    uno sfondo, SCENES.x = {...}.                                     */
-  /* L'id è il nome del file: un file con l'id di un animale di serie lo  */
-  /* sostituisce, gli altri sono voci in più del menu dopo gli animali.   */
+  /* L'id è il nome del file: un file con l'id di uno sfondo di serie lo  */
+  /* sostituisce, gli altri sono voci in più del menu dopo i paesaggi.    */
   /* Nel browser e nelle estensioni la lista è vuota.                     */
   /* ------------------------------------------------------------------ */
   // sp.base: l'animale di serie da cui viene (il motore ne guarda alcuni per nome)
@@ -2007,8 +2516,6 @@ h1 {
   (function () {
     var lista = global.ZOO_SCENE;
     if (!lista || !lista.length) return;
-    var COLORE = /^#[0-9a-f]{6}$/i;
-    function niente() {}
     // una funzione del file che va in errore smette di essere chiamata (e non
     // nascono più animali di quel tipo), invece di fermare tutto lo sfondo
     function protetta(sp, fn, vuoto) {
@@ -2035,23 +2542,6 @@ h1 {
         if (k === 'init') o[k] = conStato(o[k]);
       }
     }
-    // una scena senza animali, da scena({...}): un animale che non nasce mai
-    function daScena(def) {
-      var pal = (Array.isArray(def.colori) ? def.colori : []).filter(function (c) { return COLORE.test(c); }).slice(0, 16);
-      if (!pal.length) pal = ['#aab3c5'];
-      var sp = {
-        dot: COLORE.test(def.puntino) ? def.puntino : pal[0], pal: pal,
-        dens: 1e9, min: 0, max: 0, smin: 4, smax: 8, off: 0, rad: 1,
-        spawn: niente, update: niente, shape: niente,
-        init: def.init, tick: def.tick, under: def.disegna || niente
-      };
-      if (typeof def.sopra === 'function') sp.over = def.sopra;
-      // altre funzioni della scena (es. una che crea una goccia): si chiamano con this.nome()
-      for (var k in def) {
-        if (typeof def[k] === 'function' && !(k in sp) && k !== 'disegna' && k !== 'sopra') sp[k] = def[k];
-      }
-      return sp;
-    }
     // quello che un file può usare: le funzioni comuni del motore (i nomi sono in scene.rs)
     function api(voce, preso) {
       return {
@@ -2060,7 +2550,8 @@ h1 {
         SCENES: preso.sfondi,
         byId: byId, TAU: TAU, FLOW: FLOW, clamp: clamp, lerp: lerp, angDiff: angDiff, hash2: hash2,
         steer: steer, segD: segD, segT: segT, advance: advance, goTo: goTo, defaultPoke: defaultPoke,
-        place: place, drawCells: drawCells, celle: drawCells, rockCells: rockCells, spring: spring
+        place: place, drawCells: drawCells, celle: drawCells, rockCells: rockCells, spring: spring,
+        rumore: rumore, frattale: frattale
       };
     }
     var usati = {};
@@ -3129,6 +3620,13 @@ h1 {
   var touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 
   SPECIES.forEach(function (sp, i) {
+    // una linea fra gli animali e i paesaggi
+    if (sp.paesaggio && i && !SPECIES[i - 1].paesaggio) {
+      var sep = document.createElement('span');
+      sep.className = 'sep';
+      sep.setAttribute('aria-hidden', 'true');
+      nav.appendChild(sep);
+    }
     var b = document.createElement('button');
     b.type = 'button';
     b.style.setProperty('--dot', sp.dot);
@@ -3153,8 +3651,9 @@ h1 {
     Object.keys(buttons).forEach(function (k) { buttons[k].setAttribute('aria-pressed', k === id ? 'true' : 'false'); });
     root.style.setProperty('--accent', zoo.colore(sp.cd)); // il pallino, nel colore del tema
     var act = touch ? 'Tocca' : 'Clic';
-    hint.textContent = (sp.feeds ? act + ': dai da mangiare alle ' + sp.label.toLowerCase() : act + ': si disperdono') +
-      (touch ? '' : ' · tasti 1–' + SPECIES.length + ': cambia animale');
+    var tasti = touch ? '' : 'tasti 1–' + Math.min(9, SPECIES.length) + ': cambia sfondo';
+    hint.textContent = sp.paesaggio ? tasti :
+      (sp.feeds ? act + ': dai da mangiare alle ' + sp.label.toLowerCase() : act + ': si disperdono') + (tasti ? ' · ' + tasti : '');
     if (!keepHash && fromHash() !== id) {
       try { location.replace('#' + id); } catch (e) { /* non indispensabile */ }
     }
@@ -3847,7 +4346,7 @@ h1 {
     }
     var tag = e.target && e.target.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || e.metaKey || e.ctrlKey || e.altKey) return;
-    if (e.key >= '1' && e.key <= String(SPECIES.length)) {
+    if (e.key.length === 1 && e.key >= '1' && e.key <= '9' && +e.key <= SPECIES.length) {
       setMode(SPECIES[+e.key - 1].id);
     } else if (e.key === 'h' || e.key === 'H') {
       setBare(!ui.classList.contains('bare'));

@@ -1,7 +1,7 @@
 // nome: Lucciole
 //
 // Una scena di esempio per ASCII Zoo: copiala nella cartella delle scene
-// (menu "Animale" > "Apri la cartella delle scene…"), esci da ASCII Zoo e riaprilo.
+// (menu "Sfondo" > "Apri la cartella delle scene…"), esci da ASCII Zoo e riaprilo.
 //
 // La griglia ha w.cols colonne e w.rows righe. w.put(colonna, riga, v, colore, alfa)
 // accende una cella: v (0..1) sceglie il carattere, dal più leggero al più pieno;

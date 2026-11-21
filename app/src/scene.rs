@@ -31,15 +31,19 @@ const NOME_MAX: usize = 40;
 pub struct Scena {
     pub id: String,
     pub nome: String,
-    /// ha l'id di un animale di serie e ne prende il posto (non è una voce in più)
+    /// ha l'id di uno sfondo di serie e ne prende il posto (non è una voce in più)
     pub sostituisce: bool,
+    /// va nel sottomenu "Paesaggi": una scena senza animali (`scena({...})`), non un
+    /// animale (`SPECIES.push`). Per un file che sostituisce, la categoria resta quella di serie.
+    pub paesaggio: bool,
     codice: String,
 }
 
 /// i nomi del motore che un file può usare (la pagina li mette nell'oggetto `api`)
-const NOMI: [&str; 21] = [
+const NOMI: [&str; 23] = [
     "scena", "SPECIES", "SCENES", "byId", "TAU", "FLOW", "clamp", "lerp", "angDiff", "hash2", "steer", "segD",
-    "segT", "advance", "goTo", "defaultPoke", "place", "drawCells", "celle", "rockCells", "spring",
+    "segT", "advance", "goTo", "defaultPoke", "place", "drawCells", "celle", "rockCells", "spring", "rumore",
+    "frattale",
 ];
 
 /// la cartella delle scene (può non esistere)
@@ -106,8 +110,8 @@ fn carica() -> Vec<Scena> {
         }
         let Some(stem) = p.file_stem().and_then(|s| s.to_str()) else { continue };
         let Some(id) = id_da_file(stem) else { continue };
-        // lo stesso id di un animale di serie: lo sostituisce; di un'altra scena: si salta
-        let sostituisce = crate::shared::SPECIE.iter().any(|s| s.0 == id);
+        // lo stesso id di uno sfondo di serie: lo sostituisce; di un'altra scena: si salta
+        let sostituisce = crate::shared::di_serie(&id);
         if scene.iter().any(|s| s.id == id) {
             crate::shared::zoo_log!("scena {id}: id già usato, saltata");
             continue;
@@ -122,7 +126,11 @@ fn carica() -> Vec<Scena> {
             continue;
         }
         crate::shared::zoo_log!("scena {id}: \"{nome}\"");
-        scene.push(Scena { id, nome, sostituisce, codice:codice.trim_start_matches('\u{feff}').to_string() });
+        let paesaggio = match crate::shared::specie_di_serie().find(|s| s.0 == id) {
+            Some(s) => s.2,
+            None => !codice.contains("SPECIES.push"),
+        };
+        scene.push(Scena { id, nome, sostituisce, paesaggio, codice: codice.trim_start_matches('\u{feff}').to_string() });
     }
     scene
 }
@@ -163,13 +171,12 @@ fn per_script(codice: &str) -> String {
     out
 }
 
-/// gli animali di serie come file, (id, codice): i pezzi della pagina tra le righe
-/// `// ==== animale: id ====` e `// ==== fine id ====`, uno dopo l'altro
+/// gli sfondi di serie come file, (id, codice): i pezzi della pagina tra le righe
+/// `// ==== animale: id ====` (o `paesaggio: id`) e `// ==== fine id ====`, uno dopo l'altro
 fn di_serie() -> Vec<(&'static str, String)> {
-    crate::shared::SPECIE
-        .iter()
-        .map(|&(id, nome)| {
-            let inizio = format!("  // ==== animale: {id} ====");
+    crate::shared::specie_di_serie()
+        .map(|(id, nome, paesaggio)| {
+            let inizio = format!("  // ==== {}: {id} ====", if paesaggio { "paesaggio" } else { "animale" });
             let fine = format!("  // ==== fine {id} ====");
             let mut pezzi: Vec<String> = Vec::new();
             let mut dentro: Option<Vec<&str>> = None;
@@ -188,9 +195,9 @@ fn di_serie() -> Vec<(&'static str, String)> {
             let codice = format!(
                 "// nome: {nome}\n\
                  // {nome} di ASCII Zoo. La cartella di-serie viene riscritta a ogni avvio: per\n\
-                 // cambiare questo animale copia il file nella cartella scene. Con lo stesso nome\n\
+                 // cambiare questo sfondo copia il file nella cartella scene. Con lo stesso nome\n\
                  // ({id}.js) prende il posto di quello di serie; con un nome nuovo (cambia anche\n\
-                 // la prima riga) è un animale in più nel menu. Come funziona: README, \"Your own scenes\".\n\n{}\n",
+                 // la prima riga) è uno sfondo in più nel menu. Come funziona: README, \"Your own scenes\".\n\n{}\n",
                 pezzi.join("\n\n")
             );
             (id, codice)
@@ -219,11 +226,11 @@ pub fn apri_cartella() {
     scrivi_di_serie();
     let leggimi = dir.join("LEGGIMI.txt");
     let testo = "Scene di ASCII Zoo\r\n\r\n\
-                 Ogni file .js in questa cartella è uno sfondo in più nel menu \"Animale\".\r\n\
+                 Ogni file .js in questa cartella è uno sfondo in più nel menu \"Sfondo\".\r\n\
                  Per vederne uno nuovo esci da ASCII Zoo e riaprilo.\r\n\r\n\
-                 In di-serie ci sono gli animali di ASCII Zoo come file (quella cartella viene\r\n\
-                 riscritta a ogni avvio). Copiane uno qui per cambiarlo: con lo stesso nome\r\n\
-                 prende il posto dell'animale di serie, con un nome nuovo è un animale in più.\r\n\r\n\
+                 In di-serie ci sono gli animali e i paesaggi di ASCII Zoo come file (quella\r\n\
+                 cartella viene riscritta a ogni avvio). Copiane uno qui per cambiarlo: con lo\r\n\
+                 stesso nome prende il posto di quello di serie, con un nome nuovo è uno sfondo in più.\r\n\r\n\
                  Come si scrive una scena, con un esempio:\r\n\
                  https://github.com/ascii-things/ascii-zoo#your-own-scenes\r\n";
     if std::fs::read_to_string(&leggimi).ok().as_deref() != Some(testo) {
@@ -258,14 +265,17 @@ mod test {
     }
 
     #[test]
-    fn animali_di_serie() {
+    fn sfondi_di_serie() {
         let tutti = di_serie();
-        assert_eq!(tutti.len(), crate::shared::SPECIE.len());
+        assert_eq!(tutti.len(), crate::shared::SPECIE.len() + crate::shared::PAESAGGI.len());
         for (id, codice) in tutti {
-            // la forma dell'animale c'è, e nessuna riga "====" è rimasta dentro
+            // la forma dell'animale (o il paesaggio) c'è, e nessuna riga "====" è rimasta dentro
             assert!(codice.contains(&format!("id: '{id}'")), "{id}");
             assert!(!codice.contains("// ===="), "{id}");
-            assert_eq!(nome_scena(&codice, id), crate::shared::SPECIE.iter().find(|s| s.0 == id).unwrap().1);
+            let (_, nome, paesaggio) = crate::shared::specie_di_serie().find(|s| s.0 == id).unwrap();
+            assert_eq!(nome_scena(&codice, id), nome);
+            // un paesaggio copiato è una scena: scena({...}), non SPECIES.push
+            assert_eq!(paesaggio, !codice.contains("SPECIES.push"), "{id}");
         }
     }
 }
